@@ -24,6 +24,9 @@ function toScreamingSnake(s: string): string {
 function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
 }
+function toSentenceCase(s: string): string {
+  return s.toLowerCase().replace(/(^\s*\w|[.!?]\s+\w)/g, (c) => c.toUpperCase());
+}
 
 interface CaseResult {
   label: string;
@@ -43,6 +46,7 @@ export default function CasePage() {
         { label: "kebab-case", value: toKebabCase(input), id: "kebab" },
         { label: "SCREAMING_SNAKE", value: toScreamingSnake(input), id: "screaming" },
         { label: "Title Case", value: toTitleCase(input), id: "title" },
+        { label: "Sentence case", value: toSentenceCase(input), id: "sentence" },
         { label: "lowercase", value: input.toLowerCase(), id: "lower" },
         { label: "UPPERCASE", value: input.toUpperCase(), id: "upper" },
       ]

@@ -7,6 +7,8 @@ import { Copy, ArrowRight, ArrowLeft, Globe, Layers } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface UrlComponents {
   protocol: string;
@@ -41,17 +43,35 @@ function parseUrlComponents(raw: string): UrlComponents | null {
   }
 }
 
+type EncodeMode = "component" | "full";
+
+const MODE_INFO: Record<EncodeMode, { label: string; fn: (s: string) => string; dec: (s: string) => string; desc: string }> = {
+  component: {
+    label: "Component (encodeURIComponent)",
+    fn: encodeURIComponent,
+    dec: decodeURIComponent,
+    desc: "Encodes ALL special characters including ://?&#. Use for individual query values.",
+  },
+  full: {
+    label: "Full URL (encodeURI)",
+    fn: encodeURI,
+    dec: decodeURI,
+    desc: "Preserves :// ? # & = characters. Use for complete URLs.",
+  },
+};
+
 export default function Url() {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [components, setComponents] = useState<UrlComponents | null>(null);
+  const [mode, setMode] = useState<EncodeMode>("component");
   const { toast } = useToast();
 
   const handleEncode = () => {
     if (!input) return;
     try {
-      setOutput(encodeURIComponent(input));
+      setOutput(MODE_INFO[mode].fn(input));
       setError(null);
     } catch {
       setError("Failed to encode");
@@ -61,10 +81,10 @@ export default function Url() {
   const handleDecode = () => {
     if (!input) return;
     try {
-      setOutput(decodeURIComponent(input));
+      setOutput(MODE_INFO[mode].dec(input));
       setError(null);
     } catch {
-      setError("Invalid URL encoding");
+      setError("Invalid URL encoding — could not decode");
       setOutput("");
     }
   };
@@ -104,7 +124,7 @@ export default function Url() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">URL Encode / Decode</h1>
-        <p className="text-muted-foreground mt-1">Encode and decode URL strings, or parse a URL into its components.</p>
+        <p className="text-muted-foreground mt-1">Encode and decode URL strings using component or full-URL mode, or parse a URL into its components.</p>
       </div>
 
       <Tabs defaultValue="encode">
@@ -113,7 +133,31 @@ export default function Url() {
           <TabsTrigger value="parse" data-testid="tab-parse"><Globe className="h-4 w-4 mr-1.5" />Parse URL</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="encode" className="mt-4">
+        <TabsContent value="encode" className="mt-4 space-y-4">
+          <Card className="border-border shadow-sm">
+            <CardHeader className="py-3 px-4 border-b bg-muted/20">
+              <CardTitle className="text-sm font-medium">Mode</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Encoding mode</Label>
+                  <Select value={mode} onValueChange={(v) => { setMode(v as EncodeMode); setOutput(""); setError(null); }}>
+                    <SelectTrigger className="w-72" data-testid="select-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(MODE_INFO) as EncodeMode[]).map((k) => (
+                        <SelectItem key={k} value={k}>{MODE_INFO[k].label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-muted-foreground pb-1">{MODE_INFO[mode].desc}</p>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ minHeight: "350px" }}>
             <Card className="flex flex-col border-border shadow-sm">
               <CardHeader className="py-3 px-4 border-b bg-muted/20">
@@ -133,7 +177,7 @@ export default function Url() {
               <CardContent className="p-0 flex-1 flex">
                 <Textarea
                   className="flex-1 rounded-none border-0 resize-none font-mono text-sm focus-visible:ring-0 p-4 min-h-[300px]"
-                  placeholder="Enter text to encode or decode..."
+                  placeholder="Enter text to encode, or encoded string to decode..."
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey) handleEncode(); }}
