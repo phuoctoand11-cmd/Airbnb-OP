@@ -42,6 +42,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom"],
+          "vendor-ui": ["@radix-ui/react-dialog", "@radix-ui/react-select", "@radix-ui/react-tabs", "@radix-ui/react-switch", "@radix-ui/react-separator", "@radix-ui/react-label", "@radix-ui/react-slot", "class-variance-authority", "lucide-react"],
+          "vendor-diff": ["diff"],
+          "vendor-markdown": ["react-markdown", "remark-gfm"],
+          "vendor-qrcode": ["qrcode"],
+          "vendor-cron": ["cron-parser", "cronstrue"],
+        },
+      },
+    },
   },
   server: {
     port,
