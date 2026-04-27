@@ -10,6 +10,8 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import {
   supabase,
+  SUPABASE_ANON_KEY_LOADED,
+  SUPABASE_URL_FOR_DEBUG,
   type AppRole,
   type UserProfile,
   isSupabaseConfigured,
@@ -88,11 +90,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadProfile]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    // eslint-disable-next-line no-console
+    console.info("[auth] signIn attempt", {
+      url: SUPABASE_URL_FOR_DEBUG,
+      anonKeyLoaded: SUPABASE_ANON_KEY_LOADED,
       email,
-      password,
     });
-    if (error) throw error;
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.error("[auth] signIn error", {
+          name: error.name,
+          message: error.message,
+          status: (error as unknown as { status?: number }).status,
+          url: SUPABASE_URL_FOR_DEBUG,
+        });
+        throw error;
+      }
+      // eslint-disable-next-line no-console
+      console.info("[auth] signIn success", { userId: data.user?.id });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[auth] signIn threw", {
+        name: (err as Error).name,
+        message: (err as Error).message,
+        url: SUPABASE_URL_FOR_DEBUG,
+      });
+      throw err;
+    }
   }, []);
 
   const signUp = useCallback(

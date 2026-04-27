@@ -24,6 +24,16 @@ if (!isSupabaseConfigured) {
   );
 }
 
+// eslint-disable-next-line no-console
+console.info(
+  "[supabase] init",
+  JSON.stringify({
+    url: supabaseUrl,
+    anonKeyLoaded: Boolean(supabaseAnonKey),
+    anonKeyLength: supabaseAnonKey.length,
+  }),
+);
+
 export const supabase: SupabaseClient = createClient(
   supabaseUrl,
   supabaseAnonKey,
@@ -36,6 +46,9 @@ export const supabase: SupabaseClient = createClient(
     },
   },
 );
+
+export const SUPABASE_URL_FOR_DEBUG = supabaseUrl;
+export const SUPABASE_ANON_KEY_LOADED = Boolean(supabaseAnonKey);
 
 export type AppRole = "admin" | "manager" | "staff" | "accountant";
 
