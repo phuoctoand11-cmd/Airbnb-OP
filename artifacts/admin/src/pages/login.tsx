@@ -37,6 +37,12 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
+const DEBUG_SUPABASE_URL =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "(not set)";
+const DEBUG_ANON_KEY_LOADED = Boolean(
+  import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined,
+);
+
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -113,6 +119,20 @@ export default function Login() {
           </div>
           <h1 className="text-3xl font-bold text-foreground tracking-tight">Airbnb Ops</h1>
           <p className="text-muted-foreground mt-2">Operations cockpit for property managers</p>
+        </div>
+
+        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+          <div className="mb-1 font-semibold uppercase tracking-wide text-amber-700">
+            Debug (temporary)
+          </div>
+          <div className="break-all">
+            <span className="font-medium">NEXT_PUBLIC_SUPABASE_URL:</span>{" "}
+            {DEBUG_SUPABASE_URL}
+          </div>
+          <div>
+            <span className="font-medium">anon key loaded:</span>{" "}
+            {DEBUG_ANON_KEY_LOADED ? "yes" : "no"}
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "register")}>
