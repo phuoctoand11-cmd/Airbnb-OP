@@ -1,22 +1,32 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as
-  | string
-  | undefined;
+const rawUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
+const rawKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? "";
+
+function sanitizeProjectUrl(input: string): string {
+  let url = input.trim();
+  if (!url) return url;
+  url = url.replace(/\/+$/, "");
+  url = url.replace(/\/(rest|auth|storage|realtime)\/v\d+\/?.*$/i, "");
+  return url;
+}
+
+const supabaseUrl = sanitizeProjectUrl(rawUrl);
+const supabaseAnonKey = rawKey.trim();
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 if (!isSupabaseConfigured) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[supabase] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. Auth and data calls will fail until they are set."
+  throw new Error(
+    "[supabase] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. " +
+      "Set both secrets in Replit and restart the workflow.",
   );
 }
 
 export const supabase: SupabaseClient = createClient(
-  supabaseUrl ?? "https://placeholder.supabase.co",
-  supabaseAnonKey ?? "placeholder-anon-key",
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       persistSession: true,
@@ -24,7 +34,7 @@ export const supabase: SupabaseClient = createClient(
       detectSessionInUrl: true,
       storageKey: "airbnb-ops-admin-auth",
     },
-  }
+  },
 );
 
 export type AppRole = "admin" | "manager" | "staff" | "accountant";
