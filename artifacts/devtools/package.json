@@ -80,9 +80,11 @@
     "cronstrue": "^3.14.0",
     "diff": "^9.0.0",
     "js-md5": "^0.8.3",
+    "prettier": "^3.8.1",
     "qrcode": "^1.5.4",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "terser": "^5.46.2",
     "uuid": "^14.0.0"
   }
 }

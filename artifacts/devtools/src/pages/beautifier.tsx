@@ -2,96 +2,52 @@ import { useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Sparkles, Minimize2 } from "lucide-react";
+import { Copy, Sparkles, Minimize2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Lang = "javascript" | "html" | "css";
 
-function beautifyJS(code: string, indent = 2): string {
-  let result = "";
-  let depth = 0;
-  let i = 0;
-  const sp = " ".repeat(indent);
-
-  while (i < code.length) {
-    const ch = code[i];
-    if (ch === "{" || ch === "[" || ch === "(") {
-      result += ch + "\n" + sp.repeat(depth + 1);
-      depth++;
-    } else if (ch === "}" || ch === "]" || ch === ")") {
-      depth = Math.max(0, depth - 1);
-      result = result.trimEnd();
-      result += "\n" + sp.repeat(depth) + ch;
-    } else if (ch === ";") {
-      result += ch + "\n" + sp.repeat(depth);
-    } else if (ch === "\n") {
-      const next = result.trimEnd();
-      if (next.slice(-1) !== "{" && next.slice(-1) !== "," && next.slice(-1) !== "(") {
-        result = next + "\n" + sp.repeat(depth);
-      }
-    } else {
-      result += ch;
-    }
-    i++;
+async function formatCode(code: string, lang: Lang): Promise<string> {
+  const prettier = await import("prettier/standalone");
+  if (lang === "javascript") {
+    const [babel, estree] = await Promise.all([
+      import("prettier/plugins/babel"),
+      import("prettier/plugins/estree"),
+    ]);
+    return prettier.format(code, { parser: "babel", plugins: [babel, estree], printWidth: 100 });
   }
-  return result.split("\n").map((l) => l.trimEnd()).filter((l, idx, arr) => !(l === "" && arr[idx - 1] === "")).join("\n");
+  if (lang === "html") {
+    const html = await import("prettier/plugins/html");
+    return prettier.format(code, { parser: "html", plugins: [html], printWidth: 100 });
+  }
+  const postcss = await import("prettier/plugins/postcss");
+  return prettier.format(code, { parser: "css", plugins: [postcss], printWidth: 100 });
 }
 
-function minifyJS(code: string): string {
+async function minifyCode(code: string, lang: Lang): Promise<string> {
+  if (lang === "javascript") {
+    const { minify } = await import("terser");
+    const result = await minify(code, {
+      compress: true,
+      mangle: false,
+      output: { comments: false },
+    });
+    if (!result.code) throw new Error("Minification produced no output");
+    return result.code;
+  }
+  if (lang === "css") {
+    return code
+      .replace(/\/\*(?:[^*]|\*(?!\/))*\*\//g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\s*([{};:,>~+])\s*/g, "$1")
+      .replace(/;}/g, "}")
+      .trim();
+  }
   return code
-    .replace(/\/\/[^\n]*/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\s+/g, " ")
-    .replace(/\s*([{};:,=+\-<>!&|()[\]])\s*/g, "$1")
-    .trim();
-}
-
-function beautifyHTML(html: string, indent = 2): string {
-  const sp = " ".repeat(indent);
-  const voidTags = new Set(["area","base","br","col","embed","hr","img","input","link","meta","param","source","track","wbr"]);
-  let depth = 0;
-  const result: string[] = [];
-
-  const tokens = html.replace(/>\s*</g, ">\n<").split("\n");
-  for (const raw of tokens) {
-    const t = raw.trim();
-    if (!t) continue;
-    const isClosing = /^<\//.test(t);
-    const isSelfClosing = /\/>$/.test(t) || voidTags.has((t.match(/^<(\w+)/) || [])[1]?.toLowerCase() ?? "");
-    if (isClosing) depth = Math.max(0, depth - 1);
-    result.push(sp.repeat(depth) + t);
-    if (!isClosing && !isSelfClosing && t.startsWith("<") && !t.includes("</")) depth++;
-  }
-  return result.join("\n");
-}
-
-function minifyHTML(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!--(?!-?>)(?:[^-]|-(?!-))*-->/g, "")
     .replace(/\s+/g, " ")
     .replace(/>\s+</g, "><")
-    .trim();
-}
-
-function beautifyCSS(css: string, indent = 2): string {
-  const sp = " ".repeat(indent);
-  return css
-    .replace(/\s*\{\s*/g, " {\n" + sp)
-    .replace(/;\s*/g, ";\n" + sp)
-    .replace(/\s*\}\s*/g, "\n}\n\n")
-    .split("\n")
-    .map((l) => l.trimEnd())
-    .filter((l, i, arr) => !(l === "" && arr[i - 1] === ""))
-    .join("\n")
-    .trim();
-}
-
-function minifyCSS(css: string): string {
-  return css
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\s+/g, " ")
-    .replace(/\s*([{};:,>~+])\s*/g, "$1")
     .trim();
 }
 
@@ -100,33 +56,24 @@ export default function Beautifier() {
   const [output, setOutput] = useState("");
   const [lang, setLang] = useState<Lang>("javascript");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const runBeautify = () => {
+  const run = async (action: "beautify" | "minify") => {
     if (!input.trim()) return;
+    setLoading(true);
+    setError(null);
     try {
-      let result = "";
-      if (lang === "javascript") result = beautifyJS(input);
-      else if (lang === "html") result = beautifyHTML(input);
-      else result = beautifyCSS(input);
+      const result = action === "beautify"
+        ? await formatCode(input, lang)
+        : await minifyCode(input, lang);
       setOutput(result);
-      setError(null);
     } catch (err) {
-      setError("Failed to format: " + (err instanceof Error ? err.message : String(err)));
-    }
-  };
-
-  const runMinify = () => {
-    if (!input.trim()) return;
-    try {
-      let result = "";
-      if (lang === "javascript") result = minifyJS(input);
-      else if (lang === "html") result = minifyHTML(input);
-      else result = minifyCSS(input);
-      setOutput(result);
-      setError(null);
-    } catch (err) {
-      setError("Failed to minify: " + (err instanceof Error ? err.message : String(err)));
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Failed to ${action}: ${msg}`);
+      setOutput("");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -140,7 +87,7 @@ export default function Beautifier() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Code Beautifier / Minifier</h1>
-        <p className="text-muted-foreground mt-1">Format or minify HTML, CSS, and JavaScript code.</p>
+        <p className="text-muted-foreground mt-1">Format or minify JavaScript, HTML, and CSS with grammar-aware parsing.</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -154,11 +101,13 @@ export default function Beautifier() {
             <SelectItem value="css">CSS</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={runBeautify} data-testid="btn-beautify">
-          <Sparkles className="h-4 w-4 mr-1" /> Beautify
+        <Button onClick={() => run("beautify")} disabled={loading} data-testid="btn-beautify">
+          {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+          Beautify
         </Button>
-        <Button variant="outline" onClick={runMinify} data-testid="btn-minify">
-          <Minimize2 className="h-4 w-4 mr-1" /> Minify
+        <Button variant="outline" onClick={() => run("minify")} disabled={loading} data-testid="btn-minify">
+          {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Minimize2 className="h-4 w-4 mr-1" />}
+          Minify
         </Button>
       </div>
 
@@ -192,6 +141,10 @@ export default function Beautifier() {
           <CardContent className="p-0 flex-1 overflow-auto bg-muted/10">
             {error ? (
               <div className="p-4 text-destructive text-sm font-mono" data-testid="text-error">{error}</div>
+            ) : loading ? (
+              <div className="p-4 flex items-center gap-2 text-muted-foreground text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" /> Processing...
+              </div>
             ) : (
               <pre className="p-4 font-mono text-sm whitespace-pre-wrap" data-testid="output-code">
                 {output || <span className="text-muted-foreground italic">Output will appear here...</span>}
