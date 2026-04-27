@@ -8,6 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 type Lang = "javascript" | "html" | "css";
 
+const SAMPLES: Record<Lang, string> = {
+  javascript: `function greet(name){if(!name){return "Hello, World!";}return "Hello, "+name+"!";}\n\nconst result=greet("Developer");console.log(result);`,
+  html: `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sample</title></head><body><header><h1>Hello World</h1></header><main><p>Welcome to the <strong>Developer Toolkit</strong>.</p></main></body></html>`,
+  css: `.container{display:flex;align-items:center;justify-content:space-between;padding:16px;background:#fff;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.button{background:#007bff;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer}.button:hover{background:#0056b3}`,
+};
+
 async function formatCode(code: string, lang: Lang): Promise<string> {
   const prettier = await import("prettier/standalone");
   if (lang === "javascript") {
@@ -108,6 +114,9 @@ export default function Beautifier() {
         <Button variant="outline" onClick={() => run("minify")} disabled={loading} data-testid="btn-minify">
           {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Minimize2 className="h-4 w-4 mr-1" />}
           Minify
+        </Button>
+        <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setInput(SAMPLES[lang]); setOutput(""); setError(null); }} data-testid="btn-sample">
+          Sample
         </Button>
       </div>
 

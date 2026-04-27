@@ -70,9 +70,14 @@ export default function HashPage() {
         <CardHeader className="py-3 px-4 border-b bg-muted/20">
           <CardTitle className="text-sm font-medium flex justify-between items-center">
             <span>Input Text</span>
-            <Button onClick={handleGenerate} disabled={loading || !input} size="sm" data-testid="btn-generate">
-              <HashIcon className="h-4 w-4 mr-1" /> {loading ? "Generating..." : "Generate Hashes"}
-            </Button>
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setInput("The quick brown fox jumps over the lazy dog")} data-testid="btn-sample">
+                Sample
+              </Button>
+              <Button onClick={handleGenerate} disabled={loading || !input} size="sm" data-testid="btn-generate">
+                <HashIcon className="h-4 w-4 mr-1" /> {loading ? "Generating..." : "Generate Hashes"}
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">

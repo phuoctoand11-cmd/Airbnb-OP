@@ -135,6 +135,8 @@ export default function Json() {
     toast({ title: "Copied", description: "JSON output copied." });
   };
 
+  const SAMPLE_JSON = `{\n  "name": "Developer Toolkit",\n  "version": "1.0.0",\n  "tools": ["JSON", "Base64", "JWT", "Regex"],\n  "config": {\n    "theme": "dark",\n    "language": "en"\n  },\n  "enabled": true\n}`;
+
   const MODES = [
     { key: "format" as const, label: "Format", icon: FileJson, action: handleFormat, testId: "btn-format" },
     { key: "minify" as const, label: "Minify", icon: Minus, action: handleMinify, testId: "btn-minify" },
@@ -154,6 +156,15 @@ export default function Json() {
             <CardTitle className="text-sm font-medium flex justify-between items-center">
               <span>Input</span>
               <div className="flex gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setInput(SAMPLE_JSON); setOutput(""); setMode("format"); setParsed(null); }}
+                  data-testid="btn-sample"
+                  className="h-7 px-2 text-xs"
+                >
+                  Sample
+                </Button>
                 {MODES.map(({ key, label, icon: Icon, action, testId }) => (
                   <Button
                     key={key}

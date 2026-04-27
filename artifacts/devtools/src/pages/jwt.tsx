@@ -11,7 +11,9 @@ function base64urlDecode(str: string): string {
   const padLen = (4 - (padded.length % 4)) % 4;
   const paddedStr = padded + "=".repeat(padLen);
   try {
-    return decodeURIComponent(escape(atob(paddedStr)));
+    const binary = atob(paddedStr);
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
   } catch {
     return atob(paddedStr);
   }

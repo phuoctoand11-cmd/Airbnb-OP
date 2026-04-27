@@ -18,7 +18,9 @@ export default function Base64() {
   const handleEncode = () => {
     if (!input) return;
     try {
-      setOutput(btoa(unescape(encodeURIComponent(input))));
+      const bytes = new TextEncoder().encode(input);
+      const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+      setOutput(btoa(binary));
       setError(null);
     } catch {
       setError("Failed to encode");
@@ -28,7 +30,9 @@ export default function Base64() {
   const handleDecode = () => {
     if (!input) return;
     try {
-      setOutput(decodeURIComponent(escape(atob(input))));
+      const binary = atob(input.trim());
+      const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+      setOutput(new TextDecoder("utf-8", { fatal: false }).decode(bytes));
       setError(null);
     } catch {
       setError("Invalid Base64 string");
