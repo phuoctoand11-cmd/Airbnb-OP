@@ -32,7 +32,8 @@ function getNextRuns(expr: string, count = 5): Date[] | null {
 }
 
 function formatDate(d: Date): string {
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString("en-US", {
+    timeZone: "UTC",
     year: "numeric", month: "short", day: "2-digit",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
     timeZoneName: "short",
