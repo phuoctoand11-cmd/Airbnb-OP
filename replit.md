@@ -43,3 +43,30 @@ A role-based admin dashboard for managing short-term rental operations. Backed e
   - `accountant` — finance + reports
 - **Pages**: `/login`, `/dashboard`, `/listings`, `/listings/:id` (overview/images/amenities/calendar/pricing tabs), `/bookings`, `/tasks` (kanban), `/revenues`, `/expenses`, `/reports`, `/settings/users`
 - **Storage**: `listing-images` bucket; uploads stored at `${listingId}/${uuid}-${file.name}`, public URL stored in `listing_images.url`.
+
+### `artifacts/devtools` — Developer Toolkit (web, React + Vite, preview: /devtools/)
+
+A 100% client-side collection of 18 developer utility tools. No backend, no auth, no API calls — all processing happens in the browser.
+
+- **Frontend**: React 18 + Vite + Tailwind v4 + shadcn/ui + wouter + lucide-react
+- **Extra packages**: react-markdown + remark-gfm, diff, uuid, qrcode, cronstrue, js-md5
+- **Theme**: Dark blue (default) + light mode, toggled via localStorage, implemented with custom ThemeProvider + ThemeContext
+- **Tools** (each a separate routed page):
+  - `/json` — JSON Formatter/Validator (format, minify)
+  - `/base64` — Base64 Encode/Decode
+  - `/url` — URL Encode/Decode
+  - `/jwt` — JWT Decoder (header + payload, no signature verification)
+  - `/uuid` — UUID v4 Generator (bulk)
+  - `/hash` — Hash Generator (MD5 via js-md5, SHA-1/SHA-256/SHA-512 via Web Crypto)
+  - `/timestamp` — Timestamp Converter (Unix ↔ human-readable, live clock)
+  - `/color` — Color Converter (HEX ↔ RGB ↔ HSL with live swatch)
+  - `/regex` — Regex Tester (flags, match highlighting, match list)
+  - `/markdown` — Markdown Preview (split pane, GFM)
+  - `/diff` — Text Diff (line-by-line with add/remove highlighting)
+  - `/lorem` — Lorem Ipsum Generator (words/sentences/paragraphs)
+  - `/case` — Case Converter (8 formats shown simultaneously)
+  - `/cron` — Cron Explainer (cronstrue, example library)
+  - `/querystring` — Query String Parser/Builder (tabs: parse URL or build KV pairs)
+  - `/beautifier` — Code Beautifier (HTML/CSS/JS, indentation-based)
+  - `/qrcode` — QR Code Generator (size + error correction, PNG download)
+  - `/base-converter` — Number Base Converter (bin/oct/dec/hex)
