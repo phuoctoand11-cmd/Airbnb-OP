@@ -266,7 +266,7 @@ export default function Url() {
                         <div key={i} className="flex items-center px-4 py-2.5 gap-4" data-testid={`param-row-${i}`}>
                           <code className="font-mono text-sm text-primary min-w-[120px]">{key}</code>
                           <span className="text-muted-foreground">=</span>
-                          <code className="font-mono text-sm flex-1 break-all">{decodeURIComponent(value)}</code>
+                          <code className="font-mono text-sm flex-1 break-all">{value}</code>
                         </div>
                       ))}
                     </div>
