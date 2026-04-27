@@ -17,6 +17,7 @@ export default function Timestamp() {
   const [tsError, setTsError] = useState<string | null>(null);
   const [dateInput, setDateInput] = useState("");
   const [dateResult, setDateResult] = useState<{ seconds: string; millis: string } | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -51,9 +52,11 @@ export default function Timestamp() {
     if (!dateInput.trim()) return;
     const d = new Date(dateInput.trim());
     if (isNaN(d.getTime())) {
-      toast({ title: "Invalid date", description: "Could not parse the date string.", variant: "destructive" });
+      setDateError("Invalid date: could not parse the date string");
+      setDateResult(null);
       return;
     }
+    setDateError(null);
     setDateResult({
       seconds: Math.floor(d.getTime() / 1000).toString(),
       millis: d.getTime().toString(),
@@ -140,6 +143,7 @@ export default function Timestamp() {
               />
               <Button onClick={convertDate} data-testid="btn-convert-date">Convert</Button>
             </div>
+            {dateError && <p className="text-destructive text-sm" data-testid="text-date-error">{dateError}</p>}
             {dateResult && (
               <div className="space-y-2">
                 {[
