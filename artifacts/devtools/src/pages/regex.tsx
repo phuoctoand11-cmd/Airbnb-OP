@@ -42,8 +42,8 @@ export default function RegexPage() {
       }
       setMatches(found);
       setError(null);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid regex");
       setMatches(null);
     }
   };

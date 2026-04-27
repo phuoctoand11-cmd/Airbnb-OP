@@ -35,8 +35,8 @@ export default function QueryString() {
       if (result.length === 0) { setParseError("No query parameters found"); setParsed(null); return; }
       setParsed(result);
       setParseError(null);
-    } catch (err: any) {
-      setParseError("Failed to parse: " + err.message);
+    } catch (err) {
+      setParseError("Failed to parse: " + (err instanceof Error ? err.message : String(err)));
       setParsed(null);
     }
   };

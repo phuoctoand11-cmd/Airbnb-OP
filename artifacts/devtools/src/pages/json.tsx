@@ -17,8 +17,8 @@ export default function Json() {
       const parsed = JSON.parse(input);
       setOutput(JSON.stringify(parsed, null, 2));
       setError(null);
-    } catch (err: any) {
-      setError(err.message || "Invalid JSON");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid JSON");
       setOutput("");
     }
   };
@@ -29,8 +29,8 @@ export default function Json() {
       const parsed = JSON.parse(input);
       setOutput(JSON.stringify(parsed));
       setError(null);
-    } catch (err: any) {
-      setError(err.message || "Invalid JSON");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid JSON");
       setOutput("");
     }
   };

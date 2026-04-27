@@ -27,6 +27,7 @@ import QueryString from "@/pages/querystring";
 import Beautifier from "@/pages/beautifier";
 import QrCode from "@/pages/qrcode";
 import BaseConverter from "@/pages/base-converter";
+import About from "@/pages/about";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ function Router() {
         <Route path="/beautifier" component={Beautifier} />
         <Route path="/qrcode" component={QrCode} />
         <Route path="/base-converter" component={BaseConverter} />
+        <Route path="/about" component={About} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

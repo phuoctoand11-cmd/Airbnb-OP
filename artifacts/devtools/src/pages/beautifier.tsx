@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Sparkles } from "lucide-react";
+import { Copy, Sparkles, Minimize2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -38,6 +38,15 @@ function beautifyJS(code: string, indent = 2): string {
   return result.split("\n").map((l) => l.trimEnd()).filter((l, idx, arr) => !(l === "" && arr[idx - 1] === "")).join("\n");
 }
 
+function minifyJS(code: string): string {
+  return code
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*([{};:,=+\-<>!&|()[\]])\s*/g, "$1")
+    .trim();
+}
+
 function beautifyHTML(html: string, indent = 2): string {
   const sp = " ".repeat(indent);
   const voidTags = new Set(["area","base","br","col","embed","hr","img","input","link","meta","param","source","track","wbr"]);
@@ -49,12 +58,20 @@ function beautifyHTML(html: string, indent = 2): string {
     const t = raw.trim();
     if (!t) continue;
     const isClosing = /^<\//.test(t);
-    const isSelfClosing = /\/>$/.test(t) || voidTags.has((t.match(/^<(\w+)/) || [])[1]?.toLowerCase() || "");
+    const isSelfClosing = /\/>$/.test(t) || voidTags.has((t.match(/^<(\w+)/) || [])[1]?.toLowerCase() ?? "");
     if (isClosing) depth = Math.max(0, depth - 1);
     result.push(sp.repeat(depth) + t);
     if (!isClosing && !isSelfClosing && t.startsWith("<") && !t.includes("</")) depth++;
   }
   return result.join("\n");
+}
+
+function minifyHTML(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/>\s+</g, "><")
+    .trim();
 }
 
 function beautifyCSS(css: string, indent = 2): string {
@@ -70,6 +87,14 @@ function beautifyCSS(css: string, indent = 2): string {
     .trim();
 }
 
+function minifyCSS(css: string): string {
+  return css
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*([{};:,>~+])\s*/g, "$1")
+    .trim();
+}
+
 export default function Beautifier() {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
@@ -77,7 +102,7 @@ export default function Beautifier() {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const handle = () => {
+  const runBeautify = () => {
     if (!input.trim()) return;
     try {
       let result = "";
@@ -86,24 +111,39 @@ export default function Beautifier() {
       else result = beautifyCSS(input);
       setOutput(result);
       setError(null);
-    } catch (err: any) {
-      setError("Failed to format: " + err.message);
+    } catch (err) {
+      setError("Failed to format: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const runMinify = () => {
+    if (!input.trim()) return;
+    try {
+      let result = "";
+      if (lang === "javascript") result = minifyJS(input);
+      else if (lang === "html") result = minifyHTML(input);
+      else result = minifyCSS(input);
+      setOutput(result);
+      setError(null);
+    } catch (err) {
+      setError("Failed to minify: " + (err instanceof Error ? err.message : String(err)));
     }
   };
 
   const copy = () => {
+    if (!output) return;
     navigator.clipboard.writeText(output);
-    toast({ title: "Copied", description: "Formatted code copied." });
+    toast({ title: "Copied", description: "Code copied to clipboard." });
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Code Beautifier</h1>
-        <p className="text-muted-foreground mt-1">Format and prettify HTML, CSS, and JavaScript code.</p>
+        <h1 className="text-2xl font-bold tracking-tight">Code Beautifier / Minifier</h1>
+        <p className="text-muted-foreground mt-1">Format or minify HTML, CSS, and JavaScript code.</p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Select value={lang} onValueChange={(v) => setLang(v as Lang)}>
           <SelectTrigger className="w-40" data-testid="select-lang">
             <SelectValue />
@@ -114,8 +154,11 @@ export default function Beautifier() {
             <SelectItem value="css">CSS</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={handle} data-testid="btn-beautify">
+        <Button onClick={runBeautify} data-testid="btn-beautify">
           <Sparkles className="h-4 w-4 mr-1" /> Beautify
+        </Button>
+        <Button variant="outline" onClick={runMinify} data-testid="btn-minify">
+          <Minimize2 className="h-4 w-4 mr-1" /> Minify
         </Button>
       </div>
 
@@ -127,7 +170,7 @@ export default function Beautifier() {
           <CardContent className="p-0 flex-1 flex">
             <Textarea
               className="flex-1 rounded-none border-0 resize-none font-mono text-sm focus-visible:ring-0 p-4"
-              placeholder={`Paste ${lang.toUpperCase()} code to beautify...`}
+              placeholder={`Paste ${lang.toUpperCase()} code here...`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               data-testid="input-code"

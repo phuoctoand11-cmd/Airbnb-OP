@@ -16,8 +16,8 @@ export default function Base64() {
     try {
       setOutput(btoa(unescape(encodeURIComponent(input))));
       setError(null);
-    } catch (err: any) {
-      setError(err.message || "Failed to encode");
+    } catch {
+      setError("Failed to encode");
     }
   };
 
@@ -26,7 +26,7 @@ export default function Base64() {
     try {
       setOutput(decodeURIComponent(escape(atob(input))));
       setError(null);
-    } catch (err: any) {
+    } catch {
       setError("Invalid Base64 string");
       setOutput("");
     }

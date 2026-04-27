@@ -16,8 +16,8 @@ export default function Url() {
     try {
       setOutput(encodeURIComponent(input));
       setError(null);
-    } catch (err: any) {
-      setError(err.message || "Failed to encode");
+    } catch {
+      setError("Failed to encode");
     }
   };
 
@@ -26,7 +26,7 @@ export default function Url() {
     try {
       setOutput(decodeURIComponent(input));
       setError(null);
-    } catch (err: any) {
+    } catch {
       setError("Invalid URL encoding");
       setOutput("");
     }

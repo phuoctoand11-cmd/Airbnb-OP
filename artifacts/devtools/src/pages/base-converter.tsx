@@ -53,7 +53,7 @@ export default function BaseConverter() {
         hex: decimal.toString(16).toUpperCase(),
       });
       setError(null);
-    } catch (err: any) {
+    } catch {
       setError("Conversion failed");
       setResult(null);
     }

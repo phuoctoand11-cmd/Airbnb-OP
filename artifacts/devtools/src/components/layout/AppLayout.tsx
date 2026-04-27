@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { tools } from "@/lib/tools";
 import { Button } from "@/components/ui/button";
-import { Menu, Moon, Sun } from "lucide-react";
+import { Menu, Moon, Sun, Info } from "lucide-react";
 import { useTheme } from "../theme-context";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
@@ -58,6 +58,22 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
           );
         })}
+        <div className="pt-4 pb-2 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
+          Info
+        </div>
+        <Link href="/about">
+          <div
+            data-testid="nav-about"
+            className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer ${
+              location === "/about"
+                ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            }`}
+          >
+            <Info className="h-4 w-4" />
+            <span className="text-sm font-medium">About</span>
+          </div>
+        </Link>
       </div>
     </div>
   );

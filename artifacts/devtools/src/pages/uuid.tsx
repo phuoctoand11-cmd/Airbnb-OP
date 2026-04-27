@@ -1,20 +1,24 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Plus, Trash2, RefreshCw } from "lucide-react";
+import { Copy, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { v4 as uuidv4 } from "uuid";
+import { Badge } from "@/components/ui/badge";
+import { v4 as uuidv4, v7 as uuidv7 } from "uuid";
+
+type UUIDVersion = "v4" | "v7";
 
 export default function Uuid() {
   const [uuids, setUuids] = useState<string[]>([uuidv4()]);
   const [count, setCount] = useState(1);
+  const [version, setVersion] = useState<UUIDVersion>("v4");
   const { toast } = useToast();
 
   const generate = () => {
     const n = Math.max(1, Math.min(100, count));
-    setUuids(Array.from({ length: n }, () => uuidv4()));
+    setUuids(Array.from({ length: n }, () => version === "v4" ? uuidv4() : uuidv7()));
   };
 
   const copyOne = (id: string) => {
@@ -31,14 +35,33 @@ export default function Uuid() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">UUID Generator</h1>
-        <p className="text-muted-foreground mt-1">Generate version 4 UUIDs (random).</p>
+        <p className="text-muted-foreground mt-1">Generate v4 (random) and v7 (time-ordered) UUIDs.</p>
       </div>
 
       <Card className="border-border shadow-sm">
         <CardHeader className="py-3 px-4 border-b bg-muted/20">
           <CardTitle className="text-sm font-medium">Options</CardTitle>
         </CardHeader>
-        <CardContent className="p-4 flex flex-wrap gap-4 items-end">
+        <CardContent className="p-4 flex flex-wrap gap-6 items-end">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Version</Label>
+            <div className="flex rounded-md border border-input overflow-hidden">
+              {(["v4", "v7"] as UUIDVersion[]).map((v) => (
+                <button
+                  key={v}
+                  data-testid={`btn-version-${v}`}
+                  onClick={() => setVersion(v)}
+                  className={`px-4 py-1.5 text-sm font-mono transition-colors ${
+                    version === v
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  {v.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="uuid-count" className="text-xs">Count (1–100)</Label>
             <Input
@@ -65,7 +88,10 @@ export default function Uuid() {
 
       <Card className="border-border shadow-sm">
         <CardHeader className="py-3 px-4 border-b bg-muted/20">
-          <CardTitle className="text-sm font-medium">Generated UUIDs</CardTitle>
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            Generated UUIDs
+            <Badge variant="secondary" className="font-mono text-[10px]">{version.toUpperCase()}</Badge>
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-2">
           <div className="space-y-1" data-testid="list-uuids">
@@ -90,6 +116,11 @@ export default function Uuid() {
           </div>
         </CardContent>
       </Card>
+
+      <div className="text-xs text-muted-foreground p-3 rounded-md bg-muted/30 space-y-1">
+        <p><span className="font-semibold">v4</span> — 122 random bits. Best for general use.</p>
+        <p><span className="font-semibold">v7</span> — Unix timestamp prefix + random bits. Sortable; great for database primary keys.</p>
+      </div>
     </div>
   );
 }

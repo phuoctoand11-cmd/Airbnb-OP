@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, Hash as HashIcon, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import md5 from "js-md5";
+import { md5 } from "js-md5";
 
 async function sha(algorithm: string, text: string): Promise<string> {
   const encoder = new TextEncoder();

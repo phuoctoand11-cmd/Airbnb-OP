@@ -12,6 +12,7 @@ import { Slider } from "@/components/ui/slider";
 export default function QrCodePage() {
   const [input, setInput] = useState("https://example.com");
   const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [svgString, setSvgString] = useState<string | null>(null);
   const [size, setSize] = useState(300);
   const [errorLevel, setErrorLevel] = useState<"L" | "M" | "Q" | "H">("M");
   const [error, setError] = useState<string | null>(null);
@@ -20,34 +21,56 @@ export default function QrCodePage() {
   const generate = async () => {
     if (!input.trim()) return;
     try {
-      const url = await QRCode.toDataURL(input.trim(), {
-        width: size,
-        errorCorrectionLevel: errorLevel,
-        margin: 2,
-        color: { dark: "#000000", light: "#ffffff" },
-      });
+      const [url, svg] = await Promise.all([
+        QRCode.toDataURL(input.trim(), {
+          width: size,
+          errorCorrectionLevel: errorLevel,
+          margin: 2,
+          color: { dark: "#000000", light: "#ffffff" },
+        }),
+        QRCode.toString(input.trim(), {
+          type: "svg",
+          errorCorrectionLevel: errorLevel,
+          margin: 2,
+          color: { dark: "#000000", light: "#ffffff" },
+        }),
+      ]);
       setDataUrl(url);
+      setSvgString(svg);
       setError(null);
-    } catch (err: any) {
-      setError(err.message || "Failed to generate QR code");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate QR code");
       setDataUrl(null);
+      setSvgString(null);
     }
   };
 
-  const download = () => {
+  const downloadPng = () => {
     if (!dataUrl) return;
     const a = document.createElement("a");
     a.href = dataUrl;
     a.download = "qrcode.png";
     a.click();
-    toast({ title: "Downloaded", description: "QR code saved as PNG." });
+    toast({ title: "Downloaded", description: "QR code saved as qrcode.png" });
+  };
+
+  const downloadSvg = () => {
+    if (!svgString) return;
+    const blob = new Blob([svgString], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "qrcode.svg";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "Downloaded", description: "QR code saved as qrcode.svg" });
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">QR Code Generator</h1>
-        <p className="text-muted-foreground mt-1">Generate QR codes from any text or URL.</p>
+        <p className="text-muted-foreground mt-1">Generate QR codes from any text or URL. Download as PNG or SVG.</p>
       </div>
 
       <Card className="border-border shadow-sm">
@@ -107,9 +130,14 @@ export default function QrCodePage() {
           <CardHeader className="py-3 px-4 border-b bg-muted/20">
             <CardTitle className="text-sm font-medium flex justify-between items-center">
               <span>QR Code</span>
-              <Button variant="outline" size="sm" onClick={download} data-testid="btn-download">
-                <Download className="h-4 w-4 mr-1" /> Download PNG
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={downloadPng} data-testid="btn-download-png">
+                  <Download className="h-4 w-4 mr-1" /> PNG
+                </Button>
+                <Button variant="outline" size="sm" onClick={downloadSvg} data-testid="btn-download-svg">
+                  <Download className="h-4 w-4 mr-1" /> SVG
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 flex justify-center bg-white rounded-b-lg">
