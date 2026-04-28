@@ -12,7 +12,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, permission }: ProtectedRouteProps) {
-  const { loading, session, role, profileError, profileLoading } = useAuth();
+  const { loading, session, role, profileError, profileLoading, signOut } = useAuth();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
@@ -35,34 +35,29 @@ export function ProtectedRoute({ children, permission }: ProtectedRouteProps) {
     return null;
   }
 
-  // Profile fetch failed — show the actual error so it's diagnosable
+  // Profile fetch failed — show user-friendly message
   if (profileError && !profileLoading) {
+    const isNotFound =
+      profileError === "User profile not found. Please contact admin." ||
+      profileError.includes("PGRST116");
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-lg w-full rounded-lg border border-destructive/40 bg-destructive/5 p-6">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
-            <div className="space-y-2">
-              <h2 className="font-semibold text-destructive">Profile load error</h2>
-              <p className="text-sm text-muted-foreground">
-                You are authenticated but your profile could not be loaded. This usually means the
-                profiles table or RLS policy is not set up correctly in Supabase.
-              </p>
-              <pre className="mt-2 rounded bg-muted px-3 py-2 text-xs text-foreground break-all whitespace-pre-wrap">
-                {profileError}
-              </pre>
-              <p className="text-xs text-muted-foreground">
-                Make sure you have run the full schema SQL in your Supabase SQL editor and that a
-                row exists in <code>public.profiles</code> with your user ID.
-              </p>
-              <button
-                className="mt-2 text-xs underline text-muted-foreground hover:text-foreground"
-                onClick={() => setLocation("/login")}
-              >
-                Sign out and try again
-              </button>
-            </div>
-          </div>
+        <div className="max-w-md w-full rounded-lg border border-destructive/40 bg-destructive/5 p-6 text-center">
+          <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-destructive" />
+          <h2 className="mb-2 text-lg font-semibold text-destructive">
+            {isNotFound ? "Profile not found" : "Could not load profile"}
+          </h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {isNotFound
+              ? "User profile not found. Please contact admin."
+              : profileError}
+          </p>
+          <button
+            className="text-sm underline text-muted-foreground hover:text-foreground"
+            onClick={() => signOut().then(() => setLocation("/login"))}
+          >
+            Sign out and try again
+          </button>
         </div>
       </div>
     );

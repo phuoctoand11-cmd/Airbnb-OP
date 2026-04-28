@@ -152,7 +152,7 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
                     <div className="flex items-center gap-1">
                       {role && (
                         <Badge variant="outline" className="px-1 py-0 text-[10px] capitalize">
-                          {ROLE_LABELS[role]}
+                          {ROLE_LABELS[role] ?? role}
                         </Badge>
                       )}
                     </div>

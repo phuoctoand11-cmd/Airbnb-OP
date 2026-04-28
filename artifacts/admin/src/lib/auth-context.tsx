@@ -59,10 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const fetchPromise = supabase
-        .from("profiles")
-        .select("*")
+        .from("users")
+        .select("*, roles(name), teams(id, name)")
         .eq("id", userId)
-        .maybeSingle();
+        .single();
 
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(
@@ -79,6 +79,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.info("[auth] profile query result", { data, error });
 
       if (error) {
+        // PGRST116 = no rows returned by .single()
+        if (error.code === "PGRST116") {
+          setProfileError("User profile not found. Please contact admin.");
+          setProfile(null);
+          return;
+        }
         // eslint-disable-next-line no-console
         console.error("[auth] profile query error", {
           message: error.message,
@@ -92,9 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!data) {
-        // eslint-disable-next-line no-console
-        console.warn("[auth] profile not found for user", userId);
-        setProfileError(`No profile row found for user ${userId}. Run the schema SQL to create profiles.`);
+        setProfileError("User profile not found. Please contact admin.");
         setProfile(null);
         return;
       }
@@ -240,6 +244,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session?.user) await loadProfile(session.user.id);
   }, [session, loadProfile]);
 
+  // Derive role from the nested roles relation
+  const role = (profile?.roles?.name as AppRole | undefined) ?? null;
+
   const value = useMemo<AuthContextValue>(
     () => ({
       loading,
@@ -248,14 +255,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       profile,
-      role: profile?.role ?? null,
+      role,
       isConfigured: isSupabaseConfigured,
       signIn,
       signUp,
       signOut,
       refreshProfile,
     }),
-    [loading, profileLoading, profileError, session, profile, signIn, signUp, signOut, refreshProfile]
+    [loading, profileLoading, profileError, session, profile, role, signIn, signUp, signOut, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -283,5 +290,7 @@ export type Permission = keyof typeof ROLE_PERMISSIONS;
 
 export function hasPermission(role: AppRole | null, perm: Permission) {
   if (!role) return false;
+  // Admin always has full access to all menus
+  if (role === "admin") return true;
   return (ROLE_PERMISSIONS[perm] as readonly AppRole[]).includes(role);
 }
