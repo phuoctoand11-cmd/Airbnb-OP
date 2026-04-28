@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
@@ -19,6 +20,8 @@ import {
 
 interface AuthContextValue {
   loading: boolean;
+  profileLoading: boolean;
+  profileError: string | null;
   session: Session | null;
   user: User | null;
   profile: UserProfile | null;
@@ -37,54 +40,146 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const PROFILE_FETCH_TIMEOUT_MS = 5000;
+const SESSION_INIT_TIMEOUT_MS = 5000;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const mountedRef = useRef(true);
 
   const loadProfile = useCallback(async (userId: string) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
-    if (error) {
+    // eslint-disable-next-line no-console
+    console.info("[auth] loadProfile start", { userId });
+    setProfileLoading(true);
+    setProfileError(null);
+
+    try {
+      const fetchPromise = supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Profile fetch timed out after 5s")),
+          PROFILE_FETCH_TIMEOUT_MS
+        )
+      );
+
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as Awaited<typeof fetchPromise>;
+
+      if (!mountedRef.current) return;
+
       // eslint-disable-next-line no-console
-      console.error("[auth] failed to load profile", error);
+      console.info("[auth] profile query result", { data, error });
+
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.error("[auth] profile query error", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        setProfileError(error.message);
+        setProfile(null);
+        return;
+      }
+
+      if (!data) {
+        // eslint-disable-next-line no-console
+        console.warn("[auth] profile not found for user", userId);
+        setProfileError(`No profile row found for user ${userId}. Run the schema SQL to create profiles.`);
+        setProfile(null);
+        return;
+      }
+
+      setProfileError(null);
+      setProfile(data as UserProfile);
+    } catch (err) {
+      if (!mountedRef.current) return;
+      const msg = err instanceof Error ? err.message : "Unknown profile fetch error";
+      // eslint-disable-next-line no-console
+      console.error("[auth] loadProfile threw", msg);
+      setProfileError(msg);
       setProfile(null);
-      return;
+    } finally {
+      if (mountedRef.current) setProfileLoading(false);
     }
-    setProfile((data as UserProfile | null) ?? null);
   }, []);
 
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
 
     const init = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      setSession(data.session);
-      if (data.session?.user) {
-        await loadProfile(data.session.user.id);
+      // eslint-disable-next-line no-console
+      console.info("[auth] init start", {
+        url: SUPABASE_URL_FOR_DEBUG,
+        anonKeyLoaded: SUPABASE_ANON_KEY_LOADED,
+      });
+
+      try {
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("getSession timed out after 5s")),
+            SESSION_INIT_TIMEOUT_MS
+          )
+        );
+
+        const { data } = await Promise.race([sessionPromise, timeoutPromise]) as Awaited<typeof sessionPromise>;
+
+        if (!mountedRef.current) return;
+
+        // eslint-disable-next-line no-console
+        console.info("[auth] init getSession result", {
+          hasSession: !!data.session,
+          userId: data.session?.user?.id ?? null,
+        });
+
+        setSession(data.session);
+        setLoading(false); // Unblock routing immediately after session is known
+
+        if (data.session?.user) {
+          // Load profile in background — does not block navigation
+          loadProfile(data.session.user.id);
+        }
+      } catch (err) {
+        if (!mountedRef.current) return;
+        // eslint-disable-next-line no-console
+        console.error("[auth] init failed", err instanceof Error ? err.message : err);
+        setLoading(false); // Always unblock on error too
       }
-      setLoading(false);
     };
+
     init();
 
     const { data: sub } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
-        if (!mounted) return;
+      (_event, newSession) => {
+        if (!mountedRef.current) return;
+        // eslint-disable-next-line no-console
+        console.info("[auth] onAuthStateChange", {
+          event: _event,
+          userId: newSession?.user?.id ?? null,
+        });
         setSession(newSession);
+        setLoading(false); // Ensure loading is cleared on any auth event
         if (newSession?.user) {
-          await loadProfile(newSession.user.id);
+          loadProfile(newSession.user.id);
         } else {
           setProfile(null);
+          setProfileError(null);
         }
       }
     );
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       sub.subscription.unsubscribe();
     };
   }, [loadProfile]);
@@ -96,32 +191,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       anonKeyLoaded: SUPABASE_ANON_KEY_LOADED,
       email,
     });
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) {
-        // eslint-disable-next-line no-console
-        console.error("[auth] signIn error", {
-          name: error.name,
-          message: error.message,
-          status: (error as unknown as { status?: number }).status,
-          url: SUPABASE_URL_FOR_DEBUG,
-        });
-        throw error;
-      }
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
       // eslint-disable-next-line no-console
-      console.info("[auth] signIn success", { userId: data.user?.id });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("[auth] signIn threw", {
-        name: (err as Error).name,
-        message: (err as Error).message,
-        url: SUPABASE_URL_FOR_DEBUG,
+      console.error("[auth] signIn error", {
+        name: error.name,
+        message: error.message,
+        status: (error as unknown as { status?: number }).status,
       });
-      throw err;
+      throw error;
     }
+    // eslint-disable-next-line no-console
+    console.info("[auth] signIn success", {
+      userId: data.user?.id,
+      sessionExpiry: data.session?.expires_at,
+    });
   }, []);
 
   const signUp = useCallback(
@@ -146,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);
+    setProfileError(null);
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -155,6 +243,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       loading,
+      profileLoading,
+      profileError,
       session,
       user: session?.user ?? null,
       profile,
@@ -165,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshProfile,
     }),
-    [loading, session, profile, signIn, signUp, signOut, refreshProfile]
+    [loading, profileLoading, profileError, session, profile, signIn, signUp, signOut, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
