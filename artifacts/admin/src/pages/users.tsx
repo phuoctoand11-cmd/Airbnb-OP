@@ -24,17 +24,13 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import {
-  ROLE_LABELS,
-  ROLES,
-  supabase,
-  type AppRole,
-  type UserProfile,
-} from "@/lib/supabase";
+import { ROLE_LABELS, ROLES, supabase, type AppRole, type UserProfile } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 export default function UsersPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   const profilesQuery = useQuery({
@@ -55,18 +51,18 @@ export default function UsersPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Role updated" });
+      toast({ title: t.team.roleUpdated });
       queryClient.invalidateQueries({ queryKey: ["profiles"] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Update failed", description: err.message }),
+      toast({ variant: "destructive", title: t.team.updateFailed, description: err.message }),
   });
 
   return (
-    <AppLayout title="Team members">
+    <AppLayout title={t.team.title}>
       {profilesQuery.error ? (
         <Alert variant="destructive">
-          <AlertTitle>Could not load users</AlertTitle>
+          <AlertTitle>{t.team.couldNotLoad}</AlertTitle>
           <AlertDescription>{(profilesQuery.error as Error).message}</AlertDescription>
         </Alert>
       ) : profilesQuery.isLoading ? (
@@ -78,10 +74,8 @@ export default function UsersPage() {
       ) : !profilesQuery.data || profilesQuery.data.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <Users className="mb-3 h-8 w-8 text-muted-foreground" />
-          <p className="font-medium">No team members yet</p>
-          <p className="text-sm text-muted-foreground">
-            New people will appear here after they sign up.
-          </p>
+          <p className="font-medium">{t.team.noMembers}</p>
+          <p className="text-sm text-muted-foreground">{t.team.signUpNote}</p>
         </div>
       ) : (
         <Card>
@@ -89,32 +83,32 @@ export default function UsersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Joined</TableHead>
-                  <TableHead className="text-right">Role</TableHead>
+                  <TableHead>{t.team.name}</TableHead>
+                  <TableHead>{t.team.email}</TableHead>
+                  <TableHead>{t.team.joined}</TableHead>
+                  <TableHead className="text-right">{t.team.role}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {profilesQuery.data.map((p) => {
                   const initials = (p.full_name ?? p.email)
                     .split(" ")
-                    .map((s) => s[0])
+                    .map((s: string) => s[0])
                     .join("")
                     .slice(0, 2)
                     .toUpperCase();
-                  const isSelf = p.id === user?.id;
+                  const isMe = p.id === user?.id;
                   return (
                     <TableRow key={p.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9 border">
-                            <AvatarFallback>{initials}</AvatarFallback>
+                          <Avatar className="h-8 w-8 border">
+                            <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium">{p.full_name ?? "—"}</div>
-                            {isSelf && (
-                              <div className="text-xs text-muted-foreground">You</div>
+                            <span className="font-medium">{p.full_name ?? "—"}</span>
+                            {isMe && (
+                              <span className="ml-1 text-xs text-muted-foreground">{t.team.you}</span>
                             )}
                           </div>
                         </div>
@@ -126,12 +120,10 @@ export default function UsersPage() {
                       <TableCell className="text-right">
                         <Select
                           value={p.role}
-                          onValueChange={(v) =>
-                            updateRole.mutate({ id: p.id, role: v as AppRole })
-                          }
-                          disabled={isSelf}
+                          onValueChange={(role) => updateRole.mutate({ id: p.id, role: role as AppRole })}
+                          disabled={isMe}
                         >
-                          <SelectTrigger className="ml-auto w-[160px]">
+                          <SelectTrigger className="w-[140px]">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

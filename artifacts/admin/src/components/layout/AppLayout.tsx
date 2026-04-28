@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquare,
   PieChart,
   Receipt,
   Settings,
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { hasPermission, type Permission, useAuth } from "@/lib/auth-context";
 import { ROLE_LABELS } from "@/lib/supabase";
+import { useI18n, type Lang } from "@/i18n";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -34,28 +36,28 @@ interface AppLayoutProps {
   action?: ReactNode;
 }
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  permission?: Permission;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/listings", label: "Listings", icon: Home },
-  { href: "/bookings", label: "Bookings", icon: CalendarDays, permission: "manageBookings" },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare, permission: "manageTasks" },
-  { href: "/revenues", label: "Revenues", icon: CreditCard, permission: "manageFinance" },
-  { href: "/expenses", label: "Expenses", icon: Receipt, permission: "manageFinance" },
-  { href: "/reports", label: "Reports", icon: PieChart, permission: "viewReports" },
-  { href: "/settings/users", label: "Team", icon: Settings, permission: "manageUsers" },
+const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
+  { value: "en", label: "English", flag: "🇺🇸" },
+  { value: "vi", label: "Tiếng Việt", flag: "🇻🇳" },
 ];
 
 export function AppLayout({ children, title, action }: AppLayoutProps) {
   const [location] = useLocation();
   const { profile, role, signOut } = useAuth();
+  const { t, lang, setLang } = useI18n();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const NAV_ITEMS: { href: string; label: string; icon: typeof LayoutDashboard; permission?: Permission }[] = [
+    { href: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
+    { href: "/listings", label: t.nav.listings, icon: Home },
+    { href: "/bookings", label: t.nav.bookings, icon: CalendarDays, permission: "manageBookings" },
+    { href: "/tasks", label: t.nav.tasks, icon: CheckSquare, permission: "manageTasks" },
+    { href: "/revenues", label: t.nav.revenues, icon: CreditCard, permission: "manageFinance" },
+    { href: "/expenses", label: t.nav.expenses, icon: Receipt, permission: "manageFinance" },
+    { href: "/reports", label: t.nav.reports, icon: PieChart, permission: "viewReports" },
+    { href: "/chat", label: t.nav.chat, icon: MessageSquare },
+    { href: "/settings/users", label: t.nav.team, icon: Settings, permission: "manageUsers" },
+  ];
 
   const visibleNav = NAV_ITEMS.filter((n) => !n.permission || hasPermission(role, n.permission));
 
@@ -65,6 +67,8 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  const currentLangOption = LANG_OPTIONS.find((o) => o.value === lang) ?? LANG_OPTIONS[0];
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -79,7 +83,7 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
           </div>
           <div>
             <div className="text-sm font-semibold leading-none">Airbnb Ops</div>
-            <div className="text-xs text-muted-foreground">Operations cockpit</div>
+            <div className="text-xs text-muted-foreground">{t.nav.operationsCockpit}</div>
           </div>
         </div>
 
@@ -109,7 +113,30 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
           </ul>
         </nav>
 
-        <div className="border-t p-3">
+        <div className="border-t p-3 space-y-2">
+          {/* Language switcher */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-start px-2 text-muted-foreground">
+                <span className="mr-2 text-base">{currentLangOption.flag}</span>
+                {currentLangOption.label}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {LANG_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => setLang(opt.value)}
+                  className={lang === opt.value ? "font-semibold text-primary" : ""}
+                >
+                  <span className="mr-2 text-base">{opt.flag}</span>
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* User menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-auto w-full justify-start px-2 py-2">
@@ -141,7 +168,7 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
                 onClick={() => signOut()}
               >
                 <LogOut className="mr-2 h-4 w-4" />
-                Sign out
+                {t.nav.signOut}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

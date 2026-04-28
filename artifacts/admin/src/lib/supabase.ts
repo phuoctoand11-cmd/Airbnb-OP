@@ -169,3 +169,33 @@ export interface Expense {
 }
 
 export const LISTINGS_BUCKET = "listing-images";
+
+// ---- Chat types ----
+
+export interface ChatGroup {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ChatGroupMember {
+  group_id: string;
+  user_id: string;
+  joined_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  group_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+  sender?: Pick<UserProfile, "id" | "full_name" | "email">;
+}
+
+export interface ChatMessageRead {
+  message_id: string;
+  user_id: string;
+  read_at: string;
+}

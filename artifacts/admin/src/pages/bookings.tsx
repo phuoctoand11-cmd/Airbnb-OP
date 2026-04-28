@@ -11,9 +11,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -48,6 +48,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, useAuth } from "@/lib/auth-context";
 import { supabase, type Booking, type Listing } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 const STATUS_VARIANT: Record<Booking["status"], "default" | "secondary" | "outline" | "destructive"> = {
   pending: "outline",
@@ -56,32 +57,33 @@ const STATUS_VARIANT: Record<Booking["status"], "default" | "secondary" | "outli
   cancelled: "destructive",
 };
 
-const bookingSchema = z
-  .object({
-    listing_id: z.string().min(1, "Listing required"),
-    guest_name: z.string().min(1, "Guest name required"),
-    guest_email: z.string().email().or(z.literal("")).optional(),
-    guest_phone: z.string().optional(),
-    check_in: z.string().min(1, "Check-in required"),
-    check_out: z.string().min(1, "Check-out required"),
-    guests: z.coerce.number().int().min(1),
-    total_amount: z.coerce.number().min(0),
-    status: z.enum(["pending", "confirmed", "completed", "cancelled"]),
-    source: z.string().optional(),
-    notes: z.string().optional(),
-  })
-  .refine((d) => d.check_out > d.check_in, {
-    message: "Check-out must be after check-in",
-    path: ["check_out"],
-  });
-
-type BookingFormValues = z.infer<typeof bookingSchema>;
-
 export default function Bookings() {
   const { role } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageBookings");
+
+  const bookingSchema = z
+    .object({
+      listing_id: z.string().min(1, "Listing required"),
+      guest_name: z.string().min(1, "Guest name required"),
+      guest_email: z.string().email().or(z.literal("")).optional(),
+      guest_phone: z.string().optional(),
+      check_in: z.string().min(1, "Check-in required"),
+      check_out: z.string().min(1, "Check-out required"),
+      guests: z.coerce.number().int().min(1),
+      total_amount: z.coerce.number().min(0),
+      status: z.enum(["pending", "confirmed", "completed", "cancelled"]),
+      source: z.string().optional(),
+      notes: z.string().optional(),
+    })
+    .refine((d) => d.check_out > d.check_in, {
+      message: "Check-out must be after check-in",
+      path: ["check_out"],
+    });
+
+  type BookingFormValues = z.infer<typeof bookingSchema>;
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -168,14 +170,14 @@ export default function Bookings() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Booking created" });
+      toast({ title: t.bookings.created });
       setDialogOpen(false);
       form.reset();
       setOverlapWarning(null);
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Could not create booking", description: err.message }),
+      toast({ variant: "destructive", title: t.bookings.couldNotCreate, description: err.message }),
   });
 
   const updateStatusMutation = useMutation({
@@ -184,21 +186,21 @@ export default function Bookings() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Booking updated" });
+      toast({ title: t.bookings.updated });
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Update failed", description: err.message }),
+      toast({ variant: "destructive", title: t.bookings.updateFailed, description: err.message }),
   });
 
   return (
     <AppLayout
-      title="Bookings"
+      title={t.bookings.title}
       action={
         canManage ? (
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            New booking
+            {t.bookings.newBooking}
           </Button>
         ) : null
       }
@@ -209,11 +211,11 @@ export default function Bookings() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="confirmed">Confirmed</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="cancelled">Cancelled</SelectItem>
+            <SelectItem value="all">{t.status.allStatuses}</SelectItem>
+            <SelectItem value="pending">{t.status.pending}</SelectItem>
+            <SelectItem value="confirmed">{t.status.confirmed}</SelectItem>
+            <SelectItem value="completed">{t.status.completed}</SelectItem>
+            <SelectItem value="cancelled">{t.status.cancelled}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -223,7 +225,7 @@ export default function Bookings() {
           {bookingsQuery.error ? (
             <div className="p-6">
               <Alert variant="destructive">
-                <AlertTitle>Could not load bookings</AlertTitle>
+                <AlertTitle>{t.bookings.couldNotLoad}</AlertTitle>
                 <AlertDescription>{(bookingsQuery.error as Error).message}</AlertDescription>
               </Alert>
             </div>
@@ -236,25 +238,23 @@ export default function Bookings() {
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <CalendarDays className="mb-3 h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">No bookings yet</p>
+              <p className="font-medium">{t.bookings.noBookings}</p>
               <p className="max-w-sm text-sm text-muted-foreground">
-                {canManage
-                  ? "Create your first booking to start tracking guests."
-                  : "Bookings will appear here once they are created."}
+                {canManage ? t.bookings.createFirst : t.bookings.viewOnly}
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Guest</TableHead>
-                  <TableHead>Listing</TableHead>
-                  <TableHead>Dates</TableHead>
-                  <TableHead className="text-right">Nights</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t.bookings.guest}</TableHead>
+                  <TableHead>{t.common.listing}</TableHead>
+                  <TableHead>{t.bookings.dates}</TableHead>
+                  <TableHead className="text-right">{t.bookings.nights}</TableHead>
+                  <TableHead className="text-right">{t.common.total}</TableHead>
+                  <TableHead>{t.bookings.source}</TableHead>
+                  <TableHead>{t.common.status}</TableHead>
+                  <TableHead className="text-right">{t.bookings.actions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -277,7 +277,7 @@ export default function Bookings() {
                       <TableCell className="text-muted-foreground">{b.source ?? "—"}</TableCell>
                       <TableCell>
                         <Badge variant={STATUS_VARIANT[b.status]} className="capitalize">
-                          {b.status}
+                          {t.status[b.status]}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -292,10 +292,10 @@ export default function Bookings() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="confirmed">Confirmed</SelectItem>
-                              <SelectItem value="completed">Completed</SelectItem>
-                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                              <SelectItem value="pending">{t.status.pending}</SelectItem>
+                              <SelectItem value="confirmed">{t.status.confirmed}</SelectItem>
+                              <SelectItem value="completed">{t.status.completed}</SelectItem>
+                              <SelectItem value="cancelled">{t.status.cancelled}</SelectItem>
                             </SelectContent>
                           </Select>
                         ) : null}
@@ -312,7 +312,7 @@ export default function Bookings() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>New booking</DialogTitle>
+            <DialogTitle>{t.bookings.newBooking}</DialogTitle>
             <DialogDescription>Capture a new reservation for one of your listings.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -322,7 +322,7 @@ export default function Bookings() {
                 name="listing_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Listing</FormLabel>
+                    <FormLabel>{t.common.listing}</FormLabel>
                     <Select
                       onValueChange={(v) => {
                         field.onChange(v);
@@ -334,7 +334,7 @@ export default function Bookings() {
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Pick a listing" />
+                          <SelectValue placeholder={t.bookings.selectListing} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -355,7 +355,7 @@ export default function Bookings() {
                   name="guest_name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Guest name</FormLabel>
+                      <FormLabel>{t.bookings.guestName}</FormLabel>
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
@@ -368,7 +368,7 @@ export default function Bookings() {
                   name="guest_email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>{t.bookings.guestEmail}</FormLabel>
                       <FormControl>
                         <Input type="email" {...field} />
                       </FormControl>
@@ -383,16 +383,14 @@ export default function Bookings() {
                   name="check_in"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Check-in</FormLabel>
+                      <FormLabel>{t.bookings.checkIn}</FormLabel>
                       <FormControl>
                         <Input
                           type="date"
                           {...field}
                           onChange={(e) => {
                             field.onChange(e);
-                            const lid = form.getValues("listing_id");
-                            const co = form.getValues("check_out");
-                            checkOverlap(lid, e.target.value, co);
+                            checkOverlap(form.getValues("listing_id"), e.target.value, form.getValues("check_out"));
                           }}
                         />
                       </FormControl>
@@ -405,16 +403,14 @@ export default function Bookings() {
                   name="check_out"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Check-out</FormLabel>
+                      <FormLabel>{t.bookings.checkOut}</FormLabel>
                       <FormControl>
                         <Input
                           type="date"
                           {...field}
                           onChange={(e) => {
                             field.onChange(e);
-                            const lid = form.getValues("listing_id");
-                            const ci = form.getValues("check_in");
-                            checkOverlap(lid, ci, e.target.value);
+                            checkOverlap(form.getValues("listing_id"), form.getValues("check_in"), e.target.value);
                           }}
                         />
                       </FormControl>
@@ -425,7 +421,7 @@ export default function Bookings() {
               </div>
               {overlapWarning && (
                 <Alert variant="destructive">
-                  <AlertTitle>Date conflict</AlertTitle>
+                  <AlertTitle>{t.bookings.overlapWarning}</AlertTitle>
                   <AlertDescription>{overlapWarning}</AlertDescription>
                 </Alert>
               )}
@@ -435,7 +431,7 @@ export default function Bookings() {
                   name="guests"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Guests</FormLabel>
+                      <FormLabel>{t.bookings.guests}</FormLabel>
                       <FormControl>
                         <Input type="number" min={1} {...field} />
                       </FormControl>
@@ -448,7 +444,7 @@ export default function Bookings() {
                   name="total_amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Total amount</FormLabel>
+                      <FormLabel>{t.bookings.totalAmount}</FormLabel>
                       <FormControl>
                         <Input type="number" step="0.01" min={0} {...field} />
                       </FormControl>
@@ -461,7 +457,7 @@ export default function Bookings() {
                   name="status"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Status</FormLabel>
+                      <FormLabel>{t.common.status}</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -469,10 +465,10 @@ export default function Bookings() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="confirmed">Confirmed</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                          <SelectItem value="pending">{t.status.pending}</SelectItem>
+                          <SelectItem value="confirmed">{t.status.confirmed}</SelectItem>
+                          <SelectItem value="completed">{t.status.completed}</SelectItem>
+                          <SelectItem value="cancelled">{t.status.cancelled}</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -485,7 +481,7 @@ export default function Bookings() {
                 name="source"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Source</FormLabel>
+                    <FormLabel>{t.bookings.source}</FormLabel>
                     <FormControl>
                       <Input placeholder="Airbnb, Vrbo, Direct, …" {...field} />
                     </FormControl>
@@ -498,7 +494,7 @@ export default function Bookings() {
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Notes</FormLabel>
+                    <FormLabel>{t.bookings.notes}</FormLabel>
                     <FormControl>
                       <Textarea rows={3} {...field} />
                     </FormControl>
@@ -508,11 +504,11 @@ export default function Bookings() {
               />
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)}>
-                  Cancel
+                  {t.common.cancel}
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending}>
                   {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create booking
+                  {t.bookings.createBooking}
                 </Button>
               </DialogFooter>
             </form>

@@ -48,8 +48,11 @@ import {
   type Revenue,
   type Task,
 } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 export default function Dashboard() {
+  const { t } = useI18n();
+
   const dataQuery = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => {
@@ -108,12 +111,12 @@ export default function Dashboard() {
       ? Math.min(100, Math.round(((bookedNights + blockedNights) / availableNights) * 100))
       : 0;
 
-    const tasksLast30 = dataQuery.data.tasks.filter((t) =>
-      isWithinInterval(parseISO(t.created_at), { start: last30Start, end: now })
+    const tasksLast30 = dataQuery.data.tasks.filter((task) =>
+      isWithinInterval(parseISO(task.created_at), { start: last30Start, end: now })
     );
     const taskCompletion = tasksLast30.length
       ? Math.round(
-          (tasksLast30.filter((t) => t.status === "done").length / tasksLast30.length) * 100
+          (tasksLast30.filter((task) => task.status === "done").length / tasksLast30.length) * 100
         )
       : 0;
 
@@ -140,13 +143,13 @@ export default function Dashboard() {
         const date = parseISO(d);
         return date.getFullYear() === m.getFullYear() && date.getMonth() === m.getMonth();
       };
-      const revenue = dataQuery.data!.revenues
+      const rev = dataQuery.data!.revenues
         .filter((r) => sameMonth(r.received_at))
         .reduce((s, r) => s + Number(r.amount), 0);
-      const expense = dataQuery.data!.expenses
+      const exp = dataQuery.data!.expenses
         .filter((e) => sameMonth(e.spent_at))
         .reduce((s, e) => s + Number(e.amount), 0);
-      return { label: format(m, "MMM"), revenue, expense };
+      return { label: format(m, "MMM"), revenue: rev, expense: exp };
     });
   }, [dataQuery.data]);
 
@@ -175,89 +178,39 @@ export default function Dashboard() {
     dataQuery.data?.listings.find((l) => l.id === id)?.title ?? "—";
 
   return (
-    <AppLayout title="Dashboard">
+    <AppLayout title={t.dashboard.title}>
       {dataQuery.error ? (
         <Alert variant="destructive">
-          <AlertTitle>Could not load dashboard</AlertTitle>
+          <AlertTitle>{t.dashboard.couldNotLoad}</AlertTitle>
           <AlertDescription>
             {(dataQuery.error as Error).message}
-            <div className="mt-2 text-xs">
-              If this is the first run, make sure you've executed{" "}
-              <code>artifacts/admin/supabase/schema.sql</code> in the Supabase SQL editor.
-            </div>
+            <div className="mt-2 text-xs">{t.dashboard.schemaNote}</div>
           </AlertDescription>
         </Alert>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
-              label="Active listings"
-              icon={<Home className="h-4 w-4" />}
-              value={stats?.listings}
-              loading={!stats}
-            />
-            <KpiCard
-              label="Total bookings"
-              icon={<Users className="h-4 w-4" />}
-              value={stats?.bookings}
-              loading={!stats}
-            />
-            <KpiCard
-              label="Revenue"
-              icon={<DollarSign className="h-4 w-4" />}
-              value={stats ? `$${stats.revenue.toLocaleString()}` : undefined}
-              loading={!stats}
-              accent="positive"
-            />
-            <KpiCard
-              label="Net profit"
-              icon={<TrendingUp className="h-4 w-4" />}
-              value={stats ? `$${stats.profit.toLocaleString()}` : undefined}
-              loading={!stats}
-              accent={stats && stats.profit >= 0 ? "positive" : "negative"}
-            />
+            <KpiCard label={t.dashboard.activeListings} icon={<Home className="h-4 w-4" />} value={stats?.listings} loading={!stats} />
+            <KpiCard label={t.dashboard.totalBookings} icon={<Users className="h-4 w-4" />} value={stats?.bookings} loading={!stats} />
+            <KpiCard label={t.dashboard.revenue} icon={<DollarSign className="h-4 w-4" />} value={stats ? `$${stats.revenue.toLocaleString()}` : undefined} loading={!stats} accent="positive" />
+            <KpiCard label={t.dashboard.netProfit} icon={<TrendingUp className="h-4 w-4" />} value={stats ? `$${stats.profit.toLocaleString()}` : undefined} loading={!stats} accent={stats && stats.profit >= 0 ? "positive" : "negative"} />
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
-              label="Completed bookings"
-              icon={<CheckCircle2 className="h-4 w-4" />}
-              value={stats?.completed}
-              loading={!stats}
-            />
-            <KpiCard
-              label="Cancelled bookings"
-              icon={<XCircle className="h-4 w-4" />}
-              value={stats?.cancelled}
-              loading={!stats}
-            />
-            <KpiCard
-              label="Expenses"
-              icon={<TrendingDown className="h-4 w-4" />}
-              value={stats ? `$${stats.expense.toLocaleString()}` : undefined}
-              loading={!stats}
-            />
-            <KpiCard
-              label="Occupancy (30d)"
-              icon={<Percent className="h-4 w-4" />}
-              value={stats ? `${stats.occupancyRate}%` : undefined}
-              loading={!stats}
-            />
+            <KpiCard label={t.dashboard.completedBookings} icon={<CheckCircle2 className="h-4 w-4" />} value={stats?.completed} loading={!stats} />
+            <KpiCard label={t.dashboard.cancelledBookings} icon={<XCircle className="h-4 w-4" />} value={stats?.cancelled} loading={!stats} />
+            <KpiCard label={t.dashboard.expenses} icon={<TrendingDown className="h-4 w-4" />} value={stats ? `$${stats.expense.toLocaleString()}` : undefined} loading={!stats} />
+            <KpiCard label={t.dashboard.occupancy30d} icon={<Percent className="h-4 w-4" />} value={stats ? `${stats.occupancyRate}%` : undefined} loading={!stats} />
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
-              label="Task completion (30d)"
-              icon={<Activity className="h-4 w-4" />}
-              value={stats ? `${stats.taskCompletion}%` : undefined}
-              loading={!stats}
-            />
+            <KpiCard label={t.dashboard.taskCompletion30d} icon={<Activity className="h-4 w-4" />} value={stats ? `${stats.taskCompletion}%` : undefined} loading={!stats} />
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle className="text-base">Revenue vs expenses (last 6 months)</CardTitle>
+                <CardTitle className="text-base">{t.dashboard.revenueVsExpenses}</CardTitle>
               </CardHeader>
               <CardContent>
                 {dataQuery.isLoading ? (
@@ -277,8 +230,8 @@ export default function Dashboard() {
                           }}
                         />
                         <Legend />
-                        <Bar dataKey="revenue" fill="hsl(var(--primary))" name="Revenue" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="expense" fill="hsl(var(--destructive))" name="Expense" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="revenue" fill="hsl(var(--primary))" name={t.dashboard.revenue_bar} radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="expense" fill="hsl(var(--destructive))" name={t.dashboard.expense_bar} radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -288,7 +241,7 @@ export default function Dashboard() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">Upcoming check-ins</CardTitle>
+                <CardTitle className="text-base">{t.dashboard.upcomingCheckIns}</CardTitle>
                 <CalendarCheck className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -300,7 +253,7 @@ export default function Dashboard() {
                   </div>
                 ) : upcoming.length === 0 ? (
                   <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    No check-ins in the next 7 days.
+                    {t.dashboard.noCheckIns}
                   </div>
                 ) : (
                   <ul className="space-y-3">
@@ -308,9 +261,7 @@ export default function Dashboard() {
                       <li key={b.id} className="flex items-center justify-between gap-3 text-sm">
                         <div>
                           <div className="font-medium">{b.guest_name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {listingTitle(b.listing_id)}
-                          </div>
+                          <div className="text-xs text-muted-foreground">{listingTitle(b.listing_id)}</div>
                         </div>
                         <Badge variant="outline" className="shrink-0">
                           {format(parseISO(b.check_in), "MMM d")}
@@ -326,12 +277,9 @@ export default function Dashboard() {
           <div className="mt-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">Recent bookings</CardTitle>
-                <Link
-                  href="/bookings"
-                  className="text-sm font-medium text-primary hover:underline"
-                >
-                  All bookings <ArrowRight className="inline h-3 w-3" />
+                <CardTitle className="text-base">{t.dashboard.recentBookings}</CardTitle>
+                <Link href="/bookings" className="text-sm font-medium text-primary hover:underline">
+                  {t.dashboard.allBookings} <ArrowRight className="inline h-3 w-3" />
                 </Link>
               </CardHeader>
               <CardContent>
@@ -343,7 +291,7 @@ export default function Dashboard() {
                   </div>
                 ) : recentBookings.length === 0 ? (
                   <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    No bookings yet.
+                    {t.dashboard.noBookings}
                   </div>
                 ) : (
                   <ul className="divide-y">
@@ -354,17 +302,13 @@ export default function Dashboard() {
                           <div>
                             <div className="font-medium">{b.guest_name}</div>
                             <div className="text-xs text-muted-foreground">
-                              {listingTitle(b.listing_id)} ·{" "}
-                              {format(parseISO(b.check_in), "MMM d")} →{" "}
-                              {format(parseISO(b.check_out), "MMM d")}
+                              {listingTitle(b.listing_id)} · {format(parseISO(b.check_in), "MMM d")} → {format(parseISO(b.check_out), "MMM d")}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="font-medium">${Number(b.total_amount).toFixed(0)}</span>
-                          <Badge variant="outline" className="capitalize">
-                            {b.status}
-                          </Badge>
+                          <Badge variant="outline" className="capitalize">{b.status}</Badge>
                         </div>
                       </li>
                     ))}

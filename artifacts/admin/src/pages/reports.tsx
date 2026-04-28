@@ -43,10 +43,12 @@ import {
   type Listing,
   type Revenue,
 } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 const CHART_COLORS = ["#0369a1", "#0d9488", "#0e7490", "#65a30d", "#ca8a04", "#dc2626", "#7c3aed"];
 
 export default function Reports() {
+  const { t } = useI18n();
   const [rangeDays, setRangeDays] = useState(90);
   const start = subDays(new Date(), rangeDays);
 
@@ -116,7 +118,7 @@ export default function Reports() {
           const nights = differenceInCalendarDays(overlapEnd, overlapStart);
           if (nights > 0) bookedNights += nights;
         });
-      const availableNights = listingsCount * (monthEnd.getDate());
+      const availableNights = listingsCount * monthEnd.getDate();
       return {
         label: format(m, "MMM"),
         occupancy: availableNights ? Math.round((bookedNights / availableNights) * 100) : 0,
@@ -168,23 +170,24 @@ export default function Reports() {
 
   return (
     <AppLayout
-      title="Reports"
+      title={t.reports.title}
       action={
         <Select value={String(rangeDays)} onValueChange={(v) => setRangeDays(Number(v))}>
           <SelectTrigger className="w-[180px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-            <SelectItem value="365">Last 365 days</SelectItem>
+            <SelectItem value="30">{t.reports.last30}</SelectItem>
+            <SelectItem value="90">{t.reports.last90}</SelectItem>
+            <SelectItem value="180">{t.reports.last180}</SelectItem>
+            <SelectItem value="365">{t.reports.last365}</SelectItem>
           </SelectContent>
         </Select>
       }
     >
       {dataQuery.error ? (
         <Alert variant="destructive">
-          <AlertTitle>Could not load reports</AlertTitle>
+          <AlertTitle>{t.reports.couldNotLoad}</AlertTitle>
           <AlertDescription>{(dataQuery.error as Error).message}</AlertDescription>
         </Alert>
       ) : dataQuery.isLoading || !summary ? (
@@ -195,20 +198,20 @@ export default function Reports() {
       ) : (
         <>
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard label="Revenue" value={`$${summary.revenue.toLocaleString()}`} />
-            <KpiCard label="Expenses" value={`$${summary.expense.toLocaleString()}`} />
+            <KpiCard label={t.reports.totalRevenue} value={`$${summary.revenue.toLocaleString()}`} />
+            <KpiCard label={t.reports.totalExpenses} value={`$${summary.expense.toLocaleString()}`} />
             <KpiCard
-              label="Profit"
+              label={t.reports.netProfit}
               value={`$${summary.profit.toLocaleString()}`}
               accent={summary.profit >= 0 ? "positive" : "negative"}
             />
-            <KpiCard label="Completed bookings" value={summary.completedBookings.toString()} />
+            <KpiCard label={t.bookings.title} value={summary.completedBookings.toString()} />
           </div>
 
           <div className="mb-6 grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Revenue, expenses, profit (last 6 months)</CardTitle>
+                <CardTitle className="text-base">{t.reports.revVsExp}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-72">
@@ -225,9 +228,9 @@ export default function Reports() {
                         }}
                       />
                       <Legend />
-                      <Bar dataKey="revenue" fill={CHART_COLORS[0]} name="Revenue" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="expense" fill={CHART_COLORS[5]} name="Expense" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="profit" fill={CHART_COLORS[3]} name="Profit" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="revenue" fill={CHART_COLORS[0]} name={t.reports.revenue} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="expense" fill={CHART_COLORS[5]} name={t.reports.expense} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="profit" fill={CHART_COLORS[3]} name={t.reports.profit} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -236,7 +239,7 @@ export default function Reports() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Occupancy trend</CardTitle>
+                <CardTitle className="text-base">{t.reports.occupancyTrend}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-72">
@@ -274,11 +277,11 @@ export default function Reports() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Top listings by revenue</CardTitle>
+                <CardTitle className="text-base">{t.reports.topListings}</CardTitle>
               </CardHeader>
               <CardContent>
                 {topListings.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No revenue recorded yet.</p>
+                  <p className="text-sm text-muted-foreground">{t.reports.noData}</p>
                 ) : (
                   <div className="space-y-3">
                     {topListings.map((l, i) => {
@@ -308,11 +311,11 @@ export default function Reports() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Expenses by category</CardTitle>
+                <CardTitle className="text-base">{t.reports.expenseBreakdown}</CardTitle>
               </CardHeader>
               <CardContent>
                 {expenseByCategory.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No expenses in this range.</p>
+                  <p className="text-sm text-muted-foreground">{t.reports.noData}</p>
                 ) : (
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">

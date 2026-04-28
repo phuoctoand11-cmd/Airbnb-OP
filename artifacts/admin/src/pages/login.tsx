@@ -7,15 +7,14 @@ import { Building, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import type { AppRole } from "@/lib/supabase";
 import { ROLES, ROLE_LABELS } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -43,25 +42,26 @@ const DEBUG_ANON_KEY_LOADED = Boolean(
   import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined,
 );
 
-const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
-
-const registerSchema = loginSchema.extend({
-  fullName: z.string().min(2, "Full name is required"),
-  role: z.enum(["admin", "manager", "staff", "accountant"] as const),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
-type RegisterFormValues = z.infer<typeof registerSchema>;
-
 export default function Login() {
   const [, setLocation] = useLocation();
   const { signIn, signUp } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+
+  const loginSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(6, t.login.passwordMin),
+  });
+
+  const registerSchema = loginSchema.extend({
+    fullName: z.string().min(2, t.login.fullNameMin),
+    role: z.enum(["admin", "manager", "staff", "accountant"] as const),
+  });
+
+  type LoginFormValues = z.infer<typeof loginSchema>;
+  type RegisterFormValues = z.infer<typeof registerSchema>;
 
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -78,11 +78,11 @@ export default function Login() {
       setIsLoading(true);
       await signIn(data.email, data.password);
       setLocation("/dashboard");
-    } catch (error: any) {
+    } catch (error) {
       toast({
         variant: "destructive",
-        title: "Login failed",
-        description: error.message || "Invalid credentials",
+        title: t.login.loginFailed,
+        description: (error as Error).message || t.login.invalidCredentials,
       });
     } finally {
       setIsLoading(false);
@@ -92,18 +92,18 @@ export default function Login() {
   const onRegister = async (data: RegisterFormValues) => {
     try {
       setIsLoading(true);
-      await signUp(data.email, data.password, data.fullName, data.role);
+      await signUp(data.email, data.password, data.fullName, data.role as AppRole);
       toast({
-        title: "Account created",
-        description: "You have successfully registered. You can now log in.",
+        title: t.login.accountCreated,
+        description: t.login.successRegistered,
       });
       setActiveTab("login");
       loginForm.setValue("email", data.email);
-    } catch (error: any) {
+    } catch (error) {
       toast({
         variant: "destructive",
-        title: "Registration failed",
-        description: error.message || "Could not create account",
+        title: t.login.registerFailed,
+        description: (error as Error).message || t.login.couldNotCreate,
       });
     } finally {
       setIsLoading(false);
@@ -117,8 +117,8 @@ export default function Login() {
           <div className="bg-primary p-3 rounded-xl mb-4">
             <Building className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">Airbnb Ops</h1>
-          <p className="text-muted-foreground mt-2">Operations cockpit for property managers</p>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">{t.login.title}</h1>
+          <p className="text-muted-foreground mt-2">{t.login.subtitle}</p>
         </div>
 
         <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
@@ -137,15 +137,15 @@ export default function Login() {
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "register")}>
           <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="login">Log In</TabsTrigger>
-            <TabsTrigger value="register">Register</TabsTrigger>
+            <TabsTrigger value="login">{t.login.loginTab}</TabsTrigger>
+            <TabsTrigger value="register">{t.login.registerTab}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="login">
             <Card>
               <CardHeader>
-                <CardTitle>Welcome back</CardTitle>
-                <CardDescription>Enter your credentials to access your dashboard</CardDescription>
+                <CardTitle>{t.login.welcomeBack}</CardTitle>
+                <CardDescription>{t.login.enterCredentials}</CardDescription>
               </CardHeader>
               <CardContent>
                 <Form {...loginForm}>
@@ -155,7 +155,7 @@ export default function Login() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Email</FormLabel>
+                          <FormLabel>{t.login.email}</FormLabel>
                           <FormControl>
                             <Input placeholder="you@company.com" {...field} />
                           </FormControl>
@@ -168,7 +168,7 @@ export default function Login() {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Password</FormLabel>
+                          <FormLabel>{t.login.password}</FormLabel>
                           <FormControl>
                             <Input type="password" placeholder="••••••••" {...field} />
                           </FormControl>
@@ -178,7 +178,7 @@ export default function Login() {
                     />
                     <Button type="submit" className="w-full" disabled={isLoading}>
                       {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Log In
+                      {t.login.loginBtn}
                     </Button>
                   </form>
                 </Form>
@@ -189,12 +189,12 @@ export default function Login() {
           <TabsContent value="register">
             <Card>
               <CardHeader>
-                <CardTitle>Create an account</CardTitle>
-                <CardDescription>Sign up to start managing your properties</CardDescription>
+                <CardTitle>{t.login.createAccount}</CardTitle>
+                <CardDescription>{t.login.signUpDesc}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="bg-muted p-3 rounded-md mb-4 text-xs text-muted-foreground">
-                  Note: In a real production environment, roles would be assigned by an admin. For this demo, you can select your role.
+                  {t.login.roleNote}
                 </div>
                 <Form {...registerForm}>
                   <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
@@ -203,7 +203,7 @@ export default function Login() {
                       name="fullName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Full Name</FormLabel>
+                          <FormLabel>{t.login.fullName}</FormLabel>
                           <FormControl>
                             <Input placeholder="Jane Doe" {...field} />
                           </FormControl>
@@ -216,7 +216,7 @@ export default function Login() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Email</FormLabel>
+                          <FormLabel>{t.login.email}</FormLabel>
                           <FormControl>
                             <Input placeholder="you@company.com" {...field} />
                           </FormControl>
@@ -229,7 +229,7 @@ export default function Login() {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Password</FormLabel>
+                          <FormLabel>{t.login.password}</FormLabel>
                           <FormControl>
                             <Input type="password" placeholder="••••••••" {...field} />
                           </FormControl>
@@ -242,11 +242,11 @@ export default function Login() {
                       name="role"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Role</FormLabel>
+                          <FormLabel>{t.common.role}</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Select a role" />
+                                <SelectValue placeholder={t.login.selectRole} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -263,7 +263,7 @@ export default function Login() {
                     />
                     <Button type="submit" className="w-full" disabled={isLoading}>
                       {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Create Account
+                      {t.login.registerBtn}
                     </Button>
                   </form>
                 </Form>

@@ -21,6 +21,7 @@ import { ListingFormDialog } from "@/components/listings/ListingFormDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, hasPermission } from "@/lib/auth-context";
 import { supabase, type Listing } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 const STATUS_BADGE: Record<Listing["status"], "default" | "secondary" | "outline"> = {
   active: "default",
@@ -31,6 +32,7 @@ const STATUS_BADGE: Record<Listing["status"], "default" | "secondary" | "outline
 export default function Listings() {
   const { role } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
 
@@ -76,25 +78,25 @@ export default function Listings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["listings"] });
-      toast({ title: "Listing created" });
+      toast({ title: t.listings.created });
       setCreateOpen(false);
     },
     onError: (err: Error) =>
       toast({
         variant: "destructive",
-        title: "Failed to create listing",
+        title: t.listings.couldNotSave,
         description: err.message,
       }),
   });
 
   return (
     <AppLayout
-      title="Listings"
+      title={t.listings.title}
       action={
         canManage ? (
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            New Listing
+            {t.listings.newListing}
           </Button>
         ) : null
       }
@@ -105,26 +107,26 @@ export default function Listings() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title, city, or country"
+            placeholder={t.listings.searchPlaceholder}
             className="pl-9"
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="sm:w-[180px]">
-            <SelectValue placeholder="Status" />
+            <SelectValue placeholder={t.common.status} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
-            <SelectItem value="maintenance">Maintenance</SelectItem>
+            <SelectItem value="all">{t.listings.allStatuses}</SelectItem>
+            <SelectItem value="active">{t.status.active}</SelectItem>
+            <SelectItem value="inactive">{t.status.inactive}</SelectItem>
+            <SelectItem value="maintenance">{t.status.maintenance}</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       {error ? (
         <Alert variant="destructive">
-          <AlertTitle>Could not load listings</AlertTitle>
+          <AlertTitle>{t.listings.couldNotLoad}</AlertTitle>
           <AlertDescription>{(error as Error).message}</AlertDescription>
         </Alert>
       ) : isLoading ? (
@@ -148,16 +150,11 @@ export default function Listings() {
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <Home className="h-6 w-6 text-primary" />
           </div>
-          <h2 className="mb-2 text-xl font-semibold">No listings found</h2>
-          <p className="mb-6 max-w-md text-center text-muted-foreground">
-            {listings?.length
-              ? "No listings match your current filters. Try clearing them."
-              : "You don't have any properties yet. Add your first listing to start managing operations."}
-          </p>
+          <h2 className="mb-2 text-xl font-semibold">{t.listings.noListings}</h2>
           {canManage && (
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button onClick={() => setCreateOpen(true)} className="mt-4">
               <Plus className="mr-2 h-4 w-4" />
-              Add Listing
+              {t.listings.newListing}
             </Button>
           )}
         </div>
@@ -175,12 +172,12 @@ export default function Listings() {
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                      No image
+                      <Home className="h-8 w-8" />
                     </div>
                   )}
                   <div className="absolute right-2 top-2">
                     <Badge variant={STATUS_BADGE[listing.status]} className="capitalize shadow-sm">
-                      {listing.status}
+                      {t.status[listing.status]}
                     </Badge>
                   </div>
                 </div>
@@ -189,7 +186,7 @@ export default function Listings() {
                   <div className="mb-4 flex items-center text-sm text-muted-foreground">
                     <MapPin className="mr-1 h-3.5 w-3.5" />
                     <span className="line-clamp-1">
-                      {[listing.city, listing.country].filter(Boolean).join(", ") || "Location not set"}
+                      {[listing.city, listing.country].filter(Boolean).join(", ") || "—"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -198,7 +195,7 @@ export default function Listings() {
                       <span className="text-muted-foreground">/ night</span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {listing.bedrooms} bed · {listing.bathrooms} bath · {listing.max_guests} guests
+                      {listing.bedrooms} {t.listings.bedrooms} · {listing.bathrooms} {t.listings.bathrooms} · {listing.max_guests} {t.listings.maxGuests}
                     </div>
                   </div>
                 </CardContent>

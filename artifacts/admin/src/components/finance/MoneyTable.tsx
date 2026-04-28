@@ -51,6 +51,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, useAuth } from "@/lib/auth-context";
 import { supabase, type Listing } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 interface MoneyRecord {
   id: string;
@@ -84,9 +85,14 @@ const EXPENSE_CATEGORIES = [
 export function MoneyTablePage(config: MoneyTableConfig) {
   const { role } = useAuth();
   const { toast } = useToast();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageFinance");
   const [open, setOpen] = useState(false);
+
+  const isRevenue = config.table === "revenues";
+  const sectionTitle = isRevenue ? t.finance.revenueTitle : t.finance.expenseTitle;
+  const newEntryLabel = isRevenue ? t.finance.newRevenue : t.finance.newExpense;
 
   const listingsQuery = useQuery({
     queryKey: ["listings", "for-finance"],
@@ -169,7 +175,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: `${config.title.slice(0, -1)} added` });
+      toast({ title: t.finance.added });
       setOpen(false);
       form.reset({
         amount: 0,
@@ -179,7 +185,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
       queryClient.invalidateQueries({ queryKey: [config.table] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Could not save", description: err.message }),
+      toast({ variant: "destructive", title: t.finance.couldNotSave, description: err.message }),
   });
 
   const deleteMutation = useMutation({
@@ -188,11 +194,11 @@ export function MoneyTablePage(config: MoneyTableConfig) {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Removed" });
+      toast({ title: t.finance.removed });
       queryClient.invalidateQueries({ queryKey: [config.table] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Delete failed", description: err.message }),
+      toast({ variant: "destructive", title: t.finance.deleteFailed, description: err.message }),
   });
 
   const total = (recordsQuery.data ?? []).reduce((s, r) => s + r.amount, 0);
@@ -203,12 +209,12 @@ export function MoneyTablePage(config: MoneyTableConfig) {
 
   return (
     <AppLayout
-      title={config.title}
+      title={sectionTitle}
       action={
         canManage ? (
           <Button onClick={() => setOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            New {config.title.slice(0, -1).toLowerCase()}
+            {newEntryLabel}
           </Button>
         ) : null
       }
@@ -216,7 +222,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">All-time total</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t.finance.allTimeTotal}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -237,7 +243,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Last 6 months</CardTitle>
+            <CardTitle className="text-base">{t.finance.last6Months}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex h-40 items-end gap-3">
@@ -262,11 +268,11 @@ export function MoneyTablePage(config: MoneyTableConfig) {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">By category</CardTitle>
+            <CardTitle className="text-base">{t.finance.byCategory}</CardTitle>
           </CardHeader>
           <CardContent>
             {categoryBreakdown.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No data.</p>
+              <p className="text-sm text-muted-foreground">{t.common.noEntries}</p>
             ) : (
               <ul className="space-y-2">
                 {categoryBreakdown.slice(0, 6).map(([cat, amt]) => (
@@ -286,7 +292,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
           {recordsQuery.error ? (
             <div className="p-6">
               <Alert variant="destructive">
-                <AlertTitle>Could not load {config.title.toLowerCase()}</AlertTitle>
+                <AlertTitle>{t.finance.couldNotLoad}</AlertTitle>
                 <AlertDescription>{(recordsQuery.error as Error).message}</AlertDescription>
               </Alert>
             </div>
@@ -299,23 +305,21 @@ export function MoneyTablePage(config: MoneyTableConfig) {
           ) : !recordsQuery.data || recordsQuery.data.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <DollarSign className="mb-3 h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">No {config.title.toLowerCase()} yet</p>
+              <p className="font-medium">{t.finance.noEntries}</p>
               <p className="max-w-sm text-sm text-muted-foreground">
-                {canManage
-                  ? `Track your first ${config.title.slice(0, -1).toLowerCase()} to start building reports.`
-                  : "When entries are recorded they will appear here."}
+                {canManage ? t.finance.trackFirst : t.finance.viewOnly}
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Listing</TableHead>
-                  <TableHead>Category</TableHead>
-                  {config.showVendor && <TableHead>Vendor</TableHead>}
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead>{t.finance.dateCol}</TableHead>
+                  <TableHead>{t.finance.listingCol}</TableHead>
+                  <TableHead>{t.finance.categoryCol}</TableHead>
+                  {config.showVendor && <TableHead>{t.finance.vendorCol}</TableHead>}
+                  <TableHead>{t.finance.descriptionCol}</TableHead>
+                  <TableHead className="text-right">{t.finance.amountCol}</TableHead>
                   {canManage && <TableHead />}
                 </TableRow>
               </TableHeader>
@@ -336,7 +340,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                           size="icon"
                           variant="ghost"
                           onClick={() => deleteMutation.mutate(r.id)}
-                          aria-label="Remove"
+                          aria-label={t.common.remove}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -353,7 +357,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New {config.title.slice(0, -1).toLowerCase()}</DialogTitle>
+            <DialogTitle>{newEntryLabel}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit((v) => createMutation.mutate(v))} className="space-y-4">
@@ -363,7 +367,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Amount</FormLabel>
+                      <FormLabel>{t.finance.amount}</FormLabel>
                       <FormControl>
                         <Input type="number" step="0.01" min={0} {...field} />
                       </FormControl>
@@ -376,7 +380,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   name="date"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Date</FormLabel>
+                      <FormLabel>{t.finance.date}</FormLabel>
                       <FormControl>
                         <Input type="date" {...field} />
                       </FormControl>
@@ -391,7 +395,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Category</FormLabel>
+                      <FormLabel>{t.finance.category}</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -415,18 +419,18 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   name="listing_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Listing (optional)</FormLabel>
+                      <FormLabel>{t.finance.listingOptional}</FormLabel>
                       <Select
                         onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
                         value={field.value || "__none__"}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Pick a listing" />
+                            <SelectValue placeholder={t.finance.pickListing} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="__none__">None</SelectItem>
+                          <SelectItem value="__none__">{t.common.none}</SelectItem>
                           {listingsQuery.data?.map((l) => (
                             <SelectItem key={l.id} value={l.id}>
                               {l.title}
@@ -445,7 +449,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   name="vendor"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Vendor</FormLabel>
+                      <FormLabel>{t.finance.vendor}</FormLabel>
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
@@ -459,7 +463,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description</FormLabel>
+                    <FormLabel>{t.finance.description}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -469,11 +473,11 @@ export function MoneyTablePage(config: MoneyTableConfig) {
               />
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-                  Cancel
+                  {t.common.cancel}
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending}>
                   {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save
+                  {t.common.save}
                 </Button>
               </DialogFooter>
             </form>
