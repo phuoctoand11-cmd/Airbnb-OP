@@ -18,6 +18,8 @@ import Expenses from "@/pages/expenses";
 import Reports from "@/pages/reports";
 import UsersPage from "@/pages/users";
 import ChatPage from "@/pages/chat";
+import AvailabilityCalendar from "@/pages/availability-calendar";
+import HRRecruitment from "@/pages/hr";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -94,6 +96,18 @@ function Router() {
       <Route path="/chat">
         <ProtectedRoute>
           <ChatPage />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/calendar">
+        <ProtectedRoute>
+          <AvailabilityCalendar />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/hr">
+        <ProtectedRoute>
+          <HRRecruitment />
         </ProtectedRoute>
       </Route>
 

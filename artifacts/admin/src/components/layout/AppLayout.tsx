@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Building,
   CalendarDays,
+  CalendarRange,
   CheckSquare,
   CreditCard,
   Home,
@@ -13,6 +14,7 @@ import {
   PieChart,
   Receipt,
   Settings,
+  Users,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -47,19 +49,23 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
   const { t, lang, setLang } = useI18n();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const isAdmin = profile?.role?.name === "admin";
+
   const NAV_ITEMS: { href: string; label: string; icon: typeof LayoutDashboard; permission?: Permission }[] = [
     { href: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
     { href: "/listings", label: t.nav.listings, icon: Home },
+    { href: "/calendar", label: t.nav.availabilityCalendar, icon: CalendarRange, permission: "manageBookings" },
     { href: "/bookings", label: t.nav.bookings, icon: CalendarDays, permission: "manageBookings" },
     { href: "/tasks", label: t.nav.tasks, icon: CheckSquare, permission: "manageTasks" },
+    { href: "/reports", label: t.nav.reports, icon: PieChart, permission: "viewReports" },
+    { href: "/hr", label: t.nav.hr, icon: Users, permission: "manageUsers" },
     { href: "/revenues", label: t.nav.revenues, icon: CreditCard, permission: "manageFinance" },
     { href: "/expenses", label: t.nav.expenses, icon: Receipt, permission: "manageFinance" },
-    { href: "/reports", label: t.nav.reports, icon: PieChart, permission: "viewReports" },
     { href: "/chat", label: t.nav.chat, icon: MessageSquare },
     { href: "/settings/users", label: t.nav.team, icon: Settings, permission: "manageUsers" },
   ];
 
-  const visibleNav = NAV_ITEMS.filter((n) => !n.permission || hasPermission(role, n.permission));
+  const visibleNav = NAV_ITEMS.filter((n) => isAdmin || !n.permission || hasPermission(role, n.permission));
 
   const initials = (profile?.full_name ?? profile?.email ?? "U")
     .split(" ")
