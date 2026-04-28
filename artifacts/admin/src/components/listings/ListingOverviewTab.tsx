@@ -37,7 +37,6 @@ const schema = z.object({
   base_price: z.coerce.number().min(0),
   cleaning_fee: z.coerce.number().min(0),
   status: z.enum(["active", "inactive", "maintenance"]),
-  cover_image_url: z.string().url().or(z.literal("")).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -67,7 +66,6 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
       address: v.address || null,
       city: v.city || null,
       country: v.country || null,
-      cover_image_url: v.cover_image_url || null,
     });
 
   return (
@@ -149,43 +147,28 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
               <NumberField name="base_price" label="Base price" form={form} disabled={!canManage} step="0.01" />
               <NumberField name="cleaning_fee" label="Cleaning fee" form={form} disabled={!canManage} step="0.01" />
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={!canManage}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                        <SelectItem value="maintenance">Maintenance</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="cover_image_url"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cover image URL</FormLabel>
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={!canManage}>
                     <FormControl>
-                      <Input disabled={!canManage} placeholder="https://…" {...field} />
+                      <SelectTrigger className="sm:w-[220px]">
+                        <SelectValue />
+                      </SelectTrigger>
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             {canManage && (
               <div className="flex justify-end">
                 <Button type="submit" disabled={saving}>
@@ -244,6 +227,5 @@ function defaults(l: Listing): FormValues {
     base_price: Number(l.base_price),
     cleaning_fee: Number(l.cleaning_fee),
     status: l.status,
-    cover_image_url: l.cover_image_url ?? "",
   };
 }

@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImageIcon, Trash2, Upload, Loader2 } from "lucide-react";
+import { ImageIcon, Loader2, Star, Trash2, Upload } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,6 +85,41 @@ export function ListingImagesTab({ listing, canManage }: Props) {
       toast({ variant: "destructive", title: "Could not remove image", description: err.message }),
   });
 
+  const setCoverMutation = useMutation({
+    mutationFn: async (img: ListingImage) => {
+      const currentCover = images?.find((i) => i.position === 0);
+      const oldPosition = img.position;
+
+      const { error: e1 } = await supabase
+        .from("listing_images")
+        .update({ position: 0 })
+        .eq("id", img.id);
+      if (e1) throw e1;
+
+      if (currentCover && currentCover.id !== img.id) {
+        const { error: e2 } = await supabase
+          .from("listing_images")
+          .update({ position: oldPosition })
+          .eq("id", currentCover.id);
+        if (e2) throw e2;
+      }
+
+      const { error: e3 } = await supabase
+        .from("listings")
+        .update({ cover_image_url: img.url })
+        .eq("id", listing.id);
+      if (e3) throw e3;
+    },
+    onSuccess: () => {
+      toast({ title: "Cover image updated" });
+      queryClient.invalidateQueries({ queryKey: ["listing-images", listing.id] });
+      queryClient.invalidateQueries({ queryKey: ["listing", listing.id] });
+      queryClient.invalidateQueries({ queryKey: ["listings"] });
+    },
+    onError: (err: Error) =>
+      toast({ variant: "destructive", title: "Could not set cover", description: err.message }),
+  });
+
   return (
     <Card>
       <CardContent className="p-6">
@@ -134,21 +170,61 @@ export function ListingImagesTab({ listing, canManage }: Props) {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {images.map((img) => (
-              <div key={img.id} className="group relative aspect-square overflow-hidden rounded-md border bg-muted">
-                <img src={img.url} alt="Listing" className="h-full w-full object-cover" />
-                {canManage && (
-                  <button
-                    type="button"
-                    onClick={() => removeMutation.mutate(img)}
-                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-background/90 text-destructive opacity-0 shadow-sm transition-opacity hover:bg-background group-hover:opacity-100"
-                    aria-label="Remove image"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            ))}
+            {images.map((img) => {
+              const isCover = img.position === 0;
+              const isSettingCover = setCoverMutation.isPending && setCoverMutation.variables?.id === img.id;
+              return (
+                <div
+                  key={img.id}
+                  className="group relative aspect-square overflow-hidden rounded-md border bg-muted"
+                >
+                  <img src={img.url} alt="Listing" className="h-full w-full object-cover" />
+
+                  {/* Cover badge — always visible when this is the cover */}
+                  {isCover && (
+                    <div className="absolute bottom-2 left-2">
+                      <Badge className="gap-1 bg-amber-500 text-white hover:bg-amber-500 shadow-sm">
+                        <Star className="h-3 w-3 fill-current" />
+                        Cover
+                      </Badge>
+                    </div>
+                  )}
+
+                  {canManage && (
+                    <>
+                      {/* Delete button — top-right, on hover */}
+                      <button
+                        type="button"
+                        onClick={() => removeMutation.mutate(img)}
+                        disabled={removeMutation.isPending || setCoverMutation.isPending}
+                        className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-background/90 text-destructive opacity-0 shadow-sm transition-opacity hover:bg-background group-hover:opacity-100 disabled:opacity-50"
+                        aria-label="Remove image"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+
+                      {/* Set as cover button — bottom-left, on hover, only for non-cover images */}
+                      {!isCover && (
+                        <button
+                          type="button"
+                          onClick={() => setCoverMutation.mutate(img)}
+                          disabled={setCoverMutation.isPending || removeMutation.isPending}
+                          className="absolute bottom-2 left-2 inline-flex h-7 items-center gap-1 rounded-md bg-background/90 px-2 text-xs font-medium opacity-0 shadow-sm transition-opacity hover:bg-background group-hover:opacity-100 disabled:opacity-50"
+                          aria-label="Set as cover"
+                        >
+                          {isSettingCover ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Star className="h-3 w-3" />
+                          )}
+                          Set as cover
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

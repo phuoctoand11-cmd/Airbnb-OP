@@ -44,7 +44,6 @@ const schema = z.object({
   base_price: z.coerce.number().min(0),
   cleaning_fee: z.coerce.number().min(0),
   status: z.enum(["active", "inactive", "maintenance"]),
-  cover_image_url: z.string().url().or(z.literal("")).optional(),
 });
 
 export type ListingFormValues = z.infer<typeof schema>;
@@ -78,7 +77,6 @@ export function ListingFormDialog({
       base_price: 100,
       cleaning_fee: 0,
       status: "active",
-      cover_image_url: "",
     },
   });
 
@@ -96,7 +94,6 @@ export function ListingFormDialog({
         base_price: Number(initial?.base_price ?? 100),
         cleaning_fee: Number(initial?.cleaning_fee ?? 0),
         status: initial?.status ?? "active",
-        cover_image_url: initial?.cover_image_url ?? "",
       });
     }
   }, [open, initial, form]);
@@ -117,7 +114,6 @@ export function ListingFormDialog({
               onSubmit({
                 ...v,
                 description: v.description || undefined,
-                cover_image_url: v.cover_image_url || undefined,
               })
             )}
             className="space-y-4"
@@ -260,43 +256,28 @@ export function ListingFormDialog({
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                        <SelectItem value="maintenance">Maintenance</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="cover_image_url"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cover image URL</FormLabel>
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
-                      <Input placeholder="https://…" {...field} />
+                      <SelectTrigger className="sm:w-[220px]">
+                        <SelectValue />
+                      </SelectTrigger>
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
