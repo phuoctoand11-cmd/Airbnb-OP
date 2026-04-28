@@ -60,7 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const fetchPromise = supabase
         .from("users")
-        .select("*, roles(name), teams(id, name)")
+        .select(`
+          *,
+          role:roles!users_role_id_fkey(name),
+          team:teams!users_team_id_fkey(id, name)
+        `)
         .eq("id", userId)
         .single();
 
@@ -244,8 +248,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session?.user) await loadProfile(session.user.id);
   }, [session, loadProfile]);
 
-  // Derive role from the nested roles relation
-  const role = (profile?.roles?.name as AppRole | undefined) ?? null;
+  // Derive role from the nested role relation (aliased FK)
+  const role = (profile?.role?.name as AppRole | undefined) ?? null;
 
   const value = useMemo<AuthContextValue>(
     () => ({

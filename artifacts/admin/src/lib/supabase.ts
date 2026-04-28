@@ -56,8 +56,8 @@ export interface UserProfile {
   avatar_url: string | null;
   created_at: string;
   // Joined relations from the public.users query
-  roles: { name: string } | null;
-  teams: { id: string; name: string } | null;
+  role: { name: string } | null;
+  team: { id: string; name: string } | null;
 }
 
 export interface Listing {
