@@ -22,17 +22,19 @@ import { ListingPricingTab } from "@/components/listings/ListingPricingTab";
 export default function ListingDetail() {
   const [, params] = useRoute("/listings/:id");
   const id = params?.id;
-  const { role } = useAuth();
+  const { role, profile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
+  const isSales = profile?.role?.name === "sales";
+  const listingsTable = isSales ? "sales_listings_view" : "listings";
 
   const { data: listing, isLoading, error } = useQuery({
     enabled: !!id,
-    queryKey: ["listing", id],
+    queryKey: ["listing", id, listingsTable],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("listings")
+        .from(listingsTable as "listings")
         .select("*")
         .eq("id", id)
         .single();
@@ -130,41 +132,51 @@ export default function ListingDetail() {
                   <Stat label="Bedrooms" value={listing.bedrooms} />
                   <Stat label="Bathrooms" value={listing.bathrooms} />
                   <Stat label="Max guests" value={listing.max_guests} />
-                  <Stat label="Base / night" value={`$${Number(listing.base_price).toFixed(0)}`} />
+                  {isSales ? (
+                    <Stat label="Price" value={<span className="italic text-muted-foreground text-sm">Contact manager</span>} />
+                  ) : (
+                    <Stat label="Base / night" value={`$${Number(listing.base_price).toFixed(0)}`} />
+                  )}
                 </div>
               </CardContent>
             </div>
           </Card>
 
-          <Tabs defaultValue="overview">
+          <Tabs defaultValue={isSales ? "images" : "overview"}>
             <TabsList className="mb-4 flex flex-wrap">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
+              {!isSales && <TabsTrigger value="overview">Overview</TabsTrigger>}
               <TabsTrigger value="images">Images</TabsTrigger>
-              <TabsTrigger value="amenities">Amenities</TabsTrigger>
+              {!isSales && <TabsTrigger value="amenities">Amenities</TabsTrigger>}
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
-              <TabsTrigger value="pricing">Pricing</TabsTrigger>
+              {!isSales && <TabsTrigger value="pricing">Pricing</TabsTrigger>}
             </TabsList>
 
-            <TabsContent value="overview">
-              <ListingOverviewTab
-                listing={listing}
-                canManage={canManage}
-                onSave={(v) => updateMutation.mutate(v)}
-                saving={updateMutation.isPending}
-              />
-            </TabsContent>
+            {!isSales && (
+              <TabsContent value="overview">
+                <ListingOverviewTab
+                  listing={listing}
+                  canManage={canManage}
+                  onSave={(v) => updateMutation.mutate(v)}
+                  saving={updateMutation.isPending}
+                />
+              </TabsContent>
+            )}
             <TabsContent value="images">
               <ListingImagesTab listing={listing} canManage={canManage} />
             </TabsContent>
-            <TabsContent value="amenities">
-              <ListingAmenitiesTab listing={listing} canManage={canManage} />
-            </TabsContent>
+            {!isSales && (
+              <TabsContent value="amenities">
+                <ListingAmenitiesTab listing={listing} canManage={canManage} />
+              </TabsContent>
+            )}
             <TabsContent value="calendar">
               <ListingCalendarTab listing={listing} canManage={canManage} />
             </TabsContent>
-            <TabsContent value="pricing">
-              <ListingPricingTab listing={listing} canManage={canManage} />
-            </TabsContent>
+            {!isSales && (
+              <TabsContent value="pricing">
+                <ListingPricingTab listing={listing} canManage={canManage} />
+              </TabsContent>
+            )}
           </Tabs>
 
           {updateMutation.isPending && (

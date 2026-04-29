@@ -30,21 +30,24 @@ const STATUS_BADGE: Record<Listing["status"], "default" | "secondary" | "outline
 };
 
 export default function Listings() {
-  const { role } = useAuth();
+  const { role, profile } = useAuth();
   const { toast } = useToast();
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
+  const isSales = profile?.role?.name === "sales";
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
 
+  const listingsTable = isSales ? "sales_listings_view" : "listings";
+
   const { data: listings, isLoading, error } = useQuery({
-    queryKey: ["listings"],
+    queryKey: ["listings", listingsTable],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("listings")
+        .from(listingsTable as "listings")
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -191,8 +194,14 @@ export default function Listings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-sm">
-                      <span className="font-medium">${Number(listing.base_price).toFixed(0)}</span>{" "}
-                      <span className="text-muted-foreground">/ night</span>
+                      {isSales ? (
+                        <span className="italic text-muted-foreground">{t.listings.contactManager}</span>
+                      ) : (
+                        <>
+                          <span className="font-medium">${Number(listing.base_price).toFixed(0)}</span>{" "}
+                          <span className="text-muted-foreground">/ night</span>
+                        </>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {listing.bedrooms} {t.listings.bedrooms} · {listing.bathrooms} {t.listings.bathrooms} · {listing.max_guests} {t.listings.maxGuests}

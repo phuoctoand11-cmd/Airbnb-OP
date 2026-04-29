@@ -151,6 +151,7 @@ export const vi: Translations = {
     created: "Đã tạo danh sách",
     updated: "Đã cập nhật danh sách",
     couldNotSave: "Không thể lưu danh sách",
+    contactManager: "Liên hệ quản lý",
   },
   bookings: {
     title: "Đặt phòng",

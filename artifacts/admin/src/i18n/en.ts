@@ -149,6 +149,7 @@ export const en = {
     created: "Listing created",
     updated: "Listing updated",
     couldNotSave: "Could not save listing",
+    contactManager: "Contact manager",
   },
   bookings: {
     title: "Bookings",
