@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { AuthProvider, useAuth, canViewDashboard, getDefaultRouteByRole } from "@/lib/auth-context";
 import { I18nProvider } from "@/i18n";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 
@@ -29,9 +29,10 @@ const queryClient = new QueryClient({
 });
 
 function RootRedirect() {
-  const { session, loading } = useAuth();
+  const { session, loading, role } = useAuth();
   if (loading) return null;
-  return session ? <Redirect to="/dashboard" /> : <Redirect to="/login" />;
+  if (!session) return <Redirect to="/login" />;
+  return <Redirect to={getDefaultRouteByRole(role)} />;
 }
 
 function Router() {
@@ -41,7 +42,7 @@ function Router() {
       <Route path="/login" component={Login} />
 
       <Route path="/dashboard">
-        <ProtectedRoute>
+        <ProtectedRoute require={canViewDashboard} redirectTo="/listings">
           <Dashboard />
         </ProtectedRoute>
       </Route>

@@ -38,15 +38,16 @@ export const supabase: SupabaseClient = createClient(
 export const SUPABASE_URL_FOR_DEBUG = supabaseUrl;
 export const SUPABASE_ANON_KEY_LOADED = Boolean(supabaseAnonKey);
 
-export type AppRole = "admin" | "manager" | "staff" | "accountant";
+export type AppRole = "admin" | "manager" | "staff" | "accountant" | "sale";
 
-export const ROLES: AppRole[] = ["admin", "manager", "staff", "accountant"];
+export const ROLES: AppRole[] = ["admin", "manager", "staff", "accountant", "sale"];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   admin: "Admin",
   manager: "Manager",
   staff: "Staff",
   accountant: "Accountant",
+  sale: "Sales",
 };
 
 export interface UserProfile {

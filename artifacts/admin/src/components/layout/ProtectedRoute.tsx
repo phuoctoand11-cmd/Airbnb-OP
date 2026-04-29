@@ -1,17 +1,26 @@
 import { Loader2, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useLocation } from "wouter";
+import { useLocation, Redirect } from "wouter";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import type { Permission } from "@/lib/auth-context";
 import { hasPermission } from "@/lib/auth-context";
+import type { AppRole } from "@/lib/supabase";
 
 interface ProtectedRouteProps {
   children: ReactNode;
+  /** Permission required. If the user lacks it, show access-denied (or redirect). */
   permission?: Permission;
+  /**
+   * Custom capability check. Called with the current role; if it returns false
+   * the user is redirected to `redirectTo` (defaults to "/listings").
+   */
+  require?: (role: AppRole | null) => boolean;
+  /** Where to redirect when access is denied via `require`. Defaults to "/listings". */
+  redirectTo?: string;
 }
 
-export function ProtectedRoute({ children, permission }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, permission, require: requireFn, redirectTo = "/listings" }: ProtectedRouteProps) {
   const { loading, session, role, profileError, profileLoading, signOut } = useAuth();
   const [, setLocation] = useLocation();
 
@@ -21,7 +30,6 @@ export function ProtectedRoute({ children, permission }: ProtectedRouteProps) {
     }
   }, [loading, session, setLocation]);
 
-  // Session check still in progress — show spinner (max 5s due to timeout in AuthProvider)
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -30,12 +38,10 @@ export function ProtectedRoute({ children, permission }: ProtectedRouteProps) {
     );
   }
 
-  // Not authenticated — redirect handled by useEffect, render nothing here
   if (!session) {
     return null;
   }
 
-  // Profile fetch failed — show user-friendly message
   if (profileError && !profileLoading) {
     const isNotFound =
       profileError === "User profile not found. Please contact admin." ||
@@ -63,8 +69,12 @@ export function ProtectedRoute({ children, permission }: ProtectedRouteProps) {
     );
   }
 
-  // Profile is still loading — show a lightweight inline spinner but don't block
-  // (role-gated pages will show "access denied" until profile resolves, which is acceptable)
+  // Custom capability check — redirect instead of showing a generic error
+  if (requireFn !== undefined && !profileLoading && !requireFn(role)) {
+    return <Redirect to={redirectTo} />;
+  }
+
+  // Permission-based check — show access denied page
   if (permission && !profileLoading && !hasPermission(role, permission)) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">

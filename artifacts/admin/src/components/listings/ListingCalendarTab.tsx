@@ -30,9 +30,11 @@ import {
 interface Props {
   listing: Listing;
   canManage: boolean;
+  /** When true, price-related fields are hidden and price columns are not fetched. */
+  isSales?: boolean;
 }
 
-export function ListingCalendarTab({ listing, canManage }: Props) {
+export function ListingCalendarTab({ listing, canManage, isSales = false }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
@@ -42,32 +44,42 @@ export function ListingCalendarTab({ listing, canManage }: Props) {
   const end = endOfMonth(cursor);
   const days = eachDayOfInterval({ start, end });
 
+  // For sale users: omit price_override from calendar_entries; only fetch availability info
+  const calendarSelect = isSales
+    ? "id,listing_id,date,is_available,note"
+    : "*";
+
   const calendarQuery = useQuery({
-    queryKey: ["calendar", listing.id, format(start, "yyyy-MM")],
+    queryKey: ["calendar", listing.id, format(start, "yyyy-MM"), isSales],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("calendar_entries")
-        .select("*")
+        .select(calendarSelect)
         .eq("listing_id", listing.id)
         .gte("date", format(start, "yyyy-MM-dd"))
         .lte("date", format(end, "yyyy-MM-dd"));
       if (error) throw error;
-      return (data ?? []) as CalendarEntry[];
+      return (data ?? []) as unknown as CalendarEntry[];
     },
   });
 
+  // For sale users: only fetch date/status columns — no total_amount, paid_amount, etc.
+  const bookingsSelect = isSales
+    ? "id,listing_id,check_in,check_out,status"
+    : "*";
+
   const bookingsQuery = useQuery({
-    queryKey: ["calendar-bookings", listing.id, format(start, "yyyy-MM")],
+    queryKey: ["calendar-bookings", listing.id, format(start, "yyyy-MM"), isSales],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("bookings")
-        .select("*")
+        .select(bookingsSelect)
         .eq("listing_id", listing.id)
         .in("status", ["confirmed", "completed", "pending"])
         .lte("check_in", format(end, "yyyy-MM-dd"))
         .gte("check_out", format(start, "yyyy-MM-dd"));
       if (error) throw error;
-      return (data ?? []) as Booking[];
+      return (data ?? []) as unknown as Booking[];
     },
   });
 
@@ -181,7 +193,7 @@ export function ListingCalendarTab({ listing, canManage }: Props) {
                           Blocked
                         </span>
                       )}
-                      {entry?.price_override != null && (
+                      {!isSales && entry?.price_override != null && (
                         <span className="rounded-sm bg-muted px-1 text-[10px] font-medium text-muted-foreground">
                           ${Number(entry.price_override).toFixed(0)}
                         </span>
@@ -199,7 +211,7 @@ export function ListingCalendarTab({ listing, canManage }: Props) {
         <CardContent className="p-6">
           {!selectedDate ? (
             <div className="text-sm text-muted-foreground">
-              Select a date to view or edit availability and pricing.
+              Select a date to view or edit availability.
             </div>
           ) : (
             <DayEditor
@@ -207,6 +219,7 @@ export function ListingCalendarTab({ listing, canManage }: Props) {
               entry={selectedEntry ?? null}
               booked={isBooked(selectedDate)}
               canManage={canManage}
+              isSales={isSales}
               onSave={(payload) => upsertMutation.mutate(payload)}
               saving={upsertMutation.isPending}
             />
@@ -222,6 +235,7 @@ function DayEditor({
   entry,
   booked,
   canManage,
+  isSales = false,
   onSave,
   saving,
 }: {
@@ -229,6 +243,7 @@ function DayEditor({
   entry: CalendarEntry | null;
   booked: boolean;
   canManage: boolean;
+  isSales?: boolean;
   onSave: (p: { date: string; is_available: boolean; price_override: number | null; note: string | null }) => void;
   saving: boolean;
 }) {
@@ -269,19 +284,21 @@ function DayEditor({
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="price">Price override (per night)</Label>
-        <Input
-          id="price"
-          type="number"
-          step="0.01"
-          min="0"
-          placeholder="Leave empty to use base price"
-          value={price}
-          disabled={!canManage}
-          onChange={(e) => setPrice(e.target.value)}
-        />
-      </div>
+      {!isSales && (
+        <div className="space-y-2">
+          <Label htmlFor="price">Price override (per night)</Label>
+          <Input
+            id="price"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Leave empty to use base price"
+            value={price}
+            disabled={!canManage}
+            onChange={(e) => setPrice(e.target.value)}
+          />
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="note">Note</Label>
@@ -302,7 +319,8 @@ function DayEditor({
             onSave({
               date: format(date, "yyyy-MM-dd"),
               is_available: available,
-              price_override: price === "" ? null : Number(price),
+              // sale users never send a price_override value
+              price_override: isSales ? null : price === "" ? null : Number(price),
               note: note.trim() === "" ? null : note.trim(),
             })
           }

@@ -22,11 +22,11 @@ import { ListingPricingTab } from "@/components/listings/ListingPricingTab";
 export default function ListingDetail() {
   const [, params] = useRoute("/listings/:id");
   const id = params?.id;
-  const { role, profile } = useAuth();
+  const { role } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
-  const isSales = profile?.role?.name === "sales";
+  const isSales = role === "sale";
   const listingsTable = isSales ? "sales_listings_view" : "listings";
   // Explicit column list for sales — omits base_price, cleaning_fee (defense-in-depth)
   const listingSelect = isSales
@@ -43,7 +43,7 @@ export default function ListingDetail() {
         .eq("id", id)
         .single();
       if (error) throw error;
-      return data as Listing;
+      return data as unknown as Listing;
     },
   });
 
@@ -150,8 +150,10 @@ export default function ListingDetail() {
             <TabsList className="mb-4 flex flex-wrap">
               {!isSales && <TabsTrigger value="overview">Overview</TabsTrigger>}
               <TabsTrigger value="images">Images</TabsTrigger>
-              {!isSales && <TabsTrigger value="amenities">Amenities</TabsTrigger>}
+              {/* Amenities: visible for all roles including sale */}
+              <TabsTrigger value="amenities">Amenities</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
+              {/* Pricing: hidden for sale */}
               {!isSales && <TabsTrigger value="pricing">Pricing</TabsTrigger>}
             </TabsList>
 
@@ -168,13 +170,12 @@ export default function ListingDetail() {
             <TabsContent value="images">
               <ListingImagesTab listing={listing} canManage={canManage} />
             </TabsContent>
-            {!isSales && (
-              <TabsContent value="amenities">
-                <ListingAmenitiesTab listing={listing} canManage={canManage} />
-              </TabsContent>
-            )}
+            {/* Amenities visible for all roles including sale */}
+            <TabsContent value="amenities">
+              <ListingAmenitiesTab listing={listing} canManage={canManage} />
+            </TabsContent>
             <TabsContent value="calendar">
-              <ListingCalendarTab listing={listing} canManage={canManage} />
+              <ListingCalendarTab listing={listing} canManage={canManage} isSales={isSales} />
             </TabsContent>
             {!isSales && (
               <TabsContent value="pricing">

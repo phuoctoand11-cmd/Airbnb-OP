@@ -298,3 +298,34 @@ export function hasPermission(role: AppRole | null, perm: Permission) {
   if (role === "admin") return true;
   return (ROLE_PERMISSIONS[perm] as readonly AppRole[]).includes(role);
 }
+
+// ── Role-based capability helpers ──────────────────────────────────────────
+// Use these instead of raw role comparisons so changes stay in one place.
+
+/** Sales users only see listings, not the dashboard. */
+export function canViewDashboard(role: AppRole | null): boolean {
+  if (!role) return false;
+  return role !== "sale";
+}
+
+/** Sales users must never see any price/financial values. */
+export function canViewPrices(role: AppRole | null): boolean {
+  if (!role) return false;
+  return role !== "sale";
+}
+
+/** Finance pages: revenues, expenses, reports. */
+export function canViewFinance(role: AppRole | null): boolean {
+  return hasPermission(role, "manageFinance") || hasPermission(role, "viewReports");
+}
+
+/** User/team management. */
+export function canManageUsers(role: AppRole | null): boolean {
+  return hasPermission(role, "manageUsers");
+}
+
+/** Default landing route after login, keyed by role. */
+export function getDefaultRouteByRole(role: AppRole | null): string {
+  if (role === "sale") return "/listings";
+  return "/dashboard";
+}

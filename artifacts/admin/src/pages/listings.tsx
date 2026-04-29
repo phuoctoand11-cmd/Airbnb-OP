@@ -30,12 +30,12 @@ const STATUS_BADGE: Record<Listing["status"], "default" | "secondary" | "outline
 };
 
 export default function Listings() {
-  const { role, profile } = useAuth();
+  const { role } = useAuth();
   const { toast } = useToast();
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
-  const isSales = profile?.role?.name === "sales";
+  const isSales = role === "sale";
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -55,7 +55,7 @@ export default function Listings() {
         .select(listingsSelect)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Listing[];
+      return (data ?? []) as unknown as Listing[];
     },
   });
 

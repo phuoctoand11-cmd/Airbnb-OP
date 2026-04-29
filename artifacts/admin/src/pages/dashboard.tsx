@@ -53,8 +53,8 @@ import { useI18n } from "@/i18n";
 
 export default function Dashboard() {
   const { t } = useI18n();
-  const { profile } = useAuth();
-  const isSales = profile?.role?.name === "sales";
+  const { role } = useAuth();
+  const isSales = role === "sale";
 
   const dataQuery = useQuery({
     queryKey: ["dashboard", isSales],

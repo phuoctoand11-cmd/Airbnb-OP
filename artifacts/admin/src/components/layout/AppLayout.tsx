@@ -28,7 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { hasPermission, type Permission, useAuth } from "@/lib/auth-context";
+import { hasPermission, canViewDashboard, type Permission, useAuth } from "@/lib/auth-context";
 import { ROLE_LABELS } from "@/lib/supabase";
 import { useI18n, type Lang } from "@/i18n";
 
@@ -50,22 +50,33 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isAdmin = profile?.role?.name === "admin";
+  const isSale = role === "sale";
 
-  const NAV_ITEMS: { href: string; label: string; icon: typeof LayoutDashboard; permission?: Permission }[] = [
-    { href: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard },
-    { href: "/listings", label: t.nav.listings, icon: Home },
-    { href: "/calendar", label: t.nav.availabilityCalendar, icon: CalendarRange, permission: "manageBookings" },
-    { href: "/bookings", label: t.nav.bookings, icon: CalendarDays, permission: "manageBookings" },
-    { href: "/tasks", label: t.nav.tasks, icon: CheckSquare, permission: "manageTasks" },
-    { href: "/reports", label: t.nav.reports, icon: PieChart, permission: "viewReports" },
-    { href: "/hr", label: t.nav.hr, icon: Users, permission: "manageUsers" },
-    { href: "/revenues", label: t.nav.revenues, icon: CreditCard, permission: "manageFinance" },
-    { href: "/expenses", label: t.nav.expenses, icon: Receipt, permission: "manageFinance" },
-    { href: "/chat", label: t.nav.chat, icon: MessageSquare },
-    { href: "/settings/users", label: t.nav.team, icon: Settings, permission: "manageUsers" },
+  const NAV_ITEMS: {
+    href: string;
+    label: string;
+    icon: typeof LayoutDashboard;
+    permission?: Permission;
+    /** When true, visible to the sale role. Only Listings is true. */
+    saleVisible?: boolean;
+  }[] = [
+    { href: "/dashboard", label: t.nav.dashboard, icon: LayoutDashboard, saleVisible: false },
+    { href: "/listings", label: t.nav.listings, icon: Home, saleVisible: true },
+    { href: "/calendar", label: t.nav.availabilityCalendar, icon: CalendarRange, permission: "manageBookings", saleVisible: false },
+    { href: "/bookings", label: t.nav.bookings, icon: CalendarDays, permission: "manageBookings", saleVisible: false },
+    { href: "/tasks", label: t.nav.tasks, icon: CheckSquare, permission: "manageTasks", saleVisible: false },
+    { href: "/reports", label: t.nav.reports, icon: PieChart, permission: "viewReports", saleVisible: false },
+    { href: "/hr", label: t.nav.hr, icon: Users, permission: "manageUsers", saleVisible: false },
+    { href: "/revenues", label: t.nav.revenues, icon: CreditCard, permission: "manageFinance", saleVisible: false },
+    { href: "/expenses", label: t.nav.expenses, icon: Receipt, permission: "manageFinance", saleVisible: false },
+    { href: "/chat", label: t.nav.chat, icon: MessageSquare, saleVisible: false },
+    { href: "/settings/users", label: t.nav.team, icon: Settings, permission: "manageUsers", saleVisible: false },
   ];
 
-  const visibleNav = NAV_ITEMS.filter((n) => isAdmin || !n.permission || hasPermission(role, n.permission));
+  const visibleNav = NAV_ITEMS.filter((n) => {
+    if (isSale) return n.saleVisible === true;
+    return isAdmin || !n.permission || hasPermission(role, n.permission);
+  });
 
   const initials = (profile?.full_name ?? profile?.email ?? "U")
     .split(" ")
