@@ -1,0 +1,187 @@
+Build a complete HR / Recruitment module for the Airbnb Ops app.
+
+Context:
+The app already has authentication, profiles, roles, listings, bookings, tasks, finance and dashboard.
+Now add a Human Resources / Recruitment module.
+
+Important rule:
+Soft delete only. Never hard delete employees.
+
+Add sidebar menu:
+- Vietnamese: Nhân sự
+- English: HR
+
+Only Admin can fully manage HR.
+
+Permissions:
+1. Admin:
+   - Can view all employees
+   - Can create employees
+   - Can edit employee information
+   - Can change employee status
+   - Can view salary_base
+   - Can manage departments and positions
+
+2. Manager:
+   - Can view employees in their own team
+   - Cannot view salary_base
+   - Cannot change employee status unless explicitly allowed
+
+3. Accountant:
+   - Can view basic employee information
+   - Cannot edit employees
+   - Cannot view salary_base unless admin
+
+4. Sales / Staff:
+   - Cannot access HR module
+
+Pages:
+- /hr
+- /hr/employees
+- /hr/employees/new
+- /hr/employees/[id]
+- /hr/departments
+- /hr/positions
+
+Employee fields:
+- profile_id
+- full_name
+- email
+- phone
+- avatar_url
+- date_of_birth
+- gender
+- address
+- emergency_contact
+- department_id
+- position_id
+- team_id
+- role
+- employment_type
+- start_date
+- end_date
+- salary_base
+- status
+- notes
+- created_at
+- updated_at
+
+Employee status options:
+- candidate
+- interviewing
+- probation
+- active
+- inactive
+- resigned
+- terminated
+- rejected
+
+Employment type options:
+- full_time
+- part_time
+- freelancer
+- probation
+- intern
+
+Company positions:
+- admin
+- manager
+- sales
+- accountant
+- cleaner
+- maintenance
+- customer_support
+- operation_staff
+
+Departments:
+- Operations
+- Sales
+- Accounting
+- Cleaning
+- Maintenance
+- Customer Support
+- Management
+
+Features:
+1. Employee list
+   - Table view
+   - Search by name, email, phone
+   - Filter by status
+   - Filter by department
+   - Filter by position
+   - Filter by employment type
+   - Status badges
+   - Role badges
+
+2. Add employee
+   - Form with all employee fields
+   - Required fields: full_name, email, position_id, department_id, status
+   - Default status: candidate
+   - Do not automatically create auth user unless needed
+   - If profile_id exists, link employee to profile
+
+3. Edit employee
+   - Admin can edit all fields
+   - Non-admin cannot edit salary_base
+   - Add validation and error messages
+
+4. Change status
+   - Remove all hard delete buttons
+   - Replace delete with "Change Status" or "Deactivate"
+   - Add confirmation modal before changing status to:
+     inactive, resigned, terminated, rejected
+   - When employee status is inactive, resigned, terminated, or rejected:
+     - employee cannot be assigned new tasks
+     - employee cannot be added to new bookings
+     - employee cannot be selected as active staff
+     - employee still appears in historical tasks, bookings, reports and chat
+   - Old records must remain unchanged
+
+5. Departments
+   - Create, edit, deactivate departments
+   - Do not hard delete departments if employees are linked
+
+6. Positions
+   - Create, edit, deactivate positions
+   - Do not hard delete positions if employees are linked
+
+Database:
+Create SQL migration for:
+- employees
+- departments
+- positions
+- employee_documents optional
+- recruitment_pipeline optional
+
+Database rules:
+- Use UUID primary keys
+- Use created_at and updated_at
+- Link employees.profile_id to profiles.id if available
+- Link employees.team_id to teams.id if available
+- Link employees.department_id to departments.id
+- Link employees.position_id to positions.id
+- Use soft delete/status instead of delete
+- Add indexes for profile_id, team_id, department_id, position_id, status, role
+- Add RLS policies:
+  - Admin can manage all HR data
+  - Manager can read employees in own team
+  - Accountant can read basic employee info
+  - Sales/staff cannot read HR data
+- Do not expose salary_base to non-admin users
+
+Security:
+- Hide HR sidebar menu for sales/staff
+- If sales/staff directly open /hr, show Access Denied or redirect to /listings
+- Do not fetch salary_base for non-admin roles
+- Do not rely only on UI hiding
+
+Translation:
+Add Vietnamese and English translations for all HR labels, buttons, statuses, form fields, validation messages and permission errors.
+
+UI:
+Use clean admin UI matching existing Airbnb Ops style.
+Add loading states, empty states, error states and confirmation modals.
+
+Before applying database changes:
+Show me the full SQL migration first.
+Do not hard delete any employee, department or position.
