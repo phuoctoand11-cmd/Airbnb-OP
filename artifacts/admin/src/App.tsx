@@ -107,7 +107,7 @@ function Router() {
       </Route>
 
       <Route path="/hr">
-        <ProtectedRoute>
+        <ProtectedRoute permission="viewHR">
           <HRRecruitment />
         </ProtectedRoute>
       </Route>

@@ -66,7 +66,7 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
     { href: "/bookings", label: t.nav.bookings, icon: CalendarDays, permission: "manageBookings", saleVisible: false },
     { href: "/tasks", label: t.nav.tasks, icon: CheckSquare, permission: "manageTasks", saleVisible: false },
     { href: "/reports", label: t.nav.reports, icon: PieChart, permission: "viewReports", saleVisible: false },
-    { href: "/hr", label: t.nav.hr, icon: Users, permission: "manageUsers", saleVisible: false },
+    { href: "/hr", label: t.nav.hr, icon: Users, permission: "viewHR", saleVisible: false },
     { href: "/revenues", label: t.nav.revenues, icon: CreditCard, permission: "manageFinance", saleVisible: false },
     { href: "/expenses", label: t.nav.expenses, icon: Receipt, permission: "manageFinance", saleVisible: false },
     { href: "/chat", label: t.nav.chat, icon: MessageSquare, saleVisible: false },

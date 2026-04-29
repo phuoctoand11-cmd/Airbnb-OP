@@ -175,6 +175,72 @@ export interface Expense {
 
 export const LISTINGS_BUCKET = "listing-images";
 
+// ── HR / Recruitment types ────────────────────────────────────────
+
+export type EmployeeStatus =
+  | "candidate"
+  | "interviewing"
+  | "probation"
+  | "active"
+  | "inactive"
+  | "resigned"
+  | "terminated"
+  | "rejected";
+
+export type EmploymentType =
+  | "full_time"
+  | "part_time"
+  | "freelancer"
+  | "probation"
+  | "intern";
+
+export type GenderType = "male" | "female" | "other" | "prefer_not_to_say";
+
+export interface Department {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Position {
+  id: string;
+  name: string;
+  description: string | null;
+  department_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Employee {
+  id: string;
+  profile_id: string | null;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  avatar_url: string | null;
+  date_of_birth: string | null;
+  gender: GenderType | null;
+  address: string | null;
+  emergency_contact: string | null;
+  department_id: string;
+  position_id: string;
+  team_id: string | null;
+  role: string | null;
+  employment_type: EmploymentType;
+  start_date: string | null;
+  end_date: string | null;
+  /** Only present for admin. null for manager/accountant (querying employee_basic_view). */
+  salary_base: number | null;
+  status: EmployeeStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ---- Chat types ----
 
 export interface ChatGroup {

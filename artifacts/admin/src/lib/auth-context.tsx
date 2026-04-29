@@ -288,6 +288,7 @@ export const ROLE_PERMISSIONS = {
   manageFinance: ["admin", "manager", "accountant"] as AppRole[],
   manageUsers: ["admin"] as AppRole[],
   viewReports: ["admin", "manager", "accountant"] as AppRole[],
+  viewHR: ["admin", "manager", "accountant"] as AppRole[],
 } as const;
 
 export type Permission = keyof typeof ROLE_PERMISSIONS;
