@@ -28,6 +28,10 @@ export default function ListingDetail() {
   const canManage = hasPermission(role, "manageListings");
   const isSales = profile?.role?.name === "sales";
   const listingsTable = isSales ? "sales_listings_view" : "listings";
+  // Explicit column list for sales — omits base_price, cleaning_fee (defense-in-depth)
+  const listingSelect = isSales
+    ? "id,title,description,address,city,country,bedrooms,bathrooms,max_guests,status,cover_image_url,created_at,updated_at"
+    : "*";
 
   const { data: listing, isLoading, error } = useQuery({
     enabled: !!id,
@@ -35,7 +39,7 @@ export default function ListingDetail() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from(listingsTable as "listings")
-        .select("*")
+        .select(listingSelect)
         .eq("id", id)
         .single();
       if (error) throw error;

@@ -48,33 +48,48 @@ import {
   type Revenue,
   type Task,
 } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/i18n";
 
 export default function Dashboard() {
   const { t } = useI18n();
+  const { profile } = useAuth();
+  const isSales = profile?.role?.name === "sales";
 
   const dataQuery = useQuery({
-    queryKey: ["dashboard"],
+    queryKey: ["dashboard", isSales],
     queryFn: async () => {
-      const [listings, bookings, revenues, expenses, tasks, calendar] = await Promise.all([
-        supabase.from("listings").select("*"),
+      const [listings, bookings, tasks, calendar] = await Promise.all([
+        supabase
+          .from(isSales ? ("sales_listings_view" as "listings") : "listings")
+          .select("id,title,city,country,status"),
         supabase.from("bookings").select("*"),
-        supabase.from("revenues").select("*"),
-        supabase.from("expenses").select("*"),
         supabase.from("tasks").select("*"),
         supabase.from("calendar_entries").select("listing_id, date, is_available"),
       ]);
       if (listings.error) throw listings.error;
       if (bookings.error) throw bookings.error;
-      if (revenues.error) throw revenues.error;
-      if (expenses.error) throw expenses.error;
       if (tasks.error) throw tasks.error;
       if (calendar.error) throw calendar.error;
+
+      let revenues: Revenue[] = [];
+      let expenses: Expense[] = [];
+      if (!isSales) {
+        const [rev, exp] = await Promise.all([
+          supabase.from("revenues").select("*"),
+          supabase.from("expenses").select("*"),
+        ]);
+        if (rev.error) throw rev.error;
+        if (exp.error) throw exp.error;
+        revenues = (rev.data ?? []) as Revenue[];
+        expenses = (exp.data ?? []) as Expense[];
+      }
+
       return {
         listings: (listings.data ?? []) as Listing[],
         bookings: (bookings.data ?? []) as Booking[],
-        revenues: (revenues.data ?? []) as Revenue[],
-        expenses: (expenses.data ?? []) as Expense[],
+        revenues,
+        expenses,
         tasks: (tasks.data ?? []) as Task[],
         calendar: (calendar.data ?? []) as { listing_id: string; date: string; is_available: boolean }[],
       };
@@ -192,14 +207,20 @@ export default function Dashboard() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard label={t.dashboard.activeListings} icon={<Home className="h-4 w-4" />} value={stats?.listings} loading={!stats} />
             <KpiCard label={t.dashboard.totalBookings} icon={<Users className="h-4 w-4" />} value={stats?.bookings} loading={!stats} />
-            <KpiCard label={t.dashboard.revenue} icon={<DollarSign className="h-4 w-4" />} value={stats ? `$${stats.revenue.toLocaleString()}` : undefined} loading={!stats} accent="positive" />
-            <KpiCard label={t.dashboard.netProfit} icon={<TrendingUp className="h-4 w-4" />} value={stats ? `$${stats.profit.toLocaleString()}` : undefined} loading={!stats} accent={stats && stats.profit >= 0 ? "positive" : "negative"} />
+            {!isSales && (
+              <KpiCard label={t.dashboard.revenue} icon={<DollarSign className="h-4 w-4" />} value={stats ? `$${stats.revenue.toLocaleString()}` : undefined} loading={!stats} accent="positive" />
+            )}
+            {!isSales && (
+              <KpiCard label={t.dashboard.netProfit} icon={<TrendingUp className="h-4 w-4" />} value={stats ? `$${stats.profit.toLocaleString()}` : undefined} loading={!stats} accent={stats && stats.profit >= 0 ? "positive" : "negative"} />
+            )}
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard label={t.dashboard.completedBookings} icon={<CheckCircle2 className="h-4 w-4" />} value={stats?.completed} loading={!stats} />
             <KpiCard label={t.dashboard.cancelledBookings} icon={<XCircle className="h-4 w-4" />} value={stats?.cancelled} loading={!stats} />
-            <KpiCard label={t.dashboard.expenses} icon={<TrendingDown className="h-4 w-4" />} value={stats ? `$${stats.expense.toLocaleString()}` : undefined} loading={!stats} />
+            {!isSales && (
+              <KpiCard label={t.dashboard.expenses} icon={<TrendingDown className="h-4 w-4" />} value={stats ? `$${stats.expense.toLocaleString()}` : undefined} loading={!stats} />
+            )}
             <KpiCard label={t.dashboard.occupancy30d} icon={<Percent className="h-4 w-4" />} value={stats ? `${stats.occupancyRate}%` : undefined} loading={!stats} />
           </div>
 
@@ -207,37 +228,39 @@ export default function Dashboard() {
             <KpiCard label={t.dashboard.taskCompletion30d} icon={<Activity className="h-4 w-4" />} value={stats ? `${stats.taskCompletion}%` : undefined} loading={!stats} />
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-base">{t.dashboard.revenueVsExpenses}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {dataQuery.isLoading ? (
-                  <Skeleton className="h-72 w-full" />
-                ) : (
-                  <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={monthly}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <Tooltip
-                          contentStyle={{
-                            background: "hsl(var(--card))",
-                            border: "1px solid hsl(var(--border))",
-                            borderRadius: 8,
-                          }}
-                        />
-                        <Legend />
-                        <Bar dataKey="revenue" fill="hsl(var(--primary))" name={t.dashboard.revenue_bar} radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="expense" fill="hsl(var(--destructive))" name={t.dashboard.expense_bar} radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          <div className={`mt-6 grid gap-4 ${isSales ? "" : "lg:grid-cols-3"}`}>
+            {!isSales && (
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle className="text-base">{t.dashboard.revenueVsExpenses}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {dataQuery.isLoading ? (
+                    <Skeleton className="h-72 w-full" />
+                  ) : (
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={monthly}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                          <Tooltip
+                            contentStyle={{
+                              background: "hsl(var(--card))",
+                              border: "1px solid hsl(var(--border))",
+                              borderRadius: 8,
+                            }}
+                          />
+                          <Legend />
+                          <Bar dataKey="revenue" fill="hsl(var(--primary))" name={t.dashboard.revenue_bar} radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="expense" fill="hsl(var(--destructive))" name={t.dashboard.expense_bar} radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">

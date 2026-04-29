@@ -42,13 +42,17 @@ export default function Listings() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const listingsTable = isSales ? "sales_listings_view" : "listings";
+  // For sales, explicitly omit price columns (defense-in-depth alongside view definition)
+  const listingsSelect = isSales
+    ? "id,title,description,address,city,country,bedrooms,bathrooms,max_guests,status,cover_image_url,created_at,updated_at"
+    : "*";
 
   const { data: listings, isLoading, error } = useQuery({
     queryKey: ["listings", listingsTable],
     queryFn: async () => {
       const { data, error } = await supabase
         .from(listingsTable as "listings")
-        .select("*")
+        .select(listingsSelect)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Listing[];

@@ -70,8 +70,10 @@ export interface Listing {
   bedrooms: number;
   bathrooms: number;
   max_guests: number;
-  base_price: number;
-  cleaning_fee: number;
+  /** Omitted for sales role — always guard with isSales check before rendering */
+  base_price?: number;
+  /** Omitted for sales role — always guard with isSales check before rendering */
+  cleaning_fee?: number;
   status: "active" | "inactive" | "maintenance";
   cover_image_url: string | null;
   created_at: string;
