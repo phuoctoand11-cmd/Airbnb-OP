@@ -7,9 +7,12 @@ import {
   AlertTriangle,
   Building2,
   Briefcase,
+  Link2,
+  Link2Off,
   Loader2,
   Plus,
   Search,
+  UserCheck,
   Users,
 } from "lucide-react";
 
@@ -42,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -350,6 +354,7 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                 <th className="px-4 py-3 text-left font-medium">{t.hr.employmentType}</th>
                 {isAdmin && <th className="px-4 py-3 text-left font-medium">{t.hr.salaryBase}</th>}
                 <th className="px-4 py-3 text-left font-medium">{t.hr.statusBadge}</th>
+                {isAdmin && <th className="px-4 py-3 text-left font-medium">Login</th>}
                 {isAdmin && <th className="px-4 py-3 text-left font-medium">{t.common.actions}</th>}
               </tr>
             </thead>
@@ -373,6 +378,21 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                       {(t.hr as Record<string, string>)[emp.status] ?? emp.status}
                     </Badge>
                   </td>
+                  {isAdmin && (
+                    <td className="px-4 py-3">
+                      {emp.profile_id ? (
+                        <Badge variant="outline" className="gap-1 text-xs text-green-700 border-green-300 bg-green-50">
+                          <UserCheck className="h-3 w-3" />
+                          Linked
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1 text-xs text-muted-foreground">
+                          <Link2Off className="h-3 w-3" />
+                          Not linked
+                        </Badge>
+                      )}
+                    </td>
+                  )}
                   {isAdmin && (
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -732,8 +752,171 @@ function EmployeeFormDialog({
             </DialogFooter>
           </form>
         </Form>
+
+        {/* Login account linking — edit mode only */}
+        {isEdit && employee && (
+          <>
+            <Separator />
+            <div className="px-1 pb-2">
+              <AccountLinkSection
+                employee={employee}
+                onLinked={onSaved}
+              />
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Account Link Section ───────────────────────────────────────────
+// Shown inside EmployeeFormDialog (edit mode, admin only)
+
+function AccountLinkSection({
+  employee,
+  onLinked,
+}: {
+  employee: Employee;
+  onLinked: () => void;
+}) {
+  const { toast } = useToast();
+  const { refreshProfile } = useAuth();
+  const [linking, setLinking] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+
+  // Fetch the linked user's info if profile_id is set
+  const linkedUserQuery = useQuery({
+    queryKey: ["linked-user", employee.profile_id],
+    queryFn: async () => {
+      if (!employee.profile_id) return null;
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, email, full_name")
+        .eq("id", employee.profile_id)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; email: string; full_name: string } | null;
+    },
+    enabled: !!employee.profile_id,
+  });
+
+  const isLinked = !!employee.profile_id;
+
+  const handleLink = async () => {
+    setLinking(true);
+    try {
+      // Look up a login profile matching the employee's email
+      const { data: profiles, error: lookupError } = await supabase
+        .from("users")
+        .select("id, email")
+        .ilike("email", employee.email)
+        .limit(1);
+      if (lookupError) throw lookupError;
+
+      if (!profiles || profiles.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "No login account found",
+          description: `No login account exists for "${employee.email}". Ask admin to create a Supabase Auth user with this email first.`,
+        });
+        return;
+      }
+
+      const profileId = profiles[0].id;
+      const { error: updateError } = await supabase
+        .from("employees")
+        .update({ profile_id: profileId })
+        .eq("id", employee.id);
+      if (updateError) throw updateError;
+
+      toast({ title: "Login account linked successfully." });
+      // If the just-linked user is the one currently logged in, clear the warning
+      await refreshProfile();
+      onLinked();
+    } catch (err) {
+      toast({ variant: "destructive", title: "Link failed", description: (err as Error).message });
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    setUnlinking(true);
+    try {
+      const { error } = await supabase
+        .from("employees")
+        .update({ profile_id: null })
+        .eq("id", employee.id);
+      if (error) throw error;
+      toast({ title: "Login account unlinked." });
+      onLinked();
+    } catch (err) {
+      toast({ variant: "destructive", title: "Unlink failed", description: (err as Error).message });
+    } finally {
+      setUnlinking(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+      <div className="flex items-center gap-2">
+        <UserCheck className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-medium">Login Account</span>
+        {isLinked ? (
+          <Badge variant="default" className="ml-auto text-xs">Linked</Badge>
+        ) : (
+          <Badge variant="outline" className="ml-auto text-xs text-muted-foreground">Not linked</Badge>
+        )}
+      </div>
+
+      {isLinked ? (
+        <>
+          {linkedUserQuery.isLoading ? (
+            <div className="text-xs text-muted-foreground">Loading account info…</div>
+          ) : linkedUserQuery.data ? (
+            <div className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{linkedUserQuery.data.full_name}</span>
+              {" · "}
+              {linkedUserQuery.data.email}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">Linked (profile ID: {employee.profile_id})</div>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            disabled={unlinking}
+            onClick={handleUnlink}
+          >
+            {unlinking
+              ? <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+              : <Link2Off className="mr-2 h-3 w-3" />}
+            Unlink Account
+          </Button>
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Linking connects this employee record to a login account with email{" "}
+            <span className="font-medium text-foreground">{employee.email}</span>.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            disabled={linking}
+            onClick={handleLink}
+          >
+            {linking
+              ? <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+              : <Link2 className="mr-2 h-3 w-3" />}
+            Link Login Account
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
