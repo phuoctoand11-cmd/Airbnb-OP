@@ -3,8 +3,9 @@ import { useLocation } from "wouter";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building, Loader2 } from "lucide-react";
+import { AlertTriangle, Building, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { AppRole } from "@/lib/supabase";
 import { ROLES, ROLE_LABELS } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
@@ -44,7 +45,7 @@ const DEBUG_ANON_KEY_LOADED = Boolean(
 
 export default function Login() {
   const [, setLocation] = useLocation();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, blockError } = useAuth();
   const { toast } = useToast();
   const { t } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
@@ -135,6 +136,13 @@ export default function Login() {
             {DEBUG_ANON_KEY_LOADED ? "yes" : "no"}
           </div>
         </div>
+
+        {blockError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{blockError}</AlertDescription>
+          </Alert>
+        )}
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "register")}>
           <TabsList className="grid w-full grid-cols-2 mb-6">

@@ -22,6 +22,8 @@ interface AuthContextValue {
   loading: boolean;
   profileLoading: boolean;
   profileError: string | null;
+  /** Set when login is blocked due to employee status; survives SIGNED_OUT event */
+  blockError: string | null;
   session: Session | null;
   user: User | null;
   profile: UserProfile | null;
@@ -43,10 +45,21 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const PROFILE_FETCH_TIMEOUT_MS = 5000;
 const SESSION_INIT_TIMEOUT_MS = 5000;
 
+// Statuses that are allowed to log in
+const ALLOWED_EMPLOYEE_STATUSES = ["active", "probation"] as const;
+// Statuses shown as "deactivated" (vs other blocked states)
+const DEACTIVATED_EMPLOYEE_STATUSES = ["inactive", "resigned", "terminated", "rejected"] as const;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  /**
+   * blockError is intentionally NOT cleared by the SIGNED_OUT auth event —
+   * it must survive the forced sign-out so the login page can display it.
+   * It is cleared only when a fresh, successful login passes all checks.
+   */
+  const [blockError, setBlockError] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const mountedRef = useRef(true);
@@ -108,6 +121,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setProfileError(null);
+
+      // ── Employee status enforcement ─────────────────────────────────────
+      // Derive role so we can skip the check for admins.
+      const rawRole = (data as { role?: { name?: string } | null })?.role?.name;
+      const derivedRole = rawRole === "sale" ? "sales" : rawRole;
+
+      if (derivedRole !== "admin") {
+        const { data: empRow } = await supabase
+          .from("employees")
+          .select("status")
+          .eq("profile_id", userId)
+          .maybeSingle();
+
+        if (!mountedRef.current) return;
+
+        // eslint-disable-next-line no-console
+        console.info("[auth] employee status check", { empRow, derivedRole });
+
+        if (!empRow) {
+          // No linked employee record and not admin → block
+          await supabase.auth.signOut();
+          if (!mountedRef.current) return;
+          setProfile(null);
+          setBlockError(
+            "Your account is not linked to an employee profile. Please contact admin."
+          );
+          return;
+        }
+
+        const status = empRow.status as string;
+        const isAllowed = (ALLOWED_EMPLOYEE_STATUSES as readonly string[]).includes(status);
+
+        if (!isAllowed) {
+          await supabase.auth.signOut();
+          if (!mountedRef.current) return;
+          setProfile(null);
+          const isDeactivated = (DEACTIVATED_EMPLOYEE_STATUSES as readonly string[]).includes(status);
+          setBlockError(
+            isDeactivated
+              ? "Your account has been deactivated. Please contact admin."
+              : "Your account is not yet active. Please contact admin."
+          );
+          return;
+        }
+      }
+
+      // All checks passed — clear any previous block and set profile
+      setBlockError(null);
       setProfile(data as UserProfile);
     } catch (err) {
       if (!mountedRef.current) return;
@@ -259,6 +320,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       profileLoading,
       profileError,
+      blockError,
       session,
       user: session?.user ?? null,
       profile,
@@ -269,7 +331,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshProfile,
     }),
-    [loading, profileLoading, profileError, session, profile, role, signIn, signUp, signOut, refreshProfile]
+    [loading, profileLoading, profileError, blockError, session, profile, role, signIn, signUp, signOut, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
