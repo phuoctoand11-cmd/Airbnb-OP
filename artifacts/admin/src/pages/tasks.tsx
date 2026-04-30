@@ -37,7 +37,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { hasPermission, useAuth } from "@/lib/auth-context";
+import { hasPermission, canViewAllTasks, useAuth } from "@/lib/auth-context";
 import {
   supabase,
   type Listing,
@@ -69,8 +69,10 @@ export default function Tasks() {
   const { toast } = useToast();
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const canCreate = hasPermission(role, "manageTasks");
-  const canManageAll = hasPermission(role, "manageBookings");
+  const canCreate = hasPermission(role, "manageTasks") &&
+    (role === "admin" || role === "manager");
+  const canManageAll = role === "admin" || role === "manager";
+  const viewAll = canViewAllTasks(role);
 
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -84,12 +86,17 @@ export default function Tasks() {
   };
 
   const tasksQuery = useQuery({
-    queryKey: ["tasks"],
+    queryKey: ["tasks", viewAll ? "all" : user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("tasks")
         .select("*")
         .order("due_date", { ascending: true, nullsFirst: false });
+      // maintenance, cleaner, staff only see tasks assigned to them
+      if (!viewAll && user?.id) {
+        q = q.eq("assignee_id", user.id);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as Task[];
     },

@@ -119,7 +119,7 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <Select
-                          value={p.role}
+                          value={p.role?.name ?? ""}
                           onValueChange={(role) => updateRole.mutate({ id: p.id, role: role as AppRole })}
                           disabled={isMe}
                         >

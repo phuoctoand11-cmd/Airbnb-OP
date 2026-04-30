@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth, canViewDashboard, getDefaultRouteByRole } from "@/lib/auth-context";
+import { AuthProvider, useAuth, getDefaultRouteByRole } from "@/lib/auth-context";
 import { I18nProvider } from "@/i18n";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 
@@ -42,7 +42,7 @@ function Router() {
       <Route path="/login" component={Login} />
 
       <Route path="/dashboard">
-        <ProtectedRoute require={canViewDashboard} redirectTo="/listings">
+        <ProtectedRoute permission="viewDashboard">
           <Dashboard />
         </ProtectedRoute>
       </Route>
@@ -101,7 +101,7 @@ function Router() {
       </Route>
 
       <Route path="/calendar">
-        <ProtectedRoute>
+        <ProtectedRoute permission="manageCalendar">
           <AvailabilityCalendar />
         </ProtectedRoute>
       </Route>

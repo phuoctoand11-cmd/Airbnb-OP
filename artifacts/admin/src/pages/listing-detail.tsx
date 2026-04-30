@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { hasPermission, useAuth } from "@/lib/auth-context";
+import { hasPermission, canViewPrices, useAuth } from "@/lib/auth-context";
 import { supabase, type Listing } from "@/lib/supabase";
 import { ListingOverviewTab } from "@/components/listings/ListingOverviewTab";
 import { ListingImagesTab } from "@/components/listings/ListingImagesTab";
@@ -26,12 +26,12 @@ export default function ListingDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
-  const isSales = role === "sale";
-  const listingsTable = isSales ? "sales_listings_view" : "listings";
-  // Explicit column list for sales — omits base_price, cleaning_fee (defense-in-depth)
-  const listingSelect = isSales
-    ? "id,title,description,address,city,country,bedrooms,bathrooms,max_guests,status,cover_image_url,created_at,updated_at"
-    : "*";
+  const showPrices = canViewPrices(role);
+  const listingsTable = showPrices ? "listings" : "sales_listings_view";
+  // Explicit column list for non-price roles — omits base_price, cleaning_fee (defense-in-depth)
+  const listingSelect = showPrices
+    ? "*"
+    : "id,title,description,address,city,country,bedrooms,bathrooms,max_guests,status,cover_image_url,created_at,updated_at";
 
   const { data: listing, isLoading, error } = useQuery({
     enabled: !!id,
@@ -136,7 +136,7 @@ export default function ListingDetail() {
                   <Stat label="Bedrooms" value={listing.bedrooms} />
                   <Stat label="Bathrooms" value={listing.bathrooms} />
                   <Stat label="Max guests" value={listing.max_guests} />
-                  {isSales ? (
+                  {!showPrices ? (
                     <Stat label="Price" value={<span className="italic text-muted-foreground text-sm">Contact manager</span>} />
                   ) : (
                     <Stat label="Base / night" value={`$${Number(listing.base_price).toFixed(0)}`} />
@@ -146,18 +146,16 @@ export default function ListingDetail() {
             </div>
           </Card>
 
-          <Tabs defaultValue={isSales ? "images" : "overview"}>
+          <Tabs defaultValue={!showPrices ? "images" : "overview"}>
             <TabsList className="mb-4 flex flex-wrap">
-              {!isSales && <TabsTrigger value="overview">Overview</TabsTrigger>}
+              {showPrices && <TabsTrigger value="overview">Overview</TabsTrigger>}
               <TabsTrigger value="images">Images</TabsTrigger>
-              {/* Amenities: visible for all roles including sale */}
               <TabsTrigger value="amenities">Amenities</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
-              {/* Pricing: hidden for sale */}
-              {!isSales && <TabsTrigger value="pricing">Pricing</TabsTrigger>}
+              {showPrices && <TabsTrigger value="pricing">Pricing</TabsTrigger>}
             </TabsList>
 
-            {!isSales && (
+            {showPrices && (
               <TabsContent value="overview">
                 <ListingOverviewTab
                   listing={listing}
@@ -170,14 +168,13 @@ export default function ListingDetail() {
             <TabsContent value="images">
               <ListingImagesTab listing={listing} canManage={canManage} />
             </TabsContent>
-            {/* Amenities visible for all roles including sale */}
             <TabsContent value="amenities">
               <ListingAmenitiesTab listing={listing} canManage={canManage} />
             </TabsContent>
             <TabsContent value="calendar">
-              <ListingCalendarTab listing={listing} canManage={canManage} isSales={isSales} />
+              <ListingCalendarTab listing={listing} canManage={canManage} isSales={!showPrices} />
             </TabsContent>
-            {!isSales && (
+            {showPrices && (
               <TabsContent value="pricing">
                 <ListingPricingTab listing={listing} canManage={canManage} />
               </TabsContent>

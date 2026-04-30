@@ -1,0 +1,127 @@
+Update role-based permissions across the app.
+
+Current problem:
+Sales and Maintenance users currently have the same permissions because the app only supports admin, manager, accountant, staff.
+
+Add and support these app roles:
+- admin
+- manager
+- accountant
+- sales
+- maintenance
+- cleaner
+- staff
+
+Important:
+profiles.role is the app permission role.
+employees.position_id is the company job position.
+Do not treat position as permission role.
+
+Permissions:
+
+Admin:
+- access everything
+- dashboard
+- listings with price
+- bookings
+- calendar
+- tasks
+- reports
+- revenues
+- expenses
+- HR
+- chat
+- settings
+
+Manager:
+- dashboard
+- listings with price
+- bookings
+- calendar
+- tasks
+- reports
+- HR read-only for own team
+- chat
+- no settings unless needed
+
+Accountant:
+- revenues
+- expenses
+- reports
+- bookings read-only
+- HR basic view without salary edit
+- no listing price edit unless admin allows
+
+Sales:
+- listings read-only WITHOUT price
+- booking creation allowed
+- customer info allowed
+- calendar availability only
+- no revenues
+- no expenses
+- no reports
+- no dashboard overview
+- no HR
+- no settings
+- no listing price fields
+
+Maintenance:
+- tasks assigned to them
+- listing basic info needed for maintenance
+- calendar availability read-only if needed
+- can update task status
+- can upload task photos
+- no booking financial values
+- no listing price
+- no revenue
+- no expense
+- no report
+- no HR
+- no dashboard overview
+
+Cleaner:
+- cleaning tasks assigned to them
+- listing basic info
+- check-in/check-out notes if assigned
+- can update task status
+- can upload photos
+- no prices
+- no finance
+- no HR
+- no dashboard overview
+
+Staff:
+- only assigned tasks
+- listing basic info if attached to task
+- no prices
+- no booking finance
+- no HR
+- no dashboard overview
+
+Implementation:
+1. Update AppRole type to include sales, maintenance, cleaner.
+2. Update all permission helpers:
+   canViewDashboard
+   canViewPrices
+   canViewFinance
+   canViewHR
+   canManageSettings
+   canCreateBooking
+   canViewListings
+   canViewAllTasks
+   canUpdateAssignedTasks
+3. Update sidebar menu filtering by role.
+4. Update protected routes:
+   - sales default route: /listings
+   - maintenance default route: /tasks
+   - cleaner default route: /tasks
+   - staff default route: /tasks
+   - admin/manager default route: /dashboard
+   - accountant default route: /revenues
+5. Update listing queries:
+   - admin/manager can query full listing data with prices
+   - sales/maintenance/cleaner/staff must not query price columns
+6. Update task queries:
+   - maintenance/cleaner/staff see only tasks assigned to their profile/employee
+7. Add Access Denied screen for direct forbidden URLs.
+8. Update Vietnamese and English translations for all new roles.

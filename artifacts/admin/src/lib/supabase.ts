@@ -38,16 +38,33 @@ export const supabase: SupabaseClient = createClient(
 export const SUPABASE_URL_FOR_DEBUG = supabaseUrl;
 export const SUPABASE_ANON_KEY_LOADED = Boolean(supabaseAnonKey);
 
-export type AppRole = "admin" | "manager" | "staff" | "accountant" | "sale";
+export type AppRole =
+  | "admin"
+  | "manager"
+  | "accountant"
+  | "sales"
+  | "maintenance"
+  | "cleaner"
+  | "staff";
 
-export const ROLES: AppRole[] = ["admin", "manager", "staff", "accountant", "sale"];
+export const ROLES: AppRole[] = [
+  "admin",
+  "manager",
+  "accountant",
+  "sales",
+  "maintenance",
+  "cleaner",
+  "staff",
+];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   admin: "Admin",
   manager: "Manager",
-  staff: "Staff",
   accountant: "Accountant",
-  sale: "Sales",
+  sales: "Sales",
+  maintenance: "Maintenance",
+  cleaner: "Cleaner",
+  staff: "Staff",
 };
 
 export interface UserProfile {
@@ -71,9 +88,9 @@ export interface Listing {
   bedrooms: number;
   bathrooms: number;
   max_guests: number;
-  /** Omitted for sales role — always guard with isSales check before rendering */
+  /** Omitted for sales/maintenance/cleaner/staff — always guard with canViewPrices() before rendering */
   base_price?: number;
-  /** Omitted for sales role — always guard with isSales check before rendering */
+  /** Omitted for sales/maintenance/cleaner/staff — always guard with canViewPrices() before rendering */
   cleaning_fee?: number;
   status: "active" | "inactive" | "maintenance";
   cover_image_url: string | null;

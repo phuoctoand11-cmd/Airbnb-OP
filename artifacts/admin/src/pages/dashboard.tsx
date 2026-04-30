@@ -48,20 +48,21 @@ import {
   type Revenue,
   type Task,
 } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, canViewPrices } from "@/lib/auth-context";
 import { useI18n } from "@/i18n";
 
 export default function Dashboard() {
   const { t } = useI18n();
   const { role } = useAuth();
-  const isSales = role === "sale";
+  const showPrices = canViewPrices(role);
+  const showFinance = role === "admin" || role === "accountant" || role === "manager";
 
   const dataQuery = useQuery({
-    queryKey: ["dashboard", isSales],
+    queryKey: ["dashboard", showPrices, showFinance],
     queryFn: async () => {
       const [listings, bookings, tasks, calendar] = await Promise.all([
         supabase
-          .from(isSales ? ("sales_listings_view" as "listings") : "listings")
+          .from(showPrices ? "listings" : ("sales_listings_view" as "listings"))
           .select("id,title,city,country,status"),
         supabase.from("bookings").select("*"),
         supabase.from("tasks").select("*"),
@@ -74,7 +75,7 @@ export default function Dashboard() {
 
       let revenues: Revenue[] = [];
       let expenses: Expense[] = [];
-      if (!isSales) {
+      if (showFinance) {
         const [rev, exp] = await Promise.all([
           supabase.from("revenues").select("*"),
           supabase.from("expenses").select("*"),
@@ -207,10 +208,10 @@ export default function Dashboard() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard label={t.dashboard.activeListings} icon={<Home className="h-4 w-4" />} value={stats?.listings} loading={!stats} />
             <KpiCard label={t.dashboard.totalBookings} icon={<Users className="h-4 w-4" />} value={stats?.bookings} loading={!stats} />
-            {!isSales && (
+            {showFinance && (
               <KpiCard label={t.dashboard.revenue} icon={<DollarSign className="h-4 w-4" />} value={stats ? `$${stats.revenue.toLocaleString()}` : undefined} loading={!stats} accent="positive" />
             )}
-            {!isSales && (
+            {showFinance && (
               <KpiCard label={t.dashboard.netProfit} icon={<TrendingUp className="h-4 w-4" />} value={stats ? `$${stats.profit.toLocaleString()}` : undefined} loading={!stats} accent={stats && stats.profit >= 0 ? "positive" : "negative"} />
             )}
           </div>
@@ -218,7 +219,7 @@ export default function Dashboard() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard label={t.dashboard.completedBookings} icon={<CheckCircle2 className="h-4 w-4" />} value={stats?.completed} loading={!stats} />
             <KpiCard label={t.dashboard.cancelledBookings} icon={<XCircle className="h-4 w-4" />} value={stats?.cancelled} loading={!stats} />
-            {!isSales && (
+            {showFinance && (
               <KpiCard label={t.dashboard.expenses} icon={<TrendingDown className="h-4 w-4" />} value={stats ? `$${stats.expense.toLocaleString()}` : undefined} loading={!stats} />
             )}
             <KpiCard label={t.dashboard.occupancy30d} icon={<Percent className="h-4 w-4" />} value={stats ? `${stats.occupancyRate}%` : undefined} loading={!stats} />
@@ -228,8 +229,8 @@ export default function Dashboard() {
             <KpiCard label={t.dashboard.taskCompletion30d} icon={<Activity className="h-4 w-4" />} value={stats ? `${stats.taskCompletion}%` : undefined} loading={!stats} />
           </div>
 
-          <div className={`mt-6 grid gap-4 ${isSales ? "" : "lg:grid-cols-3"}`}>
-            {!isSales && (
+          <div className={`mt-6 grid gap-4 ${showFinance ? "lg:grid-cols-3" : ""}`}>
+            {showFinance && (
               <Card className="lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="text-base">{t.dashboard.revenueVsExpenses}</CardTitle>

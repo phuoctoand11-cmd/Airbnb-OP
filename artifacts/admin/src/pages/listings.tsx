@@ -19,7 +19,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ListingFormDialog } from "@/components/listings/ListingFormDialog";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, hasPermission } from "@/lib/auth-context";
+import { useAuth, hasPermission, canViewPrices } from "@/lib/auth-context";
 import { supabase, type Listing } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
 
@@ -35,17 +35,18 @@ export default function Listings() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
-  const isSales = role === "sale";
+  const showPrices = canViewPrices(role);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
 
-  const listingsTable = isSales ? "sales_listings_view" : "listings";
-  // For sales, explicitly omit price columns (defense-in-depth alongside view definition)
-  const listingsSelect = isSales
-    ? "id,title,description,address,city,country,bedrooms,bathrooms,max_guests,status,cover_image_url,created_at,updated_at"
-    : "*";
+  // sales, maintenance, cleaner, staff use the price-free view
+  const listingsTable = showPrices ? "listings" : "sales_listings_view";
+  // Also explicitly omit price columns as defense-in-depth
+  const listingsSelect = showPrices
+    ? "*"
+    : "id,title,description,address,city,country,bedrooms,bathrooms,max_guests,status,cover_image_url,created_at,updated_at";
 
   const { data: listings, isLoading, error } = useQuery({
     queryKey: ["listings", listingsTable],
@@ -198,7 +199,7 @@ export default function Listings() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-sm">
-                      {isSales ? (
+                      {!showPrices ? (
                         <span className="italic text-muted-foreground">{t.listings.contactManager}</span>
                       ) : (
                         <>

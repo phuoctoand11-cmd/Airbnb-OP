@@ -283,12 +283,17 @@ export const ROLE_PERMISSIONS = {
   manageAmenities: ["admin", "manager"] as AppRole[],
   manageCalendar: ["admin", "manager"] as AppRole[],
   managePricing: ["admin", "manager"] as AppRole[],
-  manageBookings: ["admin", "manager"] as AppRole[],
-  manageTasks: ["admin", "manager", "staff"] as AppRole[],
-  manageFinance: ["admin", "manager", "accountant"] as AppRole[],
+  // sales can create bookings; accountant has read-only bookings access
+  manageBookings: ["admin", "manager", "sales", "accountant"] as AppRole[],
+  // operational roles can see/update tasks; admin/manager manage all
+  manageTasks: ["admin", "manager", "maintenance", "cleaner", "staff"] as AppRole[],
+  // revenues & expenses: admin + accountant only (manager excluded)
+  manageFinance: ["admin", "accountant"] as AppRole[],
   manageUsers: ["admin"] as AppRole[],
   viewReports: ["admin", "manager", "accountant"] as AppRole[],
   viewHR: ["admin", "manager", "accountant"] as AppRole[],
+  // dashboard overview: admin + manager only
+  viewDashboard: ["admin", "manager"] as AppRole[],
 } as const;
 
 export type Permission = keyof typeof ROLE_PERMISSIONS;
@@ -303,30 +308,54 @@ export function hasPermission(role: AppRole | null, perm: Permission) {
 // ── Role-based capability helpers ──────────────────────────────────────────
 // Use these instead of raw role comparisons so changes stay in one place.
 
-/** Sales users only see listings, not the dashboard. */
+/** Only admin and manager see the dashboard overview. */
 export function canViewDashboard(role: AppRole | null): boolean {
-  if (!role) return false;
-  return role !== "sale";
+  return hasPermission(role, "viewDashboard");
 }
 
-/** Sales users must never see any price/financial values. */
+/**
+ * Roles that may see price/financial values on listings.
+ * sales, maintenance, cleaner, and staff must NEVER see prices.
+ */
 export function canViewPrices(role: AppRole | null): boolean {
   if (!role) return false;
-  return role !== "sale";
+  const NO_PRICE_ROLES: AppRole[] = ["sales", "maintenance", "cleaner", "staff"];
+  return !NO_PRICE_ROLES.includes(role);
 }
 
-/** Finance pages: revenues, expenses, reports. */
+/** Finance pages (revenues, expenses) + reports: admin, accountant, manager (reports only). */
 export function canViewFinance(role: AppRole | null): boolean {
   return hasPermission(role, "manageFinance") || hasPermission(role, "viewReports");
 }
 
-/** User/team management. */
+/** User/team management — admin only. */
 export function canManageUsers(role: AppRole | null): boolean {
   return hasPermission(role, "manageUsers");
 }
 
+/**
+ * Returns true for roles that can create new bookings.
+ * admin, manager, sales only.
+ */
+export function canCreateBooking(role: AppRole | null): boolean {
+  return hasPermission(role, "manageBookings") &&
+    (role === "admin" || role === "manager" || role === "sales");
+}
+
+/**
+ * Returns true for roles that see ALL tasks (not just their own).
+ * maintenance, cleaner, and staff only see tasks assigned to them.
+ */
+export function canViewAllTasks(role: AppRole | null): boolean {
+  if (!role) return false;
+  return role === "admin" || role === "manager";
+}
+
 /** Default landing route after login, keyed by role. */
 export function getDefaultRouteByRole(role: AppRole | null): string {
-  if (role === "sale") return "/listings";
-  return "/dashboard";
+  if (role === "accountant") return "/revenues";
+  if (role === "maintenance" || role === "cleaner" || role === "staff") return "/tasks";
+  if (role === "sales") return "/listings";
+  if (role === "admin" || role === "manager") return "/dashboard";
+  return "/listings";
 }
