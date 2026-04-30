@@ -248,8 +248,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session?.user) await loadProfile(session.user.id);
   }, [session, loadProfile]);
 
-  // Derive role from the nested role relation (aliased FK)
-  const role = (profile?.role?.name as AppRole | undefined) ?? null;
+  // Derive role from the nested role relation (aliased FK).
+  // Normalize legacy DB value "sale" → "sales" for backward compatibility.
+  const rawRoleName = profile?.role?.name;
+  const normalizedRoleName = rawRoleName === "sale" ? "sales" : rawRoleName;
+  const role = (normalizedRoleName as AppRole | undefined) ?? null;
 
   const value = useMemo<AuthContextValue>(
     () => ({

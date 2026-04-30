@@ -57,7 +57,7 @@ export default function Login() {
 
   const registerSchema = loginSchema.extend({
     fullName: z.string().min(2, t.login.fullNameMin),
-    role: z.enum(["admin", "manager", "staff", "accountant"] as const),
+    role: z.enum(["admin", "manager", "accountant", "sales", "maintenance", "cleaner", "staff"] as const),
   });
 
   type LoginFormValues = z.infer<typeof loginSchema>;
@@ -77,7 +77,8 @@ export default function Login() {
     try {
       setIsLoading(true);
       await signIn(data.email, data.password);
-      setLocation("/dashboard");
+      // Redirect to "/" — RootRedirect will pick the correct page based on role
+      setLocation("/");
     } catch (error) {
       toast({
         variant: "destructive",

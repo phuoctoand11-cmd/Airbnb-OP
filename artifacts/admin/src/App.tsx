@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -29,9 +30,31 @@ const queryClient = new QueryClient({
 });
 
 function RootRedirect() {
-  const { session, loading, role } = useAuth();
-  if (loading) return null;
+  const { session, loading, role, profileLoading, profileError } = useAuth();
+
+  // 1. Still establishing whether there's a session at all
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // 2. No session → go to login
   if (!session) return <Redirect to="/login" />;
+
+  // 3. Session exists but profile is still loading — wait so we get the correct role
+  // (without this, role is null → getDefaultRouteByRole sends everyone to /listings)
+  if (profileLoading || (role === null && profileError === null)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // 4. Profile resolved → redirect to the role-appropriate default page
   return <Redirect to={getDefaultRouteByRole(role)} />;
 }
 
