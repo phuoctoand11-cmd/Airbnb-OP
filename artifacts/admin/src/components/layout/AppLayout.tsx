@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
+  AlertTriangle,
   Building,
   CalendarDays,
   CalendarRange,
@@ -15,6 +16,7 @@ import {
   Receipt,
   Settings,
   Users,
+  X,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -45,9 +47,10 @@ const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
 
 export function AppLayout({ children, title, action }: AppLayoutProps) {
   const [location] = useLocation();
-  const { profile, role, signOut } = useAuth();
+  const { profile, role, signOut, blockError } = useAuth();
   const { t, lang, setLang } = useI18n();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [warningDismissed, setWarningDismissed] = useState(false);
 
   const NAV_ITEMS: {
     href: string;
@@ -201,6 +204,20 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
           </div>
           {action && <div className="ml-4">{action}</div>}
         </header>
+
+        {blockError && !warningDismissed && (
+          <div className="flex items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+            <span className="flex-1">{blockError}</span>
+            <button
+              onClick={() => setWarningDismissed(true)}
+              className="ml-auto rounded p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl">{children}</div>

@@ -45,10 +45,8 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const PROFILE_FETCH_TIMEOUT_MS = 5000;
 const SESSION_INIT_TIMEOUT_MS = 5000;
 
-// Statuses that are allowed to log in
-const ALLOWED_EMPLOYEE_STATUSES = ["active", "probation"] as const;
-// Statuses shown as "deactivated" (vs other blocked states)
-const DEACTIVATED_EMPLOYEE_STATUSES = ["inactive", "resigned", "terminated", "rejected"] as const;
+// Statuses that explicitly block login when an employee row exists
+const BLOCKED_EMPLOYEE_STATUSES = ["inactive", "resigned", "terminated", "rejected"] as const;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
@@ -123,12 +121,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfileError(null);
 
       // ── Employee status enforcement ─────────────────────────────────────
-      // Derive role so we can skip the check for admins.
+      // Rules:
+      //   - Admin: skip check entirely
+      //   - No employee row: allow login, show info warning (not a hard block)
+      //   - Employee row with blocked status: force sign-out, show deactivated message
+      //   - Employee row with any other status: allow login
       const rawRole = (data as { role?: { name?: string } | null })?.role?.name;
       const derivedRole = rawRole === "sale" ? "sales" : rawRole;
 
+      // eslint-disable-next-line no-console
+      console.info("[auth] employee check start", { userId, derivedRole });
+
       if (derivedRole !== "admin") {
-        const { data: empRow } = await supabase
+        const { data: empRow, error: empError } = await supabase
           .from("employees")
           .select("status")
           .eq("profile_id", userId)
@@ -136,39 +141,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!mountedRef.current) return;
 
-        // eslint-disable-next-line no-console
-        console.info("[auth] employee status check", { empRow, derivedRole });
+        if (empError) {
+          // eslint-disable-next-line no-console
+          console.warn("[auth] employee query error — allowing login", { empError });
+        }
 
         if (!empRow) {
-          // No linked employee record and not admin → block
-          await supabase.auth.signOut();
-          if (!mountedRef.current) return;
-          setProfile(null);
-          setBlockError(
-            "Your account is not linked to an employee profile. Please contact admin."
-          );
-          return;
-        }
+          // No linked employee record — allow login but surface an info warning
+          // eslint-disable-next-line no-console
+          console.info("[auth] employee check result", {
+            userId,
+            derivedRole,
+            employeeStatus: null,
+            reason: "allowed — no employee row (not required)",
+          });
+          // Show a non-blocking warning (blockError is displayed on login page
+          // but does NOT prevent access — we still set the profile below)
+          setBlockError("Employee profile is not linked yet. Please ask your admin to link it.");
+        } else {
+          const status = empRow.status as string;
+          const isBlocked = (BLOCKED_EMPLOYEE_STATUSES as readonly string[]).includes(status);
 
-        const status = empRow.status as string;
-        const isAllowed = (ALLOWED_EMPLOYEE_STATUSES as readonly string[]).includes(status);
+          // eslint-disable-next-line no-console
+          console.info("[auth] employee check result", {
+            userId,
+            derivedRole,
+            employeeStatus: status,
+            reason: isBlocked ? "blocked — deactivated status" : "allowed",
+          });
 
-        if (!isAllowed) {
-          await supabase.auth.signOut();
-          if (!mountedRef.current) return;
-          setProfile(null);
-          const isDeactivated = (DEACTIVATED_EMPLOYEE_STATUSES as readonly string[]).includes(status);
-          setBlockError(
-            isDeactivated
-              ? "Your account has been deactivated. Please contact admin."
-              : "Your account is not yet active. Please contact admin."
-          );
-          return;
+          if (isBlocked) {
+            await supabase.auth.signOut();
+            if (!mountedRef.current) return;
+            setProfile(null);
+            setBlockError("Your account has been deactivated. Please contact admin.");
+            return;
+          }
+
+          // Employee exists and status is fine — clear any previous block error
+          setBlockError(null);
         }
+      } else {
+        // eslint-disable-next-line no-console
+        console.info("[auth] employee check result", {
+          userId,
+          derivedRole,
+          employeeStatus: "skipped",
+          reason: "allowed — admin role bypasses check",
+        });
+        setBlockError(null);
       }
 
-      // All checks passed — clear any previous block and set profile
-      setBlockError(null);
       setProfile(data as UserProfile);
     } catch (err) {
       if (!mountedRef.current) return;
