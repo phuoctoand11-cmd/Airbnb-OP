@@ -129,17 +129,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const rawRole = (data as { role?: { name?: string } | null })?.role?.name;
       const derivedRole = rawRole === "sale" ? "sales" : rawRole;
 
+      const userEmail = (data as { email?: string | null })?.email ?? null;
+
       // eslint-disable-next-line no-console
-      console.info("[auth] employee check start", { userId, derivedRole });
+      console.info("[auth] employee check start", { userId, userEmail, derivedRole });
 
       if (derivedRole !== "admin") {
-        const { data: empRow, error: empError } = await supabase
-          .from("employees")
-          .select("status")
+        // ── Strategy 1: match by profile_id via the view (RLS-safe for non-admins)
+        // The raw `employees` table has RLS that blocks non-admin reads; the view is open.
+        let empRow: { status: string } | null = null;
+        let empError: unknown = null;
+
+        const byProfileId = await supabase
+          .from("employee_basic_view")
+          .select("status, profile_id")
           .eq("profile_id", userId)
           .maybeSingle();
 
+        // eslint-disable-next-line no-console
+        console.info("[auth] employee query by profile_id", {
+          userId,
+          row: byProfileId.data,
+          error: byProfileId.error,
+        });
+
         if (!mountedRef.current) return;
+        empError = byProfileId.error;
+        empRow = byProfileId.data as { status: string } | null;
+
+        // ── Strategy 2: fallback — match by email if profile_id not yet set in view
+        if (!empRow && userEmail && !byProfileId.error) {
+          const byEmail = await supabase
+            .from("employee_basic_view")
+            .select("status, profile_id")
+            .ilike("email", userEmail)
+            .maybeSingle();
+
+          // eslint-disable-next-line no-console
+          console.info("[auth] employee query by email (fallback)", {
+            userEmail,
+            row: byEmail.data,
+            error: byEmail.error,
+          });
+
+          if (!mountedRef.current) return;
+          if (!byEmail.error && byEmail.data) {
+            empRow = byEmail.data as { status: string };
+          }
+        }
 
         if (empError) {
           // eslint-disable-next-line no-console
@@ -151,12 +188,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // eslint-disable-next-line no-console
           console.info("[auth] employee check result", {
             userId,
+            userEmail,
             derivedRole,
             employeeStatus: null,
-            reason: "allowed — no employee row (not required)",
+            reason: "allowed — no employee row found (not required)",
           });
-          // Show a non-blocking warning (blockError is displayed on login page
-          // but does NOT prevent access — we still set the profile below)
           setBlockError("Employee profile is not linked yet. Please ask your admin to link it.");
         } else {
           const status = empRow.status as string;
@@ -165,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // eslint-disable-next-line no-console
           console.info("[auth] employee check result", {
             userId,
+            userEmail,
             derivedRole,
             employeeStatus: status,
             reason: isBlocked ? "blocked — deactivated status" : "allowed",
