@@ -18,6 +18,16 @@ import {
   isSupabaseConfigured,
 } from "./supabase";
 
+export interface EmployeeRow {
+  id: string;
+  profile_id: string | null;
+  full_name: string | null;
+  email: string | null;
+  status: string;
+  role: string | null;
+  team_id: string | null;
+}
+
 interface AuthContextValue {
   loading: boolean;
   profileLoading: boolean;
@@ -27,6 +37,7 @@ interface AuthContextValue {
   session: Session | null;
   user: User | null;
   profile: UserProfile | null;
+  employee: EmployeeRow | null;
   role: AppRole | null;
   isConfigured: boolean;
   signIn: (email: string, password: string) => Promise<void>;
@@ -45,8 +56,51 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const PROFILE_FETCH_TIMEOUT_MS = 5000;
 const SESSION_INIT_TIMEOUT_MS = 5000;
 
-// Statuses that explicitly block login when an employee row exists
+// Statuses that block login
 const BLOCKED_EMPLOYEE_STATUSES = ["inactive", "resigned", "terminated", "rejected"] as const;
+// Statuses that explicitly allow login
+const ALLOWED_EMPLOYEE_STATUSES = ["active", "probation", "candidate", "interviewing"] as const;
+
+/** Single source of truth: fetch employee row by profile_id from the employees table. */
+async function getCurrentEmployee(userId: string): Promise<EmployeeRow | null> {
+  const { data, error } = await supabase
+    .from("employees")
+    .select("id, profile_id, full_name, email, status, role, team_id")
+    .eq("profile_id", userId)
+    .maybeSingle();
+
+  // eslint-disable-next-line no-console
+  console.info("[auth] getCurrentEmployee result", {
+    userId,
+    employee: data
+      ? { id: data.id, profile_id: data.profile_id, email: data.email, status: data.status }
+      : null,
+    error: error ? { message: error.message, code: error.code } : null,
+  });
+
+  if (error) return null;
+  return (data as EmployeeRow | null) ?? null;
+}
+
+/** Clear all cached auth state from browser storage. */
+function clearAuthStorage() {
+  try {
+    // Remove the Supabase session storage key
+    localStorage.removeItem("airbnb-ops-admin-auth");
+    // Remove any other auth-related cached keys
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith("sb-") || key.includes("supabase"))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+    sessionStorage.clear();
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
@@ -60,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [blockError, setBlockError] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [employee, setEmployee] = useState<EmployeeRow | null>(null);
   const mountedRef = useRef(true);
 
   const loadProfile = useCallback(async (userId: string) => {
@@ -69,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfileError(null);
 
     try {
+      // ── Step 1: Fetch profile ───────────────────────────────────────────
       const fetchPromise = supabase
         .from("users")
         .select(`
@@ -91,144 +147,93 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mountedRef.current) return;
 
       // eslint-disable-next-line no-console
-      console.info("[auth] profile query result", { data, error });
+      console.info("[auth] profile result", {
+        userId,
+        email: (data as { email?: string } | null)?.email ?? null,
+        role: (data as { role?: { name?: string } | null } | null)?.role?.name ?? null,
+        error: error ? { message: error.message, code: error.code } : null,
+      });
 
       if (error) {
-        // PGRST116 = no rows returned by .single()
         if (error.code === "PGRST116") {
           setProfileError("User profile not found. Please contact admin.");
           setProfile(null);
+          setEmployee(null);
           return;
         }
         // eslint-disable-next-line no-console
         console.error("[auth] profile query error", {
           message: error.message,
           code: error.code,
-          details: error.details,
-          hint: error.hint,
         });
         setProfileError(error.message);
         setProfile(null);
+        setEmployee(null);
         return;
       }
 
       if (!data) {
         setProfileError("User profile not found. Please contact admin.");
         setProfile(null);
+        setEmployee(null);
         return;
       }
 
       setProfileError(null);
 
-      // ── Employee status enforcement ─────────────────────────────────────
-      // Rules:
-      //   - Admin: skip check entirely
-      //   - No employee row: allow login, show info warning (not a hard block)
-      //   - Employee row with blocked status: force sign-out, show deactivated message
-      //   - Employee row with any other status: allow login
       const rawRole = (data as { role?: { name?: string } | null })?.role?.name;
       const derivedRole = rawRole === "sale" ? "sales" : rawRole;
 
-      const userEmail = (data as { email?: string | null })?.email ?? null;
-
-      // eslint-disable-next-line no-console
-      console.info("[auth] employee check start", { userId, userEmail, derivedRole });
-
-      if (derivedRole !== "admin") {
-        // ── Strategy 1: match by profile_id via the view (RLS-safe for non-admins)
-        // The raw `employees` table has RLS that blocks non-admin reads; the view is open.
-        let empRow: { status: string } | null = null;
-        let empError: unknown = null;
-
-        const byProfileId = await supabase
-          .from("employee_basic_view")
-          .select("status, profile_id")
-          .eq("profile_id", userId)
-          .maybeSingle();
-
+      // ── Step 2: Fetch employee row ──────────────────────────────────────
+      // Admin bypasses the check entirely
+      if (derivedRole === "admin") {
         // eslint-disable-next-line no-console
-        console.info("[auth] employee query by profile_id", {
-          userId,
-          row: byProfileId.data,
-          error: byProfileId.error,
-        });
-
-        if (!mountedRef.current) return;
-        empError = byProfileId.error;
-        empRow = byProfileId.data as { status: string } | null;
-
-        // ── Strategy 2: fallback — match by email if profile_id not yet set in view
-        if (!empRow && userEmail && !byProfileId.error) {
-          const byEmail = await supabase
-            .from("employee_basic_view")
-            .select("status, profile_id")
-            .ilike("email", userEmail)
-            .maybeSingle();
-
-          // eslint-disable-next-line no-console
-          console.info("[auth] employee query by email (fallback)", {
-            userEmail,
-            row: byEmail.data,
-            error: byEmail.error,
-          });
-
-          if (!mountedRef.current) return;
-          if (!byEmail.error && byEmail.data) {
-            empRow = byEmail.data as { status: string };
-          }
-        }
-
-        if (empError) {
-          // eslint-disable-next-line no-console
-          console.warn("[auth] employee query error — allowing login", { empError });
-        }
-
-        if (!empRow) {
-          // No linked employee record — allow login but surface an info warning
-          // eslint-disable-next-line no-console
-          console.info("[auth] employee check result", {
-            userId,
-            userEmail,
-            derivedRole,
-            employeeStatus: null,
-            reason: "allowed — no employee row found (not required)",
-          });
-          setBlockError("Employee profile is not linked yet. Please ask your admin to link it.");
-        } else {
-          const status = empRow.status as string;
-          const isBlocked = (BLOCKED_EMPLOYEE_STATUSES as readonly string[]).includes(status);
-
-          // eslint-disable-next-line no-console
-          console.info("[auth] employee check result", {
-            userId,
-            userEmail,
-            derivedRole,
-            employeeStatus: status,
-            reason: isBlocked ? "blocked — deactivated status" : "allowed",
-          });
-
-          if (isBlocked) {
-            await supabase.auth.signOut();
-            if (!mountedRef.current) return;
-            setProfile(null);
-            setBlockError("Your account has been deactivated. Please contact admin.");
-            return;
-          }
-
-          // Employee exists and status is fine — clear any previous block error
-          setBlockError(null);
-        }
-      } else {
-        // eslint-disable-next-line no-console
-        console.info("[auth] employee check result", {
-          userId,
-          derivedRole,
-          employeeStatus: "skipped",
-          reason: "allowed — admin role bypasses check",
-        });
+        console.info("[auth] employee check skipped — admin role", { userId });
+        setEmployee(null);
         setBlockError(null);
+        setProfile(data as UserProfile);
+        return;
       }
 
+      const empRow = await getCurrentEmployee(userId);
+      if (!mountedRef.current) return;
+
+      setEmployee(empRow);
+
+      // eslint-disable-next-line no-console
+      console.info("[auth] auth check summary", {
+        userId,
+        profileEmail: (data as { email?: string } | null)?.email ?? null,
+        profileRole: derivedRole,
+        employeeId: empRow?.id ?? null,
+        employeeStatus: empRow?.status ?? null,
+      });
+
+      // ── Step 3: Enforce employee status ─────────────────────────────────
+      if (!empRow) {
+        // No linked employee — allow login with a soft warning
+        setBlockError("Employee profile is not linked yet. Please ask your admin to link it.");
+        setProfile(data as UserProfile);
+        return;
+      }
+
+      const status = empRow.status as string;
+      const isBlocked = (BLOCKED_EMPLOYEE_STATUSES as readonly string[]).includes(status);
+
+      if (isBlocked) {
+        // eslint-disable-next-line no-console
+        console.warn("[auth] blocked — employee status is deactivated", { userId, status });
+        await supabase.auth.signOut();
+        clearAuthStorage();
+        if (!mountedRef.current) return;
+        setProfile(null);
+        setEmployee(null);
+        setBlockError("Your account has been deactivated. Please contact admin.");
+        return;
+      }
+
+      // Active / probation / candidate / interviewing — allow
+      setBlockError(null);
       setProfile(data as UserProfile);
     } catch (err) {
       if (!mountedRef.current) return;
@@ -237,6 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("[auth] loadProfile threw", msg);
       setProfileError(msg);
       setProfile(null);
+      setEmployee(null);
     } finally {
       if (mountedRef.current) setProfileLoading(false);
     }
@@ -272,17 +278,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         setSession(data.session);
-        setLoading(false); // Unblock routing immediately after session is known
+        setLoading(false);
 
         if (data.session?.user) {
-          // Load profile in background — does not block navigation
           loadProfile(data.session.user.id);
         }
       } catch (err) {
         if (!mountedRef.current) return;
         // eslint-disable-next-line no-console
         console.error("[auth] init failed", err instanceof Error ? err.message : err);
-        setLoading(false); // Always unblock on error too
+        setLoading(false);
       }
     };
 
@@ -297,12 +302,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           userId: newSession?.user?.id ?? null,
         });
         setSession(newSession);
-        setLoading(false); // Ensure loading is cleared on any auth event
+        setLoading(false);
         if (newSession?.user) {
           loadProfile(newSession.user.id);
         } else {
           setProfile(null);
+          setEmployee(null);
           setProfileError(null);
+          // blockError intentionally NOT cleared here — must survive forced sign-out
+          // so the login page can display the deactivated message.
         }
       }
     );
@@ -361,15 +369,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    clearAuthStorage();
     setProfile(null);
+    setEmployee(null);
     setProfileError(null);
+    setBlockError(null);
   }, []);
 
   const refreshProfile = useCallback(async () => {
     if (session?.user) await loadProfile(session.user.id);
   }, [session, loadProfile]);
 
-  // Derive role from the nested role relation (aliased FK).
+  // Derive role from the nested role relation.
   // Normalize legacy DB value "sale" → "sales" for backward compatibility.
   const rawRoleName = profile?.role?.name;
   const normalizedRoleName = rawRoleName === "sale" ? "sales" : rawRoleName;
@@ -384,6 +395,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       profile,
+      employee,
       role,
       isConfigured: isSupabaseConfigured,
       signIn,
@@ -391,7 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshProfile,
     }),
-    [loading, profileLoading, profileError, blockError, session, profile, role, signIn, signUp, signOut, refreshProfile]
+    [loading, profileLoading, profileError, blockError, session, profile, employee, role, signIn, signUp, signOut, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -408,16 +420,12 @@ export const ROLE_PERMISSIONS = {
   manageAmenities: ["admin", "manager"] as AppRole[],
   manageCalendar: ["admin", "manager"] as AppRole[],
   managePricing: ["admin", "manager"] as AppRole[],
-  // sales can create bookings; accountant has read-only bookings access
   manageBookings: ["admin", "manager", "sales", "accountant"] as AppRole[],
-  // operational roles can see/update tasks; admin/manager manage all
   manageTasks: ["admin", "manager", "maintenance", "cleaner", "staff"] as AppRole[],
-  // revenues & expenses: admin + accountant only (manager excluded)
   manageFinance: ["admin", "accountant"] as AppRole[],
   manageUsers: ["admin"] as AppRole[],
   viewReports: ["admin", "manager", "accountant"] as AppRole[],
   viewHR: ["admin", "manager", "accountant"] as AppRole[],
-  // dashboard overview: admin + manager only
   viewDashboard: ["admin", "manager"] as AppRole[],
 } as const;
 
@@ -425,58 +433,38 @@ export type Permission = keyof typeof ROLE_PERMISSIONS;
 
 export function hasPermission(role: AppRole | null, perm: Permission) {
   if (!role) return false;
-  // Admin always has full access to all menus
   if (role === "admin") return true;
   return (ROLE_PERMISSIONS[perm] as readonly AppRole[]).includes(role);
 }
 
-// ── Role-based capability helpers ──────────────────────────────────────────
-// Use these instead of raw role comparisons so changes stay in one place.
-
-/** Only admin and manager see the dashboard overview. */
 export function canViewDashboard(role: AppRole | null): boolean {
   return hasPermission(role, "viewDashboard");
 }
 
-/**
- * Roles that may see price/financial values on listings.
- * sales, maintenance, cleaner, and staff must NEVER see prices.
- */
 export function canViewPrices(role: AppRole | null): boolean {
   if (!role) return false;
   const NO_PRICE_ROLES: AppRole[] = ["sales", "maintenance", "cleaner", "staff"];
   return !NO_PRICE_ROLES.includes(role);
 }
 
-/** Finance pages (revenues, expenses) + reports: admin, accountant, manager (reports only). */
 export function canViewFinance(role: AppRole | null): boolean {
   return hasPermission(role, "manageFinance") || hasPermission(role, "viewReports");
 }
 
-/** User/team management — admin only. */
 export function canManageUsers(role: AppRole | null): boolean {
   return hasPermission(role, "manageUsers");
 }
 
-/**
- * Returns true for roles that can create new bookings.
- * admin, manager, sales only.
- */
 export function canCreateBooking(role: AppRole | null): boolean {
   return hasPermission(role, "manageBookings") &&
     (role === "admin" || role === "manager" || role === "sales");
 }
 
-/**
- * Returns true for roles that see ALL tasks (not just their own).
- * maintenance, cleaner, and staff only see tasks assigned to them.
- */
 export function canViewAllTasks(role: AppRole | null): boolean {
   if (!role) return false;
   return role === "admin" || role === "manager";
 }
 
-/** Default landing route after login, keyed by role. */
 export function getDefaultRouteByRole(role: AppRole | null): string {
   if (role === "accountant") return "/revenues";
   if (role === "maintenance" || role === "cleaner" || role === "staff") return "/tasks";
@@ -484,3 +472,6 @@ export function getDefaultRouteByRole(role: AppRole | null): string {
   if (role === "admin" || role === "manager") return "/dashboard";
   return "/listings";
 }
+
+// Kept for external reference — not used internally
+export { BLOCKED_EMPLOYEE_STATUSES, ALLOWED_EMPLOYEE_STATUSES };

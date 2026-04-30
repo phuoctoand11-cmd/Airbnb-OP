@@ -47,10 +47,11 @@ const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
 
 export function AppLayout({ children, title, action }: AppLayoutProps) {
   const [location] = useLocation();
-  const { profile, role, signOut, blockError } = useAuth();
+  const { profile, role, signOut, blockError, session, employee } = useAuth();
   const { t, lang, setLang } = useI18n();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [warningDismissed, setWarningDismissed] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
 
   const NAV_ITEMS: {
     href: string;
@@ -230,6 +231,48 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
+
+      {/* ── Temporary auth debug panel ──────────────────────────────────── */}
+      <div className="fixed bottom-3 right-3 z-50">
+        {debugOpen ? (
+          <div className="w-72 rounded-lg border border-zinc-300 bg-white/95 shadow-lg backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-700">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                Auth Debug
+              </span>
+              <button
+                onClick={() => setDebugOpen(false)}
+                className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="space-y-1 px-3 py-2 font-mono text-[11px]">
+              <DebugRow label="session.user.id" value={session?.user?.id ?? "—"} />
+              <DebugRow label="profile.email" value={profile?.email ?? "—"} />
+              <DebugRow label="profile.role" value={profile?.role?.name ?? "—"} />
+              <DebugRow label="employee.id" value={employee?.id ?? "—"} />
+              <DebugRow label="employee.status" value={employee?.status ?? "—"} />
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setDebugOpen(true)}
+            className="rounded-full border border-zinc-300 bg-white/90 px-2.5 py-1 text-[10px] font-semibold text-zinc-500 shadow hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-400"
+          >
+            debug
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DebugRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-1">
+      <span className="w-32 shrink-0 text-zinc-400">{label}</span>
+      <span className="min-w-0 break-all text-zinc-800 dark:text-zinc-200">{value}</span>
     </div>
   );
 }

@@ -1,0 +1,63 @@
+Fix employee profile linking and inactive employee login enforcement completely.
+
+Current facts from Supabase:
+- profiles.id is linked correctly to employees.profile_id.
+- daidi@gmail.com has role sales and employees.status = active.
+- xinthiet@gmail.com has employees.status = inactive.
+- However app still shows "Employee profile is not linked yet" for linked users.
+- Inactive employee can still log in.
+
+Fix requirements:
+
+1. Create one single source of truth function:
+   getCurrentEmployee(session.user.id)
+
+It must query:
+   supabase
+     .from('employees')
+     .select('id, profile_id, full_name, email, status, role, team_id')
+     .eq('profile_id', session.user.id)
+     .maybeSingle()
+
+2. Do NOT query by email for employee linking.
+3. Do NOT query employee_basic_view for login enforcement.
+4. Do NOT rely on localStorage/sessionStorage cached employee link.
+5. On every app startup and after every login:
+   - get session
+   - get profile by profiles.id = session.user.id
+   - get employee by employees.profile_id = session.user.id
+   - log all three results to console
+
+6. Show "Employee profile is not linked yet" ONLY IF:
+   - role is not admin
+   - employee query returns null
+
+7. If employee exists and employee.status is:
+   inactive, resigned, terminated, rejected
+   then:
+   - immediately call supabase.auth.signOut()
+   - clear localStorage and sessionStorage app cache
+   - redirect to /login
+   - show message:
+     "Your account has been deactivated. Please contact admin."
+
+8. If employee exists and status is:
+   active, probation, candidate, interviewing
+   allow login.
+
+9. Admin can always login even if no employee row exists.
+
+10. Add visible debug temporarily on the page for current logged user:
+   - session.user.id
+   - profile.email
+   - profile.role
+   - employee.id
+   - employee.status
+Do not show any tokens or secrets.
+
+11. Make logout clear all cached auth/profile/employee state.
+
+12. After fixing, test:
+   - daidi@gmail.com sales active: no warning, can access /listings
+   - xinthiet@gmail.com maintenance inactive: blocked from login
+   - admin: can login normally
