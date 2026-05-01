@@ -184,6 +184,14 @@ export interface ChecklistItem {
   checked: boolean;
 }
 
+/** Single photo entry stored inside tasks.photos (JSONB array). */
+export interface PhotoEntry {
+  checklist_item: string;
+  url: string;
+  uploaded_at: string;
+  uploaded_by: string;
+}
+
 export interface Task {
   id: string;
   listing_id: string | null;
@@ -197,7 +205,7 @@ export interface Task {
   priority: "low" | "medium" | "high";
   status: "todo" | "in_progress" | "done" | "cancelled";
   checklist: ChecklistItem[];
-  photos: string[];
+  photos: PhotoEntry[];
   created_at: string;
 }
 

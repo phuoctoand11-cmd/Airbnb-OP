@@ -473,6 +473,3 @@ export function getDefaultRouteByRole(role: AppRole | null): string {
   return "/listings";
 }
 
-// Re-exported so callers don't need to reach into the const arrays directly
-export const BLOCKED_EMPLOYEE_STATUSES_LIST = ["inactive", "resigned", "terminated", "rejected"] as const;
-export const ALLOWED_EMPLOYEE_STATUSES_LIST = ["active", "probation", "candidate", "interviewing"] as const;

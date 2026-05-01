@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  CheckCircle2,
   CheckSquare,
   ChevronDown,
   ChevronUp,
+  Circle,
   Loader2,
   Plus,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
@@ -21,7 +24,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -52,6 +54,7 @@ import {
   type ChecklistItem,
   type Employee,
   type Listing,
+  type PhotoEntry,
   type Task,
   type TaskType,
 } from "@/lib/supabase";
@@ -156,6 +159,12 @@ type FormValues = z.infer<typeof schema>;
 
 function genId() {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+}
+
+const PHOTO_KEYWORDS = ["chụp ảnh", "upload ảnh", "photo"];
+function isPhotoItem(title: string): boolean {
+  const lower = title.toLowerCase();
+  return PHOTO_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
@@ -378,6 +387,16 @@ export default function Tasks() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
+  const updatePhotosMutation = useMutation({
+    mutationFn: async ({ id, photos }: { id: string; photos: PhotoEntry[] }) => {
+      const { error } = await supabase.from("tasks").update({ photos }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+    onError: (err: Error) =>
+      toast({ variant: "destructive", title: "Không thể lưu ảnh", description: err.message }),
+  });
+
   const canEditTask = (tk: Task) => canManageAll || tk.assignee_id === user?.id;
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -483,6 +502,8 @@ export default function Tasks() {
                         priorityLabel={t.status[tk.priority]}
                         dueLabel={t.tasks.due}
                         canEdit={canEditTask(tk)}
+                        canUploadPhoto={canEditTask(tk)}
+                        currentUserId={user?.id}
                         statusLabel={STATUS_LABEL}
                         checklistLabel={t.tasks.checklist}
                         onStatusChange={(v) =>
@@ -494,6 +515,9 @@ export default function Tasks() {
                           );
                           updateChecklistMutation.mutate({ id: tk.id, checklist: updated });
                         }}
+                        onPhotosUpdate={(photos) =>
+                          updatePhotosMutation.mutate({ id: tk.id, photos })
+                        }
                       />
                     ))
                   )}
@@ -828,9 +852,12 @@ interface TaskCardProps {
   dueLabel: string;
   checklistLabel: string;
   canEdit: boolean;
+  canUploadPhoto: boolean;
+  currentUserId: string | undefined;
   statusLabel: Record<Task["status"], string>;
   onStatusChange: (v: Task["status"]) => void;
   onChecklistToggle: (idx: number) => void;
+  onPhotosUpdate: (photos: PhotoEntry[]) => void;
 }
 
 function TaskCard({
@@ -843,13 +870,17 @@ function TaskCard({
   dueLabel,
   checklistLabel,
   canEdit,
+  canUploadPhoto,
+  currentUserId,
   statusLabel,
   onStatusChange,
   onChecklistToggle,
+  onPhotosUpdate,
 }: TaskCardProps) {
   const [checklistOpen, setChecklistOpen] = useState(false);
 
   const checklist: ChecklistItem[] = Array.isArray(task.checklist) ? task.checklist : [];
+  const photos: PhotoEntry[] = Array.isArray(task.photos) ? task.photos : [];
   const doneCount = checklist.filter((c) => c.checked).length;
   const hasChecklist = checklist.length > 0;
 
@@ -909,24 +940,82 @@ function TaskCard({
 
       {/* Checklist items (expanded) */}
       {checklistOpen && (
-        <ul className="mb-2 space-y-1 pl-1">
-          {checklist.map((item, idx) => (
-            <li key={item.id ?? idx} className="flex items-center gap-2">
-              <Checkbox
-                id={`cl-${task.id}-${idx}`}
-                checked={item.checked}
-                disabled={!canEdit}
-                onCheckedChange={() => onChecklistToggle(idx)}
-                className="h-3.5 w-3.5"
-              />
-              <label
-                htmlFor={`cl-${task.id}-${idx}`}
-                className={`text-xs ${item.checked ? "line-through text-muted-foreground" : ""}`}
-              >
-                {item.title}
-              </label>
-            </li>
-          ))}
+        <ul className="mb-2 space-y-1.5">
+          {checklist.map((item, idx) => {
+            const itemPhotos = photos.filter((p) => p.checklist_item === item.title);
+            const showPhotoSection = isPhotoItem(item.title);
+            return (
+              <li key={item.id ?? idx}>
+                {/* Checklist row */}
+                <div
+                  className={`flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors ${
+                    item.checked
+                      ? "bg-green-50 dark:bg-green-950/30"
+                      : "hover:bg-muted/40"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => onChecklistToggle(idx)}
+                    className="shrink-0 disabled:cursor-not-allowed"
+                  >
+                    {item.checked ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <Circle className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </button>
+                  <span
+                    className={`flex-1 text-xs leading-snug ${
+                      item.checked
+                        ? "font-medium text-green-700 dark:text-green-300"
+                        : "text-foreground"
+                    }`}
+                  >
+                    {item.title}
+                  </span>
+                </div>
+
+                {/* Photo section (below photo-related items) */}
+                {showPhotoSection && (
+                  <div className="ml-6 mt-1.5 space-y-1.5">
+                    {/* Thumbnails */}
+                    {itemPhotos.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {itemPhotos.map((p, pi) => (
+                          <a
+                            key={pi}
+                            href={p.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="group relative"
+                          >
+                            <img
+                              src={p.url}
+                              alt="uploaded"
+                              className="h-16 w-16 rounded border object-cover transition-opacity group-hover:opacity-80"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Upload button (only for assigned staff / admin) */}
+                    {canUploadPhoto && (
+                      <PhotoUploadButton
+                        taskId={task.id}
+                        checklistItem={item.title}
+                        existingPhotos={photos}
+                        currentUserId={currentUserId}
+                        onPhotosUpdate={onPhotosUpdate}
+                      />
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -943,6 +1032,88 @@ function TaskCard({
             <SelectItem value="cancelled">{statusLabel.cancelled}</SelectItem>
           </SelectContent>
         </Select>
+      )}
+    </div>
+  );
+}
+
+// ── Photo upload button ───────────────────────────────────────────────────────
+
+interface PhotoUploadButtonProps {
+  taskId: string;
+  checklistItem: string;
+  existingPhotos: PhotoEntry[];
+  currentUserId: string | undefined;
+  onPhotosUpdate: (photos: PhotoEntry[]) => void;
+}
+
+function PhotoUploadButton({
+  taskId,
+  checklistItem,
+  existingPhotos,
+  currentUserId,
+  onPhotosUpdate,
+}: PhotoUploadButtonProps) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const ext = file.name.split(".").pop() ?? "jpg";
+      const path = `${taskId}/${genId()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("task-images")
+        .upload(path, file, { upsert: false });
+      if (uploadErr) throw uploadErr;
+      const { data: urlData } = supabase.storage
+        .from("task-images")
+        .getPublicUrl(path);
+      const newPhoto: PhotoEntry = {
+        checklist_item: checklistItem,
+        url: urlData.publicUrl,
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: currentUserId ?? "",
+      };
+      onPhotosUpdate([...existingPhotos, newPhoto]);
+    } catch (err) {
+      setUploadError((err as Error).message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFile}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        disabled={uploading}
+        onClick={() => fileRef.current?.click()}
+      >
+        {uploading ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Upload className="h-3 w-3" />
+        )}
+        {uploading ? "Đang tải lên..." : "Tải ảnh lên"}
+      </Button>
+      {uploadError && (
+        <p className="mt-1 text-xs text-destructive">{uploadError}</p>
       )}
     </div>
   );
