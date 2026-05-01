@@ -200,7 +200,8 @@ export interface Task {
   title: string;
   description: string | null;
   notes: string | null;
-  assignee_id: string | null;
+  /** Employee table id (not profile UUID). Filter staff tasks with assigned_employee_id = employee.id */
+  assigned_employee_id: string | null;
   due_date: string | null;
   priority: "low" | "medium" | "high";
   status: "todo" | "in_progress" | "done" | "cancelled";

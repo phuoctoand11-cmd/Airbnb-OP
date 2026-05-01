@@ -17,6 +17,9 @@ import {
   type UserProfile,
   isSupabaseConfigured,
 } from "./supabase";
+import { ROLE_PERMISSIONS, type Permission } from "./role-permissions";
+export { ROLE_PERMISSIONS };
+export type { Permission };
 
 export interface EmployeeRow {
   id: string;
@@ -414,22 +417,6 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-
-export const ROLE_PERMISSIONS = {
-  manageListings: ["admin", "manager"] as AppRole[],
-  manageAmenities: ["admin", "manager"] as AppRole[],
-  manageCalendar: ["admin", "manager"] as AppRole[],
-  managePricing: ["admin", "manager"] as AppRole[],
-  manageBookings: ["admin", "manager", "sales", "accountant"] as AppRole[],
-  manageTasks: ["admin", "manager", "maintenance", "cleaner", "cleaningstaff", "staff"] as AppRole[],
-  manageFinance: ["admin", "accountant"] as AppRole[],
-  manageUsers: ["admin"] as AppRole[],
-  viewReports: ["admin", "manager", "accountant"] as AppRole[],
-  viewHR: ["admin", "manager", "accountant"] as AppRole[],
-  viewDashboard: ["admin", "manager"] as AppRole[],
-} as const;
-
-export type Permission = keyof typeof ROLE_PERMISSIONS;
 
 export function hasPermission(role: AppRole | null, perm: Permission) {
   if (!role) return false;

@@ -52,7 +52,7 @@ import { useI18n } from "@/i18n";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type AssignableEmployee = Pick<Employee, "id" | "full_name" | "email" | "status" | "profile_id">;
+type AssignableEmployee = Pick<Employee, "id" | "full_name" | "email" | "status">;
 
 // ── Status styles ─────────────────────────────────────────────────────────────
 
@@ -173,7 +173,7 @@ export default function Bookings() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("employee_basic_view")
-        .select("id, full_name, email, status, profile_id")
+        .select("id, full_name, email, status")
         .in("status", ["active", "probation"])
         .order("full_name");
       if (error) throw error;
@@ -272,7 +272,7 @@ export default function Bookings() {
           title: `Check-in Prep — ${guestLabel}`,
           listing_id: values.listing_id,
           booking_id: newBooking.id,
-          assignee_id: values.checkin_assignee_id || null,
+          assigned_employee_id: values.checkin_assignee_id || null,
           due_date: values.check_in,
           priority: "high",
           status: "todo",
@@ -284,7 +284,7 @@ export default function Bookings() {
           title: `Checkout Check — ${guestLabel}`,
           listing_id: values.listing_id,
           booking_id: newBooking.id,
-          assignee_id: values.checkout_assignee_id || null,
+          assigned_employee_id: values.checkout_assignee_id || null,
           due_date: values.check_out,
           priority: "medium",
           status: "todo",
@@ -296,7 +296,7 @@ export default function Bookings() {
           title: `Post-checkout Cleaning — ${guestLabel}`,
           listing_id: values.listing_id,
           booking_id: newBooking.id,
-          assignee_id: values.cleaning_assignee_id || null,
+          assigned_employee_id: values.cleaning_assignee_id || null,
           due_date: values.check_out,
           priority: "high",
           status: "todo",
@@ -760,10 +760,7 @@ export default function Bookings() {
                                       {t.tasks.unassigned}
                                     </SelectItem>
                                     {employeesQuery.data?.map((e) => (
-                                      <SelectItem
-                                        key={e.profile_id ?? e.id}
-                                        value={e.profile_id ?? e.id}
-                                      >
+                                      <SelectItem key={e.id} value={e.id}>
                                         {e.full_name ?? e.email}
                                         {e.status === "probation" && (
                                           <span className="ml-1 text-xs text-muted-foreground">

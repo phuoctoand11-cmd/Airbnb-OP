@@ -147,7 +147,7 @@ const schema = z.object({
   notes: z.string().optional(),
   listing_id: z.string().optional(),
   booking_id: z.string().optional(),
-  assignee_id: z.string().optional(),
+  assigned_employee_id: z.string().optional(),
   priority: z.enum(["low", "medium", "high"]),
   status: z.enum(["todo", "in_progress", "done", "cancelled"]),
   due_date: z.string().optional(),
@@ -170,7 +170,7 @@ function isPhotoItem(title: string): boolean {
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function Tasks() {
-  const { role, user } = useAuth();
+  const { role, user, employee } = useAuth();
   const { toast } = useToast();
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -204,14 +204,14 @@ export default function Tasks() {
   // ── Queries ─────────────────────────────────────────────────────────────
 
   const tasksQuery = useQuery({
-    queryKey: ["tasks", viewAll ? "all" : user?.id],
+    queryKey: ["tasks", viewAll ? "all" : employee?.id],
     queryFn: async () => {
       let q = supabase
         .from("tasks")
         .select("*")
         .order("due_date", { ascending: true, nullsFirst: false });
-      if (!viewAll && user?.id) {
-        q = q.eq("assignee_id", user.id);
+      if (!viewAll && employee?.id) {
+        q = q.eq("assigned_employee_id", employee.id);
       }
       const { data, error } = await q;
       if (error) throw error;
@@ -225,11 +225,11 @@ export default function Tasks() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("employee_basic_view")
-        .select("id, full_name, email, status, profile_id, role")
+        .select("id, full_name, email, status, role")
         .in("status", ["active", "probation"])
         .order("full_name");
       if (error) throw error;
-      return (data ?? []) as Pick<Employee, "id" | "full_name" | "email" | "status" | "profile_id" | "role">[];
+      return (data ?? []) as Pick<Employee, "id" | "full_name" | "email" | "status" | "role">[];
     },
     enabled: canManageAll,
   });
@@ -260,17 +260,17 @@ export default function Tasks() {
 
   // ── Lookup helpers ───────────────────────────────────────────────────────
 
-  const employeeByProfileId = useMemo(() => {
+  const employeeById = useMemo(() => {
     const map: Record<string, typeof employeesQuery.data extends (infer T)[] | undefined ? T : never> = {};
     employeesQuery.data?.forEach((e) => {
-      if (e.profile_id) map[e.profile_id] = e;
+      map[e.id] = e;
     });
     return map;
   }, [employeesQuery.data]);
 
   const assigneeName = (id: string | null) => {
     if (!id) return t.tasks.unassigned;
-    const emp = employeeByProfileId[id];
+    const emp = employeeById[id];
     if (emp) return emp.full_name ?? emp.email;
     return t.tasks.unassigned;
   };
@@ -284,13 +284,13 @@ export default function Tasks() {
     if (!tasksQuery.data) return [];
     return tasksQuery.data.filter((tk) => {
       if (typeFilter !== "all" && tk.task_type !== typeFilter) return false;
-      if (assigneeFilter === "me" && tk.assignee_id !== user?.id) return false;
-      if (assigneeFilter !== "all" && assigneeFilter !== "me" && tk.assignee_id !== assigneeFilter)
+      if (assigneeFilter === "me" && tk.assigned_employee_id !== employee?.id) return false;
+      if (assigneeFilter !== "all" && assigneeFilter !== "me" && tk.assigned_employee_id !== assigneeFilter)
         return false;
       if (priorityFilter !== "all" && tk.priority !== priorityFilter) return false;
       return true;
     });
-  }, [tasksQuery.data, typeFilter, assigneeFilter, priorityFilter, user?.id]);
+  }, [tasksQuery.data, typeFilter, assigneeFilter, priorityFilter, employee?.id]);
 
   const grouped = useMemo(() => {
     const map: Record<Task["status"], Task[]> = {
@@ -349,7 +349,7 @@ export default function Tasks() {
         notes: v.notes || null,
         listing_id: v.listing_id || null,
         booking_id: v.booking_id || null,
-        assignee_id: v.assignee_id || null,
+        assigned_employee_id: v.assigned_employee_id || null,
         priority: v.priority,
         status: v.status,
         due_date: v.due_date || null,
@@ -397,7 +397,7 @@ export default function Tasks() {
       toast({ variant: "destructive", title: "Không thể lưu ảnh", description: err.message }),
   });
 
-  const canEditTask = (tk: Task) => canManageAll || tk.assignee_id === user?.id;
+  const canEditTask = (tk: Task) => canManageAll || tk.assigned_employee_id === employee?.id;
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -436,7 +436,7 @@ export default function Tasks() {
               <SelectItem value="all">{t.tasks.allAssignees}</SelectItem>
               <SelectItem value="me">Assigned to me</SelectItem>
               {employeesQuery.data?.map((e) => (
-                <SelectItem key={e.profile_id ?? e.id} value={e.profile_id ?? e.id}>
+                <SelectItem key={e.id} value={e.id}>
                   {e.full_name ?? e.email}
                 </SelectItem>
               ))}
@@ -496,7 +496,7 @@ export default function Tasks() {
                         key={tk.id}
                         task={tk}
                         taskTypeLabel={TASK_TYPE_LABEL}
-                        assigneeName={assigneeName(tk.assignee_id)}
+                        assigneeName={assigneeName(tk.assigned_employee_id)}
                         listingTitle={listingTitle(tk.listing_id)}
                         priorityVariant={PRIORITY_VARIANT[tk.priority]}
                         priorityLabel={t.status[tk.priority]}
@@ -659,7 +659,7 @@ export default function Tasks() {
               <div className="grid grid-cols-2 gap-3">
                 <FormField
                   control={form.control}
-                  name="assignee_id"
+                  name="assigned_employee_id"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t.tasks.assignee}</FormLabel>
@@ -680,10 +680,7 @@ export default function Tasks() {
                             </div>
                           ) : (
                             employeesQuery.data?.map((e) => (
-                              <SelectItem
-                                key={e.profile_id ?? e.id}
-                                value={e.profile_id ?? e.id}
-                              >
+                              <SelectItem key={e.id} value={e.id}>
                                 {e.full_name ?? e.email}
                                 {e.status === "probation" && (
                                   <span className="ml-1 text-xs text-muted-foreground">(probation)</span>
