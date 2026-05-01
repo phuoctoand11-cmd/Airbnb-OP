@@ -219,12 +219,14 @@ export default function Tasks() {
     },
   });
 
-  // Only employees with active or probation status can be assigned tasks
+  // Query employees table directly (admin/manager have RLS access).
+  // IMPORTANT: Use employees table, NOT employee_basic_view, so e.id is the
+  // actual employees.id primary key — not a profile_id alias.
   const employeesQuery = useQuery({
-    queryKey: ["employees", "assignable"],
+    queryKey: ["employees", "assignable-direct"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("employee_basic_view")
+        .from("employees")
         .select("id, full_name, email, status, role")
         .in("status", ["active", "probation"])
         .order("full_name");
@@ -343,7 +345,13 @@ export default function Tasks() {
 
   const createMutation = useMutation({
     mutationFn: async (v: FormValues) => {
-      const { error } = await supabase.from("tasks").insert({
+      const selectedEmployee = employeesQuery.data?.find((e) => e.id === v.assigned_employee_id) ?? null;
+      // eslint-disable-next-line no-console
+      console.log("[task create] selectedEmployee:", selectedEmployee);
+      // eslint-disable-next-line no-console
+      console.log("[task create] taskPayload.assigned_employee_id:", v.assigned_employee_id);
+
+      const payload = {
         task_type: v.task_type ?? null,
         title: v.title,
         notes: v.notes || null,
@@ -355,7 +363,11 @@ export default function Tasks() {
         due_date: v.due_date || null,
         checklist: v.checklist.filter((c) => c.title.trim() !== ""),
         photos: [],
-      });
+      };
+      // eslint-disable-next-line no-console
+      console.log("[task create] full payload:", payload);
+
+      const { error } = await supabase.from("tasks").insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {

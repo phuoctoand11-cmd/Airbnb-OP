@@ -171,8 +171,10 @@ export default function Bookings() {
   const employeesQuery = useQuery({
     queryKey: ["employees", "assignable"],
     queryFn: async () => {
+      // Use employees table directly so e.id is the real employees.id PK,
+      // not a profile_id alias that employee_basic_view might expose.
       const { data, error } = await supabase
-        .from("employee_basic_view")
+        .from("employees")
         .select("id, full_name, email, status")
         .in("status", ["active", "probation"])
         .order("full_name");
