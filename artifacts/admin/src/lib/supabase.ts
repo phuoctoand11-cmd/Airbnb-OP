@@ -45,6 +45,7 @@ export type AppRole =
   | "sales"
   | "maintenance"
   | "cleaner"
+  | "cleaningstaff"
   | "staff";
 
 export const ROLES: AppRole[] = [
@@ -54,6 +55,7 @@ export const ROLES: AppRole[] = [
   "sales",
   "maintenance",
   "cleaner",
+  "cleaningstaff",
   "staff",
 ];
 
@@ -64,6 +66,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   sales: "Sales",
   maintenance: "Maintenance",
   cleaner: "Cleaner",
+  cleaningstaff: "Cleaning Staff",
   staff: "Staff",
 };
 

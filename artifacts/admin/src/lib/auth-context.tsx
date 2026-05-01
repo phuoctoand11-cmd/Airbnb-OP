@@ -421,7 +421,7 @@ export const ROLE_PERMISSIONS = {
   manageCalendar: ["admin", "manager"] as AppRole[],
   managePricing: ["admin", "manager"] as AppRole[],
   manageBookings: ["admin", "manager", "sales", "accountant"] as AppRole[],
-  manageTasks: ["admin", "manager", "maintenance", "cleaner", "staff"] as AppRole[],
+  manageTasks: ["admin", "manager", "maintenance", "cleaner", "cleaningstaff", "staff"] as AppRole[],
   manageFinance: ["admin", "accountant"] as AppRole[],
   manageUsers: ["admin"] as AppRole[],
   viewReports: ["admin", "manager", "accountant"] as AppRole[],
@@ -443,7 +443,7 @@ export function canViewDashboard(role: AppRole | null): boolean {
 
 export function canViewPrices(role: AppRole | null): boolean {
   if (!role) return false;
-  const NO_PRICE_ROLES: AppRole[] = ["sales", "maintenance", "cleaner", "staff"];
+  const NO_PRICE_ROLES: AppRole[] = ["sales", "maintenance", "cleaner", "cleaningstaff", "staff"];
   return !NO_PRICE_ROLES.includes(role);
 }
 
@@ -467,11 +467,12 @@ export function canViewAllTasks(role: AppRole | null): boolean {
 
 export function getDefaultRouteByRole(role: AppRole | null): string {
   if (role === "accountant") return "/revenues";
-  if (role === "maintenance" || role === "cleaner" || role === "staff") return "/tasks";
+  if (role === "maintenance" || role === "cleaner" || role === "cleaningstaff" || role === "staff") return "/tasks";
   if (role === "sales") return "/listings";
   if (role === "admin" || role === "manager") return "/dashboard";
   return "/listings";
 }
 
-// Kept for external reference — not used internally
-export { BLOCKED_EMPLOYEE_STATUSES, ALLOWED_EMPLOYEE_STATUSES };
+// Re-exported so callers don't need to reach into the const arrays directly
+export const BLOCKED_EMPLOYEE_STATUSES_LIST = ["inactive", "resigned", "terminated", "rejected"] as const;
+export const ALLOWED_EMPLOYEE_STATUSES_LIST = ["active", "probation", "candidate", "interviewing"] as const;
