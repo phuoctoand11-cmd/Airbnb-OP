@@ -157,16 +157,44 @@ export interface Booking {
   created_at: string;
 }
 
+export type TaskType =
+  | "cleaning"
+  | "maintenance"
+  | "inspection"
+  | "guest_support"
+  | "checkin_prepare"
+  | "checkout_check";
+
+export const TASK_TYPE_LABELS: Record<TaskType, string> = {
+  cleaning: "Cleaning",
+  maintenance: "Maintenance",
+  inspection: "Inspection",
+  guest_support: "Guest Support",
+  checkin_prepare: "Check-in Prep",
+  checkout_check: "Checkout Check",
+};
+
+/** Single checklist item stored inside tasks.checklist (JSONB array). */
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export interface Task {
   id: string;
   listing_id: string | null;
   booking_id: string | null;
+  task_type: TaskType | null;
   title: string;
   description: string | null;
+  notes: string | null;
   assignee_id: string | null;
   due_date: string | null;
   priority: "low" | "medium" | "high";
   status: "todo" | "in_progress" | "done" | "cancelled";
+  checklist: ChecklistItem[];
+  photos: string[];
   created_at: string;
 }
 
