@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
-import { CalendarDays, Loader2, Plus } from "lucide-react";
+import { CalendarDays, ClipboardCheck, Loader2, Plus, Sparkles, Brush } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,15 +47,91 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, useAuth } from "@/lib/auth-context";
-import { supabase, type Booking, type Listing } from "@/lib/supabase";
+import { supabase, type Booking, type Employee, type Listing } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
 
-const STATUS_VARIANT: Record<Booking["status"], "default" | "secondary" | "outline" | "destructive"> = {
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type AssignableEmployee = Pick<Employee, "id" | "full_name" | "email" | "status" | "profile_id">;
+
+// ── Status styles ─────────────────────────────────────────────────────────────
+
+const STATUS_VARIANT: Record<
+  Booking["status"],
+  "default" | "secondary" | "outline" | "destructive"
+> = {
   pending: "outline",
   confirmed: "default",
   completed: "secondary",
   cancelled: "destructive",
 };
+
+// ── Auto-task config ──────────────────────────────────────────────────────────
+
+const AUTO_TASKS = [
+  {
+    key: "checkin_assignee_id" as const,
+    type: "checkin_prepare" as const,
+    labelKey: "checkinPrep" as const,
+    dueKey: "dueCheckin" as const,
+    dueDateField: "check_in" as const,
+    priority: "high" as const,
+    icon: Sparkles,
+    color: "text-teal-600",
+    bg: "bg-teal-50 dark:bg-teal-950",
+  },
+  {
+    key: "checkout_assignee_id" as const,
+    type: "checkout_check" as const,
+    labelKey: "checkoutInspection" as const,
+    dueKey: "dueCheckout" as const,
+    dueDateField: "check_out" as const,
+    priority: "medium" as const,
+    icon: ClipboardCheck,
+    color: "text-amber-600",
+    bg: "bg-amber-50 dark:bg-amber-950",
+  },
+  {
+    key: "cleaning_assignee_id" as const,
+    type: "cleaning" as const,
+    labelKey: "cleaningTask" as const,
+    dueKey: "dueCheckout" as const,
+    dueDateField: "check_out" as const,
+    priority: "high" as const,
+    icon: Brush,
+    color: "text-blue-600",
+    bg: "bg-blue-50 dark:bg-blue-950",
+  },
+] as const;
+
+// ── Schema ───────────────────────────────────────────────────────────────────
+
+const bookingSchema = z
+  .object({
+    listing_id: z.string().min(1, "Listing required"),
+    guest_name: z.string().min(1, "Guest name required"),
+    guest_email: z.string().email().or(z.literal("")).optional(),
+    guest_phone: z.string().optional(),
+    check_in: z.string().min(1, "Check-in required"),
+    check_out: z.string().min(1, "Check-out required"),
+    guests: z.coerce.number().int().min(1),
+    total_amount: z.coerce.number().min(0),
+    status: z.enum(["pending", "confirmed", "completed", "cancelled"]),
+    source: z.string().optional(),
+    notes: z.string().optional(),
+    // Optional task assignees — one per auto-created task
+    checkin_assignee_id: z.string().optional(),
+    checkout_assignee_id: z.string().optional(),
+    cleaning_assignee_id: z.string().optional(),
+  })
+  .refine((d) => d.check_out > d.check_in, {
+    message: "Check-out must be after check-in",
+    path: ["check_out"],
+  });
+
+type BookingFormValues = z.infer<typeof bookingSchema>;
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 export default function Bookings() {
   const { role } = useAuth();
@@ -64,30 +140,11 @@ export default function Bookings() {
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageBookings");
 
-  const bookingSchema = z
-    .object({
-      listing_id: z.string().min(1, "Listing required"),
-      guest_name: z.string().min(1, "Guest name required"),
-      guest_email: z.string().email().or(z.literal("")).optional(),
-      guest_phone: z.string().optional(),
-      check_in: z.string().min(1, "Check-in required"),
-      check_out: z.string().min(1, "Check-out required"),
-      guests: z.coerce.number().int().min(1),
-      total_amount: z.coerce.number().min(0),
-      status: z.enum(["pending", "confirmed", "completed", "cancelled"]),
-      source: z.string().optional(),
-      notes: z.string().optional(),
-    })
-    .refine((d) => d.check_out > d.check_in, {
-      message: "Check-out must be after check-in",
-      path: ["check_out"],
-    });
-
-  type BookingFormValues = z.infer<typeof bookingSchema>;
-
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
+
+  // ── Queries ─────────────────────────────────────────────────────────────
 
   const listingsQuery = useQuery({
     queryKey: ["listings", "for-bookings"],
@@ -110,6 +167,21 @@ export default function Bookings() {
     },
   });
 
+  // Active/probation employees only — for task assignment dropdowns
+  const employeesQuery = useQuery({
+    queryKey: ["employees", "assignable"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employee_basic_view")
+        .select("id, full_name, email, status, profile_id")
+        .in("status", ["active", "probation"])
+        .order("full_name");
+      if (error) throw error;
+      return (data ?? []) as AssignableEmployee[];
+    },
+    enabled: canManage,
+  });
+
   const filtered = useMemo(() => {
     if (!bookingsQuery.data) return [];
     if (statusFilter === "all") return bookingsQuery.data;
@@ -118,6 +190,8 @@ export default function Bookings() {
 
   const listingTitle = (id: string) =>
     listingsQuery.data?.find((l) => l.id === id)?.title ?? "—";
+
+  // ── Form ─────────────────────────────────────────────────────────────────
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
@@ -133,8 +207,15 @@ export default function Bookings() {
       status: "pending",
       source: "",
       notes: "",
+      checkin_assignee_id: "",
+      checkout_assignee_id: "",
+      cleaning_assignee_id: "",
     },
   });
+
+  const watchCheckIn = form.watch("check_in");
+  const watchCheckOut = form.watch("check_out");
+  const watchGuestName = form.watch("guest_name");
 
   const checkOverlap = async (listingId: string, checkIn: string, checkOut: string) => {
     if (!listingId || !checkIn || !checkOut) {
@@ -158,26 +239,100 @@ export default function Bookings() {
     }
   };
 
+  // ── Mutation ─────────────────────────────────────────────────────────────
+
   const createMutation = useMutation({
     mutationFn: async (values: BookingFormValues) => {
-      const { error } = await supabase.from("bookings").insert({
-        ...values,
-        guest_email: values.guest_email || null,
-        guest_phone: values.guest_phone || null,
-        source: values.source || null,
-        notes: values.notes || null,
-      });
-      if (error) throw error;
+      // 1. Insert booking and retrieve the new row's ID
+      const { data: newBooking, error: bookingError } = await supabase
+        .from("bookings")
+        .insert({
+          listing_id: values.listing_id,
+          guest_name: values.guest_name,
+          guest_email: values.guest_email || null,
+          guest_phone: values.guest_phone || null,
+          check_in: values.check_in,
+          check_out: values.check_out,
+          guests: values.guests,
+          total_amount: values.total_amount,
+          status: values.status,
+          source: values.source || null,
+          notes: values.notes || null,
+        })
+        .select("id")
+        .single();
+
+      if (bookingError) throw bookingError;
+
+      // 2. Build 3 auto-tasks linked to the new booking
+      const guestLabel = values.guest_name || "Guest";
+      const autoTaskRows = [
+        {
+          task_type: "checkin_prepare",
+          title: `Check-in Prep — ${guestLabel}`,
+          listing_id: values.listing_id,
+          booking_id: newBooking.id,
+          assignee_id: values.checkin_assignee_id || null,
+          due_date: values.check_in,
+          priority: "high",
+          status: "todo",
+          checklist: [],
+          photos: [],
+        },
+        {
+          task_type: "checkout_check",
+          title: `Checkout Check — ${guestLabel}`,
+          listing_id: values.listing_id,
+          booking_id: newBooking.id,
+          assignee_id: values.checkout_assignee_id || null,
+          due_date: values.check_out,
+          priority: "medium",
+          status: "todo",
+          checklist: [],
+          photos: [],
+        },
+        {
+          task_type: "cleaning",
+          title: `Post-checkout Cleaning — ${guestLabel}`,
+          listing_id: values.listing_id,
+          booking_id: newBooking.id,
+          assignee_id: values.cleaning_assignee_id || null,
+          due_date: values.check_out,
+          priority: "high",
+          status: "todo",
+          checklist: [],
+          photos: [],
+        },
+      ];
+
+      // 3. Insert tasks — non-blocking: a task failure doesn't roll back the booking
+      const { error: tasksError } = await supabase.from("tasks").insert(autoTaskRows);
+
+      return { tasksError };
     },
-    onSuccess: () => {
-      toast({ title: t.bookings.created });
+    onSuccess: ({ tasksError }) => {
+      if (tasksError) {
+        // Booking created but tasks failed
+        toast({
+          variant: "destructive",
+          title: t.bookings.taskCreationFailed,
+          description: tasksError.message,
+        });
+      } else {
+        toast({ title: t.bookings.created });
+      }
       setDialogOpen(false);
       form.reset();
       setOverlapWarning(null);
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: t.bookings.couldNotCreate, description: err.message }),
+      toast({
+        variant: "destructive",
+        title: t.bookings.couldNotCreate,
+        description: err.message,
+      }),
   });
 
   const updateStatusMutation = useMutation({
@@ -190,8 +345,14 @@ export default function Bookings() {
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: t.bookings.updateFailed, description: err.message }),
+      toast({
+        variant: "destructive",
+        title: t.bookings.updateFailed,
+        description: err.message,
+      }),
   });
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <AppLayout
@@ -226,7 +387,9 @@ export default function Bookings() {
             <div className="p-6">
               <Alert variant="destructive">
                 <AlertTitle>{t.bookings.couldNotLoad}</AlertTitle>
-                <AlertDescription>{(bookingsQuery.error as Error).message}</AlertDescription>
+                <AlertDescription>
+                  {(bookingsQuery.error as Error).message}
+                </AlertDescription>
               </Alert>
             </div>
           ) : bookingsQuery.isLoading ? (
@@ -259,7 +422,10 @@ export default function Bookings() {
               </TableHeader>
               <TableBody>
                 {filtered.map((b) => {
-                  const nights = differenceInCalendarDays(parseISO(b.check_out), parseISO(b.check_in));
+                  const nights = differenceInCalendarDays(
+                    parseISO(b.check_out),
+                    parseISO(b.check_in)
+                  );
                   return (
                     <TableRow key={b.id}>
                       <TableCell className="font-medium">
@@ -270,11 +436,16 @@ export default function Bookings() {
                       </TableCell>
                       <TableCell>{listingTitle(b.listing_id)}</TableCell>
                       <TableCell>
-                        {format(parseISO(b.check_in), "MMM d")} – {format(parseISO(b.check_out), "MMM d, yyyy")}
+                        {format(parseISO(b.check_in), "MMM d")} –{" "}
+                        {format(parseISO(b.check_out), "MMM d, yyyy")}
                       </TableCell>
                       <TableCell className="text-right">{nights}</TableCell>
-                      <TableCell className="text-right">${Number(b.total_amount).toFixed(2)}</TableCell>
-                      <TableCell className="text-muted-foreground">{b.source ?? "—"}</TableCell>
+                      <TableCell className="text-right">
+                        ${Number(b.total_amount).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {b.source ?? "—"}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={STATUS_VARIANT[b.status]} className="capitalize">
                           {t.status[b.status]}
@@ -285,7 +456,10 @@ export default function Bookings() {
                           <Select
                             value={b.status}
                             onValueChange={(v) =>
-                              updateStatusMutation.mutate({ id: b.id, status: v as Booking["status"] })
+                              updateStatusMutation.mutate({
+                                id: b.id,
+                                status: v as Booking["status"],
+                              })
                             }
                           >
                             <SelectTrigger className="ml-auto h-8 w-[140px]">
@@ -309,14 +483,22 @@ export default function Bookings() {
         </CardContent>
       </Card>
 
+      {/* ── Create booking dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{t.bookings.newBooking}</DialogTitle>
-            <DialogDescription>Capture a new reservation for one of your listings.</DialogDescription>
+            <DialogDescription>
+              Capture a new reservation for one of your listings.
+            </DialogDescription>
           </DialogHeader>
+
           <Form {...form}>
-            <form onSubmit={form.handleSubmit((v) => createMutation.mutate(v))} className="space-y-4">
+            <form
+              onSubmit={form.handleSubmit((v) => createMutation.mutate(v))}
+              className="space-y-4"
+            >
+              {/* Listing */}
               <FormField
                 control={form.control}
                 name="listing_id"
@@ -326,9 +508,7 @@ export default function Bookings() {
                     <Select
                       onValueChange={(v) => {
                         field.onChange(v);
-                        const ci = form.getValues("check_in");
-                        const co = form.getValues("check_out");
-                        checkOverlap(v, ci, co);
+                        checkOverlap(v, form.getValues("check_in"), form.getValues("check_out"));
                       }}
                       value={field.value}
                     >
@@ -349,6 +529,8 @@ export default function Bookings() {
                   </FormItem>
                 )}
               />
+
+              {/* Guest name + email */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <FormField
                   control={form.control}
@@ -377,6 +559,8 @@ export default function Bookings() {
                   )}
                 />
               </div>
+
+              {/* Check-in + Check-out */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <FormField
                   control={form.control}
@@ -390,7 +574,11 @@ export default function Bookings() {
                           {...field}
                           onChange={(e) => {
                             field.onChange(e);
-                            checkOverlap(form.getValues("listing_id"), e.target.value, form.getValues("check_out"));
+                            checkOverlap(
+                              form.getValues("listing_id"),
+                              e.target.value,
+                              form.getValues("check_out")
+                            );
                           }}
                         />
                       </FormControl>
@@ -410,7 +598,11 @@ export default function Bookings() {
                           {...field}
                           onChange={(e) => {
                             field.onChange(e);
-                            checkOverlap(form.getValues("listing_id"), form.getValues("check_in"), e.target.value);
+                            checkOverlap(
+                              form.getValues("listing_id"),
+                              form.getValues("check_in"),
+                              e.target.value
+                            );
                           }}
                         />
                       </FormControl>
@@ -419,12 +611,15 @@ export default function Bookings() {
                   )}
                 />
               </div>
+
               {overlapWarning && (
                 <Alert variant="destructive">
                   <AlertTitle>{t.bookings.overlapWarning}</AlertTitle>
                   <AlertDescription>{overlapWarning}</AlertDescription>
                 </Alert>
               )}
+
+              {/* Guests + Amount + Status */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <FormField
                   control={form.control}
@@ -476,6 +671,8 @@ export default function Bookings() {
                   )}
                 />
               </div>
+
+              {/* Source */}
               <FormField
                 control={form.control}
                 name="source"
@@ -489,6 +686,8 @@ export default function Bookings() {
                   </FormItem>
                 )}
               />
+
+              {/* Notes */}
               <FormField
                 control={form.control}
                 name="notes"
@@ -496,18 +695,111 @@ export default function Bookings() {
                   <FormItem>
                     <FormLabel>{t.bookings.notes}</FormLabel>
                     <FormControl>
-                      <Textarea rows={3} {...field} />
+                      <Textarea rows={2} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {/* ── Auto-created tasks section ── */}
+              <div className="rounded-lg border border-dashed">
+                <div className="border-b bg-muted/40 px-4 py-2.5">
+                  <p className="text-sm font-semibold">{t.bookings.autoTasks}</p>
+                  <p className="text-xs text-muted-foreground">{t.bookings.autoTasksNote}</p>
+                </div>
+                <div className="divide-y">
+                  {AUTO_TASKS.map(
+                    ({ key, type: _type, labelKey, dueKey, dueDateField, icon: Icon, color, bg }) => {
+                      const dueDate =
+                        dueDateField === "check_in" ? watchCheckIn : watchCheckOut;
+                      const formattedDate = dueDate
+                        ? format(parseISO(dueDate), "MMM d, yyyy")
+                        : "—";
+
+                      return (
+                        <div key={key} className="px-4 py-3">
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded ${bg}`}>
+                              <Icon className={`h-3.5 w-3.5 ${color}`} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium leading-none">
+                                {t.bookings[labelKey]}
+                                {watchGuestName && (
+                                  <span className="ml-1 text-muted-foreground">
+                                    — {watchGuestName}
+                                  </span>
+                                )}
+                              </p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {t.bookings[dueKey]}{dueDate ? `: ${formattedDate}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <FormField
+                            control={form.control}
+                            name={key}
+                            render={({ field }) => (
+                              <FormItem>
+                                <Select
+                                  onValueChange={(v) =>
+                                    field.onChange(v === "__none__" ? "" : v)
+                                  }
+                                  value={field.value || "__none__"}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue
+                                        placeholder={t.bookings.assignTo}
+                                      />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">
+                                      {t.tasks.unassigned}
+                                    </SelectItem>
+                                    {employeesQuery.data?.map((e) => (
+                                      <SelectItem
+                                        key={e.profile_id ?? e.id}
+                                        value={e.profile_id ?? e.id}
+                                      >
+                                        {e.full_name ?? e.email}
+                                        {e.status === "probation" && (
+                                          <span className="ml-1 text-xs text-muted-foreground">
+                                            (probation)
+                                          </span>
+                                        )}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+
               <DialogFooter>
-                <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setDialogOpen(false);
+                    setOverlapWarning(null);
+                  }}
+                >
                   {t.common.cancel}
                 </Button>
                 <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {createMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
                   {t.bookings.createBooking}
                 </Button>
               </DialogFooter>
