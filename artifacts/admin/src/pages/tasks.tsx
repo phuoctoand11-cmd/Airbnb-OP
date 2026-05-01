@@ -88,6 +88,47 @@ const TASK_TYPE_COLORS: Record<TaskType, string> = {
   checkout_check: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
 };
 
+// ── Checklist templates ───────────────────────────────────────────────────────
+
+type TemplateKey = "cleaning" | "maintenance" | "checkin_prepare" | "checkout_check";
+
+const TEMPLATE_ITEMS: Record<TemplateKey, string[]> = {
+  cleaning: [
+    "Thay ga giường",
+    "Dọn toilet",
+    "Lau sàn",
+    "Đổ rác",
+    "Bổ sung khăn",
+    "Bổ sung giấy vệ sinh",
+    "Kiểm tra mùi phòng",
+    "Chụp ảnh sau khi dọn",
+  ],
+  maintenance: [
+    "Kiểm tra thiết bị hỏng",
+    "Kiểm tra điện",
+    "Kiểm tra nước",
+    "Kiểm tra điều hòa",
+    "Ghi chú lỗi",
+    "Chụp ảnh tình trạng",
+  ],
+  checkin_prepare: [
+    "Kiểm tra chìa khóa",
+    "Bật điều hòa trước giờ khách đến",
+    "Kiểm tra nước uống",
+    "Kiểm tra khăn",
+    "Kiểm tra mã cửa",
+    "Xác nhận phòng sạch",
+  ],
+  checkout_check: [
+    "Kiểm tra đồ thất lạc",
+    "Kiểm tra hư hỏng",
+    "Kiểm tra minibar/vật dụng",
+    "Chụp ảnh sau checkout",
+  ],
+};
+
+const TEMPLATE_KEYS: TemplateKey[] = ["cleaning", "maintenance", "checkin_prepare", "checkout_check"];
+
 // ── Zod schema ───────────────────────────────────────────────────────────────
 
 const schema = z.object({
@@ -107,7 +148,7 @@ const schema = z.object({
   priority: z.enum(["low", "medium", "high"]),
   status: z.enum(["todo", "in_progress", "done", "cancelled"]),
   due_date: z.string().optional(),
-  checklist: z.array(z.object({ id: z.string(), text: z.string(), done: z.boolean() })).default([]),
+  checklist: z.array(z.object({ id: z.string(), title: z.string(), checked: z.boolean() })).default([]),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -133,6 +174,7 @@ export default function Tasks() {
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [open, setOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("__none__");
 
   const STATUS_LABEL: Record<Task["status"], string> = {
     todo: t.tasks.todo,
@@ -269,12 +311,23 @@ export default function Tasks() {
 
   const addChecklistItem = () => {
     const current = form.getValues("checklist") ?? [];
-    form.setValue("checklist", [...current, { id: genId(), text: "", done: false }]);
+    form.setValue("checklist", [...current, { id: genId(), title: "", checked: false }]);
   };
 
   const removeChecklistItem = (idx: number) => {
     const current = form.getValues("checklist") ?? [];
     form.setValue("checklist", current.filter((_, i) => i !== idx));
+  };
+
+  const applyTemplate = (key: string) => {
+    setSelectedTemplate(key);
+    if (key === "__none__") return;
+    const items = TEMPLATE_ITEMS[key as TemplateKey];
+    if (!items) return;
+    form.setValue(
+      "checklist",
+      items.map((title) => ({ id: genId(), title, checked: false }))
+    );
   };
 
   // ── Mutations ────────────────────────────────────────────────────────────
@@ -291,7 +344,7 @@ export default function Tasks() {
         priority: v.priority,
         status: v.status,
         due_date: v.due_date || null,
-        checklist: v.checklist.filter((c) => c.text.trim() !== ""),
+        checklist: v.checklist.filter((c) => c.title.trim() !== ""),
         photos: [],
       });
       if (error) throw error;
@@ -299,6 +352,7 @@ export default function Tasks() {
     onSuccess: () => {
       toast({ title: t.tasks.created });
       setOpen(false);
+      setSelectedTemplate("__none__");
       form.reset({ priority: "medium", status: "todo", checklist: [] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
@@ -436,7 +490,7 @@ export default function Tasks() {
                         }
                         onChecklistToggle={(idx) => {
                           const updated = (tk.checklist ?? []).map((c, i) =>
-                            i === idx ? { ...c, done: !c.done } : c
+                            i === idx ? { ...c, checked: !c.checked } : c
                           );
                           updateChecklistMutation.mutate({ id: tk.id, checklist: updated });
                         }}
@@ -451,7 +505,7 @@ export default function Tasks() {
       )}
 
       {/* ── Create dialog ── */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setSelectedTemplate("__none__"); form.reset({ priority: "medium", status: "todo", checklist: [] }); } }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t.tasks.newTask}</DialogTitle>
@@ -685,6 +739,25 @@ export default function Tasks() {
 
               {/* Checklist */}
               <div className="space-y-2">
+                {/* Template picker */}
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 text-sm font-medium">{t.tasks.checklistTemplate}</span>
+                  <Select value={selectedTemplate} onValueChange={applyTemplate}>
+                    <SelectTrigger className="h-8 flex-1 text-xs">
+                      <SelectValue placeholder={t.tasks.noTemplate} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">{t.tasks.noTemplate}</SelectItem>
+                      {TEMPLATE_KEYS.map((tk) => (
+                        <SelectItem key={tk} value={tk}>
+                          {TASK_TYPE_LABEL[tk]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Items header */}
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{t.tasks.checklist}</span>
                   <Button type="button" variant="ghost" size="sm" onClick={addChecklistItem}>
@@ -692,15 +765,22 @@ export default function Tasks() {
                     {t.tasks.addItem}
                   </Button>
                 </div>
+
+                {watchChecklist?.length === 0 && (
+                  <p className="rounded border border-dashed px-3 py-2 text-center text-xs text-muted-foreground">
+                    {t.tasks.noTemplate} — select a template or add items manually.
+                  </p>
+                )}
+
                 {watchChecklist?.map((item, idx) => (
                   <div key={item.id} className="flex items-center gap-2">
                     <Input
                       className="h-8 flex-1 text-sm"
                       placeholder={t.tasks.itemPlaceholder}
-                      value={item.text}
+                      value={item.title}
                       onChange={(e) => {
                         const updated = [...(form.getValues("checklist") ?? [])];
-                        updated[idx] = { ...updated[idx], text: e.target.value };
+                        updated[idx] = { ...updated[idx], title: e.target.value };
                         form.setValue("checklist", updated);
                       }}
                     />
@@ -770,7 +850,7 @@ function TaskCard({
   const [checklistOpen, setChecklistOpen] = useState(false);
 
   const checklist: ChecklistItem[] = Array.isArray(task.checklist) ? task.checklist : [];
-  const doneCount = checklist.filter((c) => c.done).length;
+  const doneCount = checklist.filter((c) => c.checked).length;
   const hasChecklist = checklist.length > 0;
 
   return (
@@ -831,19 +911,19 @@ function TaskCard({
       {checklistOpen && (
         <ul className="mb-2 space-y-1 pl-1">
           {checklist.map((item, idx) => (
-            <li key={item.id} className="flex items-center gap-2">
+            <li key={item.id ?? idx} className="flex items-center gap-2">
               <Checkbox
                 id={`cl-${task.id}-${idx}`}
-                checked={item.done}
+                checked={item.checked}
                 disabled={!canEdit}
                 onCheckedChange={() => onChecklistToggle(idx)}
                 className="h-3.5 w-3.5"
               />
               <label
                 htmlFor={`cl-${task.id}-${idx}`}
-                className={`text-xs ${item.done ? "line-through text-muted-foreground" : ""}`}
+                className={`text-xs ${item.checked ? "line-through text-muted-foreground" : ""}`}
               >
-                {item.text}
+                {item.title}
               </label>
             </li>
           ))}

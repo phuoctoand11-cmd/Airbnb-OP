@@ -177,8 +177,8 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
 /** Single checklist item stored inside tasks.checklist (JSONB array). */
 export interface ChecklistItem {
   id: string;
-  text: string;
-  done: boolean;
+  title: string;
+  checked: boolean;
 }
 
 export interface Task {
