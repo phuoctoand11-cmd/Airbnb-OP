@@ -9,10 +9,13 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
+  ImageIcon,
   Loader2,
   Plus,
   Trash2,
   Upload,
+  X,
+  ZoomIn,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
@@ -54,7 +57,6 @@ import {
   type ChecklistItem,
   type Employee,
   type Listing,
-  type PhotoEntry,
   type Task,
   type TaskType,
 } from "@/lib/supabase";
@@ -400,7 +402,7 @@ export default function Tasks() {
   });
 
   const updatePhotosMutation = useMutation({
-    mutationFn: async ({ id, photos }: { id: string; photos: PhotoEntry[] }) => {
+    mutationFn: async ({ id, photos }: { id: string; photos: string[] }) => {
       const { error } = await supabase.from("tasks").update({ photos }).eq("id", id);
       if (error) throw error;
     },
@@ -866,7 +868,7 @@ interface TaskCardProps {
   statusLabel: Record<Task["status"], string>;
   onStatusChange: (v: Task["status"]) => void;
   onChecklistToggle: (idx: number) => void;
-  onPhotosUpdate: (photos: PhotoEntry[]) => void;
+  onPhotosUpdate: (photos: string[]) => void;
 }
 
 function TaskCard({
@@ -887,11 +889,17 @@ function TaskCard({
   onPhotosUpdate,
 }: TaskCardProps) {
   const [checklistOpen, setChecklistOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const checklist: ChecklistItem[] = Array.isArray(task.checklist) ? task.checklist : [];
-  const photos: PhotoEntry[] = Array.isArray(task.photos) ? task.photos : [];
+  const photos: string[] = Array.isArray(task.photos) ? task.photos : [];
   const doneCount = checklist.filter((c) => c.checked).length;
   const hasChecklist = checklist.length > 0;
+
+  const handleDeletePhoto = (url: string) => {
+    const updated = photos.filter((p) => p !== url);
+    onPhotosUpdate(updated);
+  };
 
   return (
     <div className="rounded-md border bg-card p-3">
@@ -951,8 +959,7 @@ function TaskCard({
       {checklistOpen && (
         <ul className="mb-2 space-y-1.5">
           {checklist.map((item, idx) => {
-            const itemPhotos = photos.filter((p) => p.checklist_item === item.title);
-            const showPhotoSection = isPhotoItem(item.title);
+            const showUploadButton = canUploadPhoto && isPhotoItem(item.title);
             return (
               <li key={item.id ?? idx}>
                 {/* Checklist row */}
@@ -984,48 +991,78 @@ function TaskCard({
                   >
                     {item.title}
                   </span>
+                  {/* Inline upload button next to photo checklist items */}
+                  {showUploadButton && (
+                    <PhotoUploadButton
+                      taskId={task.id}
+                      existingPhotos={photos}
+                      currentUserId={currentUserId}
+                      onPhotosUpdate={onPhotosUpdate}
+                      compact
+                    />
+                  )}
                 </div>
-
-                {/* Photo section (below photo-related items) */}
-                {showPhotoSection && (
-                  <div className="ml-6 mt-1.5 space-y-1.5">
-                    {/* Thumbnails */}
-                    {itemPhotos.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {itemPhotos.map((p, pi) => (
-                          <a
-                            key={pi}
-                            href={p.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="group relative"
-                          >
-                            <img
-                              src={p.url}
-                              alt="uploaded"
-                              className="h-16 w-16 rounded border object-cover transition-opacity group-hover:opacity-80"
-                            />
-                          </a>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Upload button (only for assigned staff / admin) */}
-                    {canUploadPhoto && (
-                      <PhotoUploadButton
-                        taskId={task.id}
-                        checklistItem={item.title}
-                        existingPhotos={photos}
-                        currentUserId={currentUserId}
-                        onPhotosUpdate={onPhotosUpdate}
-                      />
-                    )}
-                  </div>
-                )}
               </li>
             );
           })}
         </ul>
+      )}
+
+      {/* ── Photos section ── */}
+      {(photos.length > 0 || canUploadPhoto) && (
+        <div className="mb-2">
+          {/* Header row for photos */}
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <ImageIcon className="h-3.5 w-3.5" />
+              Ảnh ({photos.length})
+            </span>
+            {canUploadPhoto && (
+              <PhotoUploadButton
+                taskId={task.id}
+                existingPhotos={photos}
+                currentUserId={currentUserId}
+                onPhotosUpdate={onPhotosUpdate}
+              />
+            )}
+          </div>
+
+          {/* Photo grid */}
+          {photos.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {photos.map((url, idx) => (
+                <div key={idx} className="group relative h-16 w-16 shrink-0">
+                  <img
+                    src={url}
+                    alt={`photo ${idx + 1}`}
+                    className="h-16 w-16 rounded border object-cover"
+                  />
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center gap-1 rounded bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button
+                      type="button"
+                      title="Xem ảnh"
+                      className="rounded p-0.5 text-white hover:text-blue-300"
+                      onClick={() => setPreviewUrl(url)}
+                    >
+                      <ZoomIn className="h-4 w-4" />
+                    </button>
+                    {canUploadPhoto && (
+                      <button
+                        type="button"
+                        title="Xóa ảnh"
+                        className="rounded p-0.5 text-white hover:text-red-400"
+                        onClick={() => handleDeletePhoto(url)}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Status dropdown */}
@@ -1042,6 +1079,19 @@ function TaskCard({
           </SelectContent>
         </Select>
       )}
+
+      {/* Lightbox preview dialog */}
+      <Dialog open={!!previewUrl} onOpenChange={(v) => { if (!v) setPreviewUrl(null); }}>
+        <DialogContent className="flex max-h-[90vh] max-w-3xl items-center justify-center p-2">
+          {previewUrl && (
+            <img
+              src={previewUrl}
+              alt="preview"
+              className="max-h-[85vh] w-auto rounded object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1050,18 +1100,19 @@ function TaskCard({
 
 interface PhotoUploadButtonProps {
   taskId: string;
-  checklistItem: string;
-  existingPhotos: PhotoEntry[];
+  existingPhotos: string[];
   currentUserId: string | undefined;
-  onPhotosUpdate: (photos: PhotoEntry[]) => void;
+  onPhotosUpdate: (photos: string[]) => void;
+  /** When true renders a compact icon-only button for inline use */
+  compact?: boolean;
 }
 
 function PhotoUploadButton({
   taskId,
-  checklistItem,
   existingPhotos,
   currentUserId,
   onPhotosUpdate,
+  compact = false,
 }: PhotoUploadButtonProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -1075,20 +1126,29 @@ function PhotoUploadButton({
     try {
       const ext = file.name.split(".").pop() ?? "jpg";
       const path = `${taskId}/${genId()}.${ext}`;
+
+      // eslint-disable-next-line no-console
+      console.log("[photo upload] uploading path:", path);
+
       const { error: uploadErr } = await supabase.storage
         .from("task-images")
         .upload(path, file, { upsert: false });
       if (uploadErr) throw uploadErr;
+
       const { data: urlData } = supabase.storage
         .from("task-images")
         .getPublicUrl(path);
-      const newPhoto: PhotoEntry = {
-        checklist_item: checklistItem,
-        url: urlData.publicUrl,
-        uploaded_at: new Date().toISOString(),
-        uploaded_by: currentUserId ?? "",
-      };
-      onPhotosUpdate([...existingPhotos, newPhoto]);
+      const publicUrl = urlData.publicUrl;
+
+      // eslint-disable-next-line no-console
+      console.log("[photo upload] public URL:", publicUrl);
+
+      const updatedPhotos = [...existingPhotos, publicUrl];
+
+      // eslint-disable-next-line no-console
+      console.log("[photo upload] updated photos array:", updatedPhotos);
+
+      onPhotosUpdate(updatedPhotos);
     } catch (err) {
       setUploadError((err as Error).message);
     } finally {
@@ -1098,7 +1158,7 @@ function PhotoUploadButton({
   };
 
   return (
-    <div>
+    <div className={compact ? "inline-flex" : undefined}>
       <input
         ref={fileRef}
         type="file"
@@ -1110,8 +1170,9 @@ function PhotoUploadButton({
         type="button"
         variant="outline"
         size="sm"
-        className="h-7 gap-1.5 text-xs"
+        className={compact ? "h-6 w-6 shrink-0 p-0" : "h-7 gap-1.5 text-xs"}
         disabled={uploading}
+        title="Tải ảnh lên"
         onClick={() => fileRef.current?.click()}
       >
         {uploading ? (
@@ -1119,9 +1180,9 @@ function PhotoUploadButton({
         ) : (
           <Upload className="h-3 w-3" />
         )}
-        {uploading ? "Đang tải lên..." : "Tải ảnh lên"}
+        {!compact && (uploading ? "Đang tải lên..." : "Tải ảnh")}
       </Button>
-      {uploadError && (
+      {uploadError && !compact && (
         <p className="mt-1 text-xs text-destructive">{uploadError}</p>
       )}
     </div>
