@@ -9,11 +9,14 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
+  Clock,
+  Eye,
   ImageIcon,
   Loader2,
   Plus,
   Trash2,
   Upload,
+  User,
   X,
   ZoomIn,
 } from "lucide-react";
@@ -186,6 +189,7 @@ export default function Tasks() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [open, setOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("__none__");
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
 
   const STATUS_LABEL: Record<Task["status"], string> = {
     todo: t.tasks.todo,
@@ -536,6 +540,7 @@ export default function Tasks() {
                         onPhotosUpdate={(photos) =>
                           updatePhotosMutation.mutate({ id: tk.id, photos })
                         }
+                        onViewDetail={canManageAll ? () => setDetailTask(tk) : undefined}
                       />
                     ))
                   )}
@@ -851,6 +856,19 @@ export default function Tasks() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* ── Task detail dialog (admin / manager) ── */}
+      {detailTask && (
+        <TaskDetailDialog
+          task={detailTask}
+          assigneeName={assigneeName(detailTask.assigned_employee_id)}
+          taskTypeLabel={TASK_TYPE_LABEL}
+          statusLabel={STATUS_LABEL}
+          priorityLabel={t.status[detailTask.priority]}
+          priorityVariant={PRIORITY_VARIANT[detailTask.priority]}
+          onClose={() => setDetailTask(null)}
+        />
+      )}
     </AppLayout>
   );
 }
@@ -873,6 +891,7 @@ interface TaskCardProps {
   onStatusChange: (v: Task["status"]) => void;
   onChecklistToggle: (idx: number) => void;
   onPhotosUpdate: (photos: string[]) => void;
+  onViewDetail?: () => void;
 }
 
 function TaskCard({
@@ -891,6 +910,7 @@ function TaskCard({
   onStatusChange,
   onChecklistToggle,
   onPhotosUpdate,
+  onViewDetail,
 }: TaskCardProps) {
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -919,9 +939,21 @@ function TaskCard({
           )}
           <p className="font-medium leading-snug">{task.title}</p>
         </div>
-        <Badge variant={priorityVariant} className="shrink-0 capitalize">
-          {priorityLabel}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-1">
+          {onViewDetail && (
+            <button
+              type="button"
+              title="Xem chi tiết"
+              className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+              onClick={onViewDetail}
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <Badge variant={priorityVariant} className="capitalize">
+            {priorityLabel}
+          </Badge>
+        </div>
       </div>
 
       {/* Meta */}
@@ -1190,5 +1222,198 @@ function PhotoUploadButton({
         <p className="mt-1 text-xs text-destructive">{uploadError}</p>
       )}
     </div>
+  );
+}
+
+// ── Task detail dialog (admin / manager only) ────────────────────────────────
+
+interface TaskDetailDialogProps {
+  task: Task;
+  assigneeName: string;
+  taskTypeLabel: Record<TaskType, string>;
+  statusLabel: Record<Task["status"], string>;
+  priorityLabel: string;
+  priorityVariant: "default" | "secondary" | "destructive" | "outline";
+  onClose: () => void;
+}
+
+function TaskDetailDialog({
+  task,
+  assigneeName,
+  taskTypeLabel,
+  statusLabel,
+  priorityLabel,
+  priorityVariant,
+  onClose,
+}: TaskDetailDialogProps) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const checklist: ChecklistItem[] = Array.isArray(task.checklist) ? task.checklist : [];
+  const photos: string[] = Array.isArray(task.photos) ? task.photos : [];
+  const doneCount = checklist.filter((c) => c.checked).length;
+  const pct = checklist.length > 0 ? Math.round((doneCount / checklist.length) * 100) : null;
+
+  const completedAt =
+    task.status === "done" && task.updated_at
+      ? format(parseISO(task.updated_at), "MMM d, yyyy HH:mm")
+      : null;
+
+  return (
+    <>
+      <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex flex-wrap items-center gap-2 pr-6">
+              {task.task_type && (
+                <span
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${TASK_TYPE_COLORS[task.task_type]}`}
+                >
+                  {taskTypeLabel[task.task_type]}
+                </span>
+              )}
+              <span className="flex-1">{task.title}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-1">
+            {/* Status + Priority row */}
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="capitalize">
+                {statusLabel[task.status]}
+              </Badge>
+              <Badge variant={priorityVariant} className="capitalize">
+                {priorityLabel}
+              </Badge>
+            </div>
+
+            {/* Assigned employee */}
+            <div className="flex items-center gap-2 text-sm">
+              <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="text-muted-foreground">Nhân viên:</span>
+              <span className="font-medium">{assigneeName}</span>
+            </div>
+
+            {/* Due date */}
+            {task.due_date && (
+              <div className="flex items-center gap-2 text-sm">
+                <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-muted-foreground">Hạn:</span>
+                <span className="font-medium">
+                  {format(parseISO(task.due_date), "MMM d, yyyy")}
+                </span>
+              </div>
+            )}
+
+            {/* Completion time */}
+            {completedAt && (
+              <div className="flex items-center gap-2 text-sm">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                <span className="text-muted-foreground">Hoàn thành lúc:</span>
+                <span className="font-medium text-green-700">{completedAt}</span>
+              </div>
+            )}
+
+            {/* Notes */}
+            {task.notes && (
+              <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                {task.notes}
+              </div>
+            )}
+
+            {/* Checklist */}
+            {checklist.length > 0 && (
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium">
+                    Checklist — {doneCount}/{checklist.length}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{pct}%</span>
+                </div>
+                {/* Progress bar */}
+                <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={`h-2 rounded-full transition-all ${pct === 100 ? "bg-green-500" : "bg-primary"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <ul className="space-y-1.5">
+                  {checklist.map((item, idx) => (
+                    <li
+                      key={item.id ?? idx}
+                      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
+                        item.checked
+                          ? "bg-green-50 dark:bg-green-950/30"
+                          : "bg-muted/30"
+                      }`}
+                    >
+                      {item.checked ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                      ) : (
+                        <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      )}
+                      <span
+                        className={
+                          item.checked
+                            ? "font-medium text-green-700 dark:text-green-300"
+                            : "text-foreground"
+                        }
+                      >
+                        {item.title}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Photos */}
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                Ảnh ({photos.length})
+              </div>
+              {photos.length === 0 ? (
+                <p className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+                  Chưa có ảnh
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {photos.map((url, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className="group relative aspect-square overflow-hidden rounded-md border"
+                      onClick={() => setPreviewUrl(url)}
+                    >
+                      <img
+                        src={url}
+                        alt={`photo ${idx + 1}`}
+                        className="h-full w-full object-cover transition-opacity group-hover:opacity-80"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+                        <ZoomIn className="h-5 w-5 text-white drop-shadow" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Photo lightbox */}
+      <Dialog open={!!previewUrl} onOpenChange={(v) => { if (!v) setPreviewUrl(null); }}>
+        <DialogContent className="flex max-h-[90vh] max-w-3xl items-center justify-center p-2">
+          {previewUrl && (
+            <img
+              src={previewUrl}
+              alt="preview"
+              className="max-h-[85vh] w-auto rounded object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -201,6 +201,7 @@ export interface Task {
   /** Plain URL strings: ["https://…/photo1.jpg", "https://…/photo2.jpg"] */
   photos: string[];
   created_at: string;
+  updated_at: string;
 }
 
 export interface Revenue {
