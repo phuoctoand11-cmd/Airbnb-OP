@@ -528,6 +528,10 @@ export default function Tasks() {
                             i === idx ? { ...c, checked: !c.checked } : c
                           );
                           updateChecklistMutation.mutate({ id: tk.id, checklist: updated });
+                          const allDone = updated.length > 0 && updated.every((c) => c.checked);
+                          if (allDone && tk.status !== "done") {
+                            updateStatusMutation.mutate({ id: tk.id, status: "done" });
+                          }
                         }}
                         onPhotosUpdate={(photos) =>
                           updatePhotosMutation.mutate({ id: tk.id, photos })
