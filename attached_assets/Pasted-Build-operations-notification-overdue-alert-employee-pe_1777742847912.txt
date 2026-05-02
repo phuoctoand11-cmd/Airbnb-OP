@@ -1,0 +1,92 @@
+Build operations notification, overdue alert, employee performance, and admin/manager dashboard.
+
+Part 1: Task notifications
+When a new task is created and assigned to an employee:
+- create notification for assigned employee
+- show notification badge in sidebar/header
+- notification item includes task title, listing name, due date, priority
+- clicking notification opens /tasks and highlights the task
+- mark notification as read
+- admin/manager can also get notification when high-priority task is overdue
+
+Create or update table:
+notifications:
+- id uuid
+- user_id uuid references profiles(id)
+- employee_id uuid references employees(id)
+- type text
+- title text
+- message text
+- related_task_id uuid references tasks(id)
+- is_read boolean default false
+- created_at timestamptz default now()
+
+Part 2: Overdue task alert
+Task is overdue if:
+- due_date < current date
+- status is not completed
+
+UI:
+- overdue task card border/red background
+- show red badge: Quá hạn
+- sort overdue tasks to top
+- admin/manager dashboard shows overdue count
+- employee task page shows overdue warning
+
+Part 3: Employee performance scoring
+Create performance metrics:
+- total assigned tasks
+- completed tasks
+- overdue tasks
+- completion rate
+- average completion time
+- photo proof rate
+- checklist completion rate
+
+Score formula:
+score = 
+completion_rate * 50
++ checklist_completion_rate * 20
++ photo_proof_rate * 15
++ on_time_rate * 15
+
+Cap score from 0 to 100.
+
+Show employee ranking:
+- Top performers
+- Needs attention
+- Filter by date range, department, role, task type
+
+Part 4: Admin/Manager dashboard
+Add dashboard cards:
+- Total tasks
+- Completed tasks
+- Completion %
+- Overdue tasks
+- Tasks pending
+- Tasks in progress
+- Top employee this month
+- Lowest performance employee this month
+
+Charts:
+- Task completion trend by day/week
+- Tasks by status
+- Tasks by employee
+- Overdue tasks by employee
+
+Permissions:
+- Admin sees all company data
+- Manager sees own team data
+- Employee sees only own task stats
+- Sales/staff do not see admin performance dashboard
+
+Database:
+Add needed SQL migration:
+- notifications table if missing
+- indexes
+- RLS policies
+- optional view for employee_performance_summary
+
+Important:
+Show me the SQL migration before applying it.
+Do not break existing task, HR, listing, booking, chat features.
