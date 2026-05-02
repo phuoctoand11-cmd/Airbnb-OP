@@ -184,6 +184,14 @@ export interface ChecklistItem {
   checked: boolean;
 }
 
+/** Photo entry stored in tasks.photos JSONB array. */
+export interface PhotoEntry {
+  url: string;
+  checklist_item: string;
+  uploaded_at: string;
+  uploaded_by: string;
+}
+
 export interface Task {
   id: string;
   listing_id: string | null;
@@ -198,8 +206,8 @@ export interface Task {
   priority: "low" | "medium" | "high";
   status: "todo" | "in_progress" | "done" | "cancelled";
   checklist: ChecklistItem[];
-  /** Plain URL strings: ["https://…/photo1.jpg", "https://…/photo2.jpg"] */
-  photos: string[];
+  /** Rich photo objects: { url, checklist_item, uploaded_at, uploaded_by } */
+  photos: PhotoEntry[];
   created_at: string;
   updated_at: string;
 }

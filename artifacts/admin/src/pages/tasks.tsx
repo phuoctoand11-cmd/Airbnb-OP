@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -7,6 +7,8 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Circle,
   Clock,
@@ -60,6 +62,7 @@ import {
   type ChecklistItem,
   type Employee,
   type Listing,
+  type PhotoEntry,
   type Task,
   type TaskType,
 } from "@/lib/supabase";
@@ -136,6 +139,9 @@ const TEMPLATE_ITEMS: Record<TemplateKey, string[]> = {
 };
 
 const TEMPLATE_KEYS: TemplateKey[] = ["cleaning", "maintenance", "checkin_prepare", "checkout_check"];
+
+/** Task types that require at least one photo before marking as done. */
+const PHOTO_REQUIRED_TASK_TYPES: readonly TaskType[] = ["cleaning", "maintenance", "checkout_check"];
 
 // ── Zod schema ───────────────────────────────────────────────────────────────
 
@@ -406,7 +412,7 @@ export default function Tasks() {
   });
 
   const updatePhotosMutation = useMutation({
-    mutationFn: async ({ id, photos }: { id: string; photos: string[] }) => {
+    mutationFn: async ({ id, photos }: { id: string; photos: PhotoEntry[] }) => {
       const { error } = await supabase.from("tasks").update({ photos }).eq("id", id);
       if (error) throw error;
     },
@@ -414,6 +420,19 @@ export default function Tasks() {
     onError: (err: Error) =>
       toast({ variant: "destructive", title: "Không thể lưu ảnh", description: err.message }),
   });
+
+  const requiresPhotoEvidence = (tk: Task) =>
+    !!tk.task_type && (PHOTO_REQUIRED_TASK_TYPES as readonly string[]).includes(tk.task_type);
+
+  const checkPhotoBeforeDone = (tk: Task): boolean => {
+    if (!requiresPhotoEvidence(tk)) return true;
+    if ((tk.photos ?? []).length > 0) return true;
+    toast({
+      variant: "destructive",
+      description: "Vui lòng tải lên ít nhất 1 ảnh báo cáo trước khi hoàn thành công việc.",
+    });
+    return false;
+  };
 
   const canEditTask = (tk: Task) => canManageAll || tk.assigned_employee_id === employee?.id;
 
@@ -524,16 +543,17 @@ export default function Tasks() {
                         currentUserId={user?.id}
                         statusLabel={STATUS_LABEL}
                         checklistLabel={t.tasks.checklist}
-                        onStatusChange={(v) =>
-                          updateStatusMutation.mutate({ id: tk.id, status: v })
-                        }
+                        onStatusChange={(v) => {
+                          if (v === "done" && !checkPhotoBeforeDone(tk)) return;
+                          updateStatusMutation.mutate({ id: tk.id, status: v });
+                        }}
                         onChecklistToggle={(idx) => {
                           const updated = (tk.checklist ?? []).map((c, i) =>
                             i === idx ? { ...c, checked: !c.checked } : c
                           );
                           updateChecklistMutation.mutate({ id: tk.id, checklist: updated });
                           const allDone = updated.length > 0 && updated.every((c) => c.checked);
-                          if (allDone && tk.status !== "done") {
+                          if (allDone && tk.status !== "done" && checkPhotoBeforeDone(tk)) {
                             updateStatusMutation.mutate({ id: tk.id, status: "done" });
                           }
                         }}
@@ -890,7 +910,7 @@ interface TaskCardProps {
   statusLabel: Record<Task["status"], string>;
   onStatusChange: (v: Task["status"]) => void;
   onChecklistToggle: (idx: number) => void;
-  onPhotosUpdate: (photos: string[]) => void;
+  onPhotosUpdate: (photos: PhotoEntry[]) => void;
   onViewDetail?: () => void;
 }
 
@@ -913,16 +933,15 @@ function TaskCard({
   onViewDetail,
 }: TaskCardProps) {
   const [checklistOpen, setChecklistOpen] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const checklist: ChecklistItem[] = Array.isArray(task.checklist) ? task.checklist : [];
-  const photos: string[] = Array.isArray(task.photos) ? task.photos : [];
+  const photos: PhotoEntry[] = Array.isArray(task.photos) ? task.photos : [];
   const doneCount = checklist.filter((c) => c.checked).length;
   const hasChecklist = checklist.length > 0;
 
-  const handleDeletePhoto = (url: string) => {
-    const updated = photos.filter((p) => p !== url);
-    onPhotosUpdate(updated);
+  const handleDeletePhoto = (delIdx: number) => {
+    onPhotosUpdate(photos.filter((_, i) => i !== delIdx));
   };
 
   return (
@@ -1031,6 +1050,7 @@ function TaskCard({
                   {showUploadButton && (
                     <PhotoUploadButton
                       taskId={task.id}
+                      checklistItemTitle={item.title}
                       existingPhotos={photos}
                       currentUserId={currentUserId}
                       onPhotosUpdate={onPhotosUpdate}
@@ -1066,20 +1086,19 @@ function TaskCard({
           {/* Photo grid */}
           {photos.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {photos.map((url, idx) => (
-                <div key={idx} className="group relative h-16 w-16 shrink-0">
+              {photos.map((p, i) => (
+                <div key={i} className="group relative h-16 w-16 shrink-0">
                   <img
-                    src={url}
-                    alt={`photo ${idx + 1}`}
+                    src={p.url}
+                    alt={`photo ${i + 1}`}
                     className="h-16 w-16 rounded border object-cover"
                   />
-                  {/* Hover overlay */}
                   <div className="absolute inset-0 flex items-center justify-center gap-1 rounded bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"
                       title="Xem ảnh"
                       className="rounded p-0.5 text-white hover:text-blue-300"
-                      onClick={() => setPreviewUrl(url)}
+                      onClick={() => setLightboxIdx(i)}
                     >
                       <ZoomIn className="h-4 w-4" />
                     </button>
@@ -1088,7 +1107,7 @@ function TaskCard({
                         type="button"
                         title="Xóa ảnh"
                         className="rounded p-0.5 text-white hover:text-red-400"
-                        onClick={() => handleDeletePhoto(url)}
+                        onClick={() => handleDeletePhoto(i)}
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -1116,18 +1135,13 @@ function TaskCard({
         </Select>
       )}
 
-      {/* Lightbox preview dialog */}
-      <Dialog open={!!previewUrl} onOpenChange={(v) => { if (!v) setPreviewUrl(null); }}>
-        <DialogContent className="flex max-h-[90vh] max-w-3xl items-center justify-center p-2">
-          {previewUrl && (
-            <img
-              src={previewUrl}
-              alt="preview"
-              className="max-h-[85vh] w-auto rounded object-contain"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {lightboxIdx !== null && (
+        <PhotoLightbox
+          photos={photos}
+          startIndex={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1136,59 +1150,76 @@ function TaskCard({
 
 interface PhotoUploadButtonProps {
   taskId: string;
-  existingPhotos: string[];
+  checklistItemTitle?: string;
+  existingPhotos: PhotoEntry[];
   currentUserId: string | undefined;
-  onPhotosUpdate: (photos: string[]) => void;
+  onPhotosUpdate: (photos: PhotoEntry[]) => void;
   /** When true renders a compact icon-only button for inline use */
   compact?: boolean;
 }
 
 function PhotoUploadButton({
   taskId,
+  checklistItemTitle = "",
   existingPhotos,
   currentUserId,
   onPhotosUpdate,
   compact = false,
 }: PhotoUploadButtonProps) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
+  const isUploading = progress !== null;
+
+  const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+
+    setProgress({ done: 0, total: files.length });
     setUploadError(null);
+
+    const newEntries: PhotoEntry[] = [];
     try {
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const path = `${taskId}/${genId()}.${ext}`;
+      for (let fi = 0; fi < files.length; fi++) {
+        const file = files[fi];
+        const ext = file.name.split(".").pop() ?? "jpg";
+        const path = `${taskId}/${genId()}.${ext}`;
 
-      // eslint-disable-next-line no-console
-      console.log("[photo upload] uploading path:", path);
+        // eslint-disable-next-line no-console
+        console.log(`[photo upload] (${fi + 1}/${files.length}) path:`, path);
 
-      const { error: uploadErr } = await supabase.storage
-        .from("task-images")
-        .upload(path, file, { upsert: false });
-      if (uploadErr) throw uploadErr;
+        const { error: uploadErr } = await supabase.storage
+          .from("task-images")
+          .upload(path, file, { upsert: false });
+        if (uploadErr) throw uploadErr;
 
-      const { data: urlData } = supabase.storage
-        .from("task-images")
-        .getPublicUrl(path);
-      const publicUrl = urlData.publicUrl;
+        const { data: urlData } = supabase.storage
+          .from("task-images")
+          .getPublicUrl(path);
+        const publicUrl = urlData.publicUrl;
 
-      // eslint-disable-next-line no-console
-      console.log("[photo upload] public URL:", publicUrl);
+        // eslint-disable-next-line no-console
+        console.log(`[photo upload] (${fi + 1}/${files.length}) public URL:`, publicUrl);
 
-      const updatedPhotos = [...existingPhotos, publicUrl];
+        newEntries.push({
+          url: publicUrl,
+          checklist_item: checklistItemTitle,
+          uploaded_at: new Date().toISOString(),
+          uploaded_by: currentUserId ?? "",
+        });
 
+        setProgress({ done: fi + 1, total: files.length });
+      }
+
+      const updatedPhotos = [...existingPhotos, ...newEntries];
       // eslint-disable-next-line no-console
       console.log("[photo upload] updated photos array:", updatedPhotos);
-
       onPhotosUpdate(updatedPhotos);
     } catch (err) {
       setUploadError((err as Error).message);
     } finally {
-      setUploading(false);
+      setProgress(null);
       if (fileRef.current) fileRef.current.value = "";
     }
   };
@@ -1199,29 +1230,113 @@ function PhotoUploadButton({
         ref={fileRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
-        onChange={handleFile}
+        onChange={handleFiles}
       />
       <Button
         type="button"
         variant="outline"
         size="sm"
         className={compact ? "h-6 w-6 shrink-0 p-0" : "h-7 gap-1.5 text-xs"}
-        disabled={uploading}
+        disabled={isUploading}
         title="Tải ảnh lên"
         onClick={() => fileRef.current?.click()}
       >
-        {uploading ? (
+        {isUploading ? (
           <Loader2 className="h-3 w-3 animate-spin" />
         ) : (
           <Upload className="h-3 w-3" />
         )}
-        {!compact && (uploading ? "Đang tải lên..." : "Tải ảnh")}
+        {!compact && (
+          isUploading
+            ? `Đang tải ${progress!.done}/${progress!.total}...`
+            : "Tải ảnh"
+        )}
       </Button>
       {uploadError && !compact && (
         <p className="mt-1 text-xs text-destructive">{uploadError}</p>
       )}
     </div>
+  );
+}
+
+// ── Photo lightbox ────────────────────────────────────────────────────────────
+
+interface PhotoLightboxProps {
+  photos: PhotoEntry[];
+  startIndex: number;
+  onClose: () => void;
+}
+
+function PhotoLightbox({ photos, startIndex, onClose }: PhotoLightboxProps) {
+  const [idx, setIdx] = useState(startIndex);
+
+  const prev = () => setIdx((i) => Math.max(0, i - 1));
+  const next = () => setIdx((i) => Math.min(photos.length - 1, i + 1));
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") prev();
+      else if (e.key === "ArrowRight") next();
+      else if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const photo = photos[idx];
+  if (!photo) return null;
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-4xl border-none bg-black/95 p-0 [&>button]:text-white/70 [&>button]:hover:text-white">
+        <div className="flex select-none flex-col items-center justify-center px-12 py-6">
+          {/* Image with side navigation */}
+          <div className="relative flex w-full items-center justify-center">
+            <button
+              type="button"
+              className="absolute left-0 z-10 rounded-full p-1 text-white/70 transition hover:text-white disabled:opacity-20"
+              disabled={idx === 0}
+              onClick={prev}
+            >
+              <ChevronLeft className="h-8 w-8" />
+            </button>
+
+            <img
+              key={photo.url}
+              src={photo.url}
+              alt={`photo ${idx + 1}`}
+              className="max-h-[68vh] max-w-full rounded object-contain"
+            />
+
+            <button
+              type="button"
+              className="absolute right-0 z-10 rounded-full p-1 text-white/70 transition hover:text-white disabled:opacity-20"
+              disabled={idx === photos.length - 1}
+              onClick={next}
+            >
+              <ChevronRight className="h-8 w-8" />
+            </button>
+          </div>
+
+          {/* Counter + caption */}
+          <div className="mt-3 flex flex-col items-center gap-0.5">
+            <span className="text-sm font-semibold text-white">
+              {idx + 1} / {photos.length}
+            </span>
+            {(photo.checklist_item || photo.uploaded_at) && (
+              <span className="text-xs text-white/55">
+                {photo.checklist_item ? `${photo.checklist_item} · ` : ""}
+                {photo.uploaded_at
+                  ? format(parseISO(photo.uploaded_at), "MMM d, yyyy HH:mm")
+                  : ""}
+              </span>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1246,10 +1361,10 @@ function TaskDetailDialog({
   priorityVariant,
   onClose,
 }: TaskDetailDialogProps) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const checklist: ChecklistItem[] = Array.isArray(task.checklist) ? task.checklist : [];
-  const photos: string[] = Array.isArray(task.photos) ? task.photos : [];
+  const photos: PhotoEntry[] = Array.isArray(task.photos) ? task.photos : [];
   const doneCount = checklist.filter((c) => c.checked).length;
   const pct = checklist.length > 0 ? Math.round((doneCount / checklist.length) * 100) : null;
 
@@ -1378,16 +1493,16 @@ function TaskDetailDialog({
                 </p>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
-                  {photos.map((url, idx) => (
+                  {photos.map((p, i) => (
                     <button
-                      key={idx}
+                      key={i}
                       type="button"
                       className="group relative aspect-square overflow-hidden rounded-md border"
-                      onClick={() => setPreviewUrl(url)}
+                      onClick={() => setLightboxIdx(i)}
                     >
                       <img
-                        src={url}
-                        alt={`photo ${idx + 1}`}
+                        src={p.url}
+                        alt={`photo ${i + 1}`}
                         className="h-full w-full object-cover transition-opacity group-hover:opacity-80"
                       />
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
@@ -1402,18 +1517,13 @@ function TaskDetailDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Photo lightbox */}
-      <Dialog open={!!previewUrl} onOpenChange={(v) => { if (!v) setPreviewUrl(null); }}>
-        <DialogContent className="flex max-h-[90vh] max-w-3xl items-center justify-center p-2">
-          {previewUrl && (
-            <img
-              src={previewUrl}
-              alt="preview"
-              className="max-h-[85vh] w-auto rounded object-contain"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {lightboxIdx !== null && (
+        <PhotoLightbox
+          photos={photos}
+          startIndex={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+        />
+      )}
     </>
   );
 }
