@@ -200,36 +200,24 @@ function EmployeesTab({
   const [employeeFormOpen, setEmployeeFormOpen] = useState(false);
   const [statusChangeTarget, setStatusChangeTarget] = useState<{ emp: Employee; status: EmployeeStatus } | null>(null);
 
-  // ── Stage 1: Decide which table to query ──────────────────────────
-  // Wait until role is known before deciding — prevents an early render
-  // with role=null from queuing employee_basic_view and polluting the cache.
-  const tableName: "employees" | "employee_basic_view" =
-    role === null
-      ? "employees"             // query is disabled anyway while role=null
-      : canManage
-        ? "employees"           // admin / manager: full table with salary_base
-        : "employee_basic_view"; // everyone else: view without salary_base
-
-  // ── Stage 1: Raw fetch — NO client-side filters whatsoever ────────
+  // ── Stage 1: RPC fetch — bypasses RLS via SECURITY DEFINER ──────
+  // get_hr_employees() runs as postgres (function owner), so RLS on the
+  // employees table is irrelevant. The function itself checks the caller's
+  // role via the users+roles join (the same source the app auth uses) and
+  // returns all rows for admin/manager, or only the caller's own row for others.
   const employeesQuery = useQuery({
-    queryKey: ["hr-employees", role, tableName],
+    queryKey: ["hr-employees-rpc", role],
     enabled: role !== null,   // never fire before we know who the user is
-    staleTime: 0,             // always treat as stale so refetch happens on mount
-    gcTime: 0,                // never serve from cache; discard immediately on unmount
-    refetchOnMount: "always", // force a fresh network request every time
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
     queryFn: async () => {
       // eslint-disable-next-line no-console
-      console.info("[HR] FETCH start", { role, tableName, canManage });
-      const { data, error, count } = await supabase
-        .from(tableName)
-        .select("*", { count: "exact" })  // ask PostgREST for the total count too
-        .order("full_name")
-        .limit(1000);                      // explicit upper bound — no hidden pagination
+      console.info("[HR] RPC start", { role, canManage });
+      const { data, error } = await supabase.rpc("get_hr_employees");
       // eslint-disable-next-line no-console
-      console.info("[HR] FETCH done", {
-        tableName,
+      console.info("[HR] RPC done", {
         rowsReturned: data?.length ?? 0,
-        totalCount: count,
         first5Emails: (data ?? []).slice(0, 5).map((e: Employee) => e.email),
         error: error ? { message: error.message, code: error.code } : null,
       });
@@ -383,7 +371,7 @@ function EmployeesTab({
 
       {/* ── DEBUG PANEL (remove before launch) ─────────────────── */}
       <div className="mb-4 rounded border-2 border-yellow-400 bg-yellow-50 p-3 font-mono text-xs dark:bg-yellow-950">
-        <div className="mb-1 font-bold text-yellow-700 dark:text-yellow-300">HR DEBUG — role: {role ?? "(loading)"} | table: {tableName} | canManage: {String(canManage)}</div>
+        <div className="mb-1 font-bold text-yellow-700 dark:text-yellow-300">HR DEBUG — role: {role ?? "(loading)"} | source: RPC get_hr_employees | canManage: {String(canManage)}</div>
         <div className="grid grid-cols-3 gap-x-4 border-t border-yellow-300 pt-1">
           <div>
             <div className="font-semibold">rawEmployeesCount</div>
