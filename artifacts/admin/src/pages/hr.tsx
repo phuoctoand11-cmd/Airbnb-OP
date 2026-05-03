@@ -50,7 +50,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/lib/auth-context";
+import { canManageHR, canViewSalary, useAuth } from "@/lib/auth-context";
 import {
   supabase,
   type Department,
@@ -137,6 +137,8 @@ export default function HRRecruitment() {
   const { role } = useAuth();
   const { t } = useI18n();
   const isAdmin = role === "admin";
+  const canManage = canManageHR(role);
+  const showSalary = canViewSalary(role);
 
   return (
     <AppLayout title={t.hr.title}>
@@ -157,13 +159,13 @@ export default function HRRecruitment() {
         </TabsList>
 
         <TabsContent value="employees">
-          <EmployeesTab isAdmin={isAdmin} />
+          <EmployeesTab isAdmin={isAdmin} canManage={canManage} showSalary={showSalary} />
         </TabsContent>
         <TabsContent value="departments">
-          <DepartmentsTab isAdmin={isAdmin} />
+          <DepartmentsTab canManage={canManage} />
         </TabsContent>
         <TabsContent value="positions">
-          <PositionsTab isAdmin={isAdmin} />
+          <PositionsTab canManage={canManage} />
         </TabsContent>
       </Tabs>
     </AppLayout>
@@ -174,7 +176,15 @@ export default function HRRecruitment() {
 // EMPLOYEES TAB
 // ═══════════════════════════════════════════════════════════════════
 
-function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
+function EmployeesTab({
+  isAdmin,
+  canManage,
+  showSalary,
+}: {
+  isAdmin: boolean;
+  canManage: boolean;
+  showSalary: boolean;
+}) {
   const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -189,7 +199,9 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
   const [employeeFormOpen, setEmployeeFormOpen] = useState(false);
   const [statusChangeTarget, setStatusChangeTarget] = useState<{ emp: Employee; status: EmployeeStatus } | null>(null);
 
-  // Admin queries employees table; manager/accountant use employee_basic_view
+  // Admin queries employees table (includes salary_base).
+  // Manager uses employee_basic_view (salary_base omitted by the view).
+  // Accountant and others also use employee_basic_view.
   const tableName = isAdmin ? "employees" : "employee_basic_view";
 
   const employeesQuery = useQuery({
@@ -271,7 +283,7 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
     <>
       {/* Toolbar */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {isAdmin && (
+        {canManage && (
           <Button onClick={openCreate} className="ml-auto">
             <Plus className="mr-2 h-4 w-4" />
             {t.hr.newEmployee}
@@ -320,8 +332,8 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
         </Select>
       </div>
 
-      {/* Read-only notice for non-admin */}
-      {!isAdmin && (
+      {/* Read-only notice for accountant and other non-managing roles */}
+      {!canManage && (
         <Alert className="mb-4">
           <AlertDescription>{t.hr.viewOnly}</AlertDescription>
         </Alert>
@@ -352,10 +364,10 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                 <th className="px-4 py-3 text-left font-medium">{t.hr.department}</th>
                 <th className="px-4 py-3 text-left font-medium">{t.hr.position}</th>
                 <th className="px-4 py-3 text-left font-medium">{t.hr.employmentType}</th>
-                {isAdmin && <th className="px-4 py-3 text-left font-medium">{t.hr.salaryBase}</th>}
+                {showSalary && <th className="px-4 py-3 text-left font-medium">{t.hr.salaryBase}</th>}
                 <th className="px-4 py-3 text-left font-medium">{t.hr.statusBadge}</th>
-                {isAdmin && <th className="px-4 py-3 text-left font-medium">Login</th>}
-                {isAdmin && <th className="px-4 py-3 text-left font-medium">{t.common.actions}</th>}
+                {canManage && <th className="px-4 py-3 text-left font-medium">Login</th>}
+                {canManage && <th className="px-4 py-3 text-left font-medium">{t.common.actions}</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -370,7 +382,7 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                       {(t.hr as Record<string, string>)[emp.employment_type] ?? emp.employment_type}
                     </Badge>
                   </td>
-                  {isAdmin && (
+                  {showSalary && (
                     <td className="px-4 py-3 font-mono text-sm">{formatCurrency(emp.salary_base)}</td>
                   )}
                   <td className="px-4 py-3">
@@ -378,7 +390,7 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                       {(t.hr as Record<string, string>)[emp.status] ?? emp.status}
                     </Badge>
                   </td>
-                  {isAdmin && (
+                  {canManage && (
                     <td className="px-4 py-3">
                       {emp.profile_id ? (
                         <Badge variant="outline" className="gap-1 text-xs text-green-700 border-green-300 bg-green-50">
@@ -393,7 +405,7 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
                       )}
                     </td>
                   )}
-                  {isAdmin && (
+                  {canManage && (
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant="outline" onClick={() => openEdit(emp)}>
@@ -425,13 +437,14 @@ function EmployeesTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {/* Employee form dialog */}
-      {isAdmin && (
+      {canManage && (
         <EmployeeFormDialog
           open={employeeFormOpen}
           onOpenChange={(v) => { setEmployeeFormOpen(v); if (!v) setEditingEmployee(null); }}
           employee={editingEmployee}
           departments={deptsQuery.data ?? []}
           positions={positionsQuery.data ?? []}
+          showSalary={showSalary}
           onSaved={() => queryClient.invalidateQueries({ queryKey: ["employees"] })}
         />
       )}
@@ -480,6 +493,7 @@ function EmployeeFormDialog({
   employee,
   departments,
   positions,
+  showSalary,
   onSaved,
 }: {
   open: boolean;
@@ -487,6 +501,7 @@ function EmployeeFormDialog({
   employee: Employee | null;
   departments: Department[];
   positions: Position[];
+  showSalary: boolean;
   onSaved: () => void;
 }) {
   const { t } = useI18n();
@@ -724,14 +739,16 @@ function EmployeeFormDialog({
               )} />
             </div>
 
-            {/* Salary — admin only */}
-            <FormField control={form.control} name="salary_base" render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t.hr.salaryBase}</FormLabel>
-                <FormControl><Input type="number" min={0} step="0.01" placeholder="0.00" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+            {/* Salary — admin only; hidden for manager */}
+            {showSalary && (
+              <FormField control={form.control} name="salary_base" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.hr.salaryBase}</FormLabel>
+                  <FormControl><Input type="number" min={0} step="0.01" placeholder="0.00" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
 
             <FormField control={form.control} name="notes" render={({ field }) => (
               <FormItem>
@@ -924,7 +941,7 @@ function AccountLinkSection({
 // DEPARTMENTS TAB
 // ═══════════════════════════════════════════════════════════════════
 
-function DepartmentsTab({ isAdmin }: { isAdmin: boolean }) {
+function DepartmentsTab({ canManage }: { canManage: boolean }) {
   const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -957,7 +974,7 @@ function DepartmentsTab({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <>
-      {isAdmin && (
+      {canManage && (
         <div className="mb-4 flex justify-end">
           <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
             <Plus className="mr-2 h-4 w-4" />
@@ -995,7 +1012,7 @@ function DepartmentsTab({ isAdmin }: { isAdmin: boolean }) {
                   <p className="text-sm text-muted-foreground">{dept.description}</p>
                 </CardContent>
               )}
-              {isAdmin && (
+              {canManage && (
                 <CardContent className="flex gap-2 pb-3 pt-0">
                   <Button size="sm" variant="outline" onClick={() => { setEditing(dept); setFormOpen(true); }}>
                     {t.common.edit}
@@ -1017,7 +1034,7 @@ function DepartmentsTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {/* Form dialog */}
-      {isAdmin && (
+      {canManage && (
         <DeptPosFormDialog
           open={formOpen}
           onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
@@ -1055,7 +1072,7 @@ function DepartmentsTab({ isAdmin }: { isAdmin: boolean }) {
 // POSITIONS TAB
 // ═══════════════════════════════════════════════════════════════════
 
-function PositionsTab({ isAdmin }: { isAdmin: boolean }) {
+function PositionsTab({ canManage }: { canManage: boolean }) {
   const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1088,7 +1105,7 @@ function PositionsTab({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <>
-      {isAdmin && (
+      {canManage && (
         <div className="mb-4 flex justify-end">
           <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
             <Plus className="mr-2 h-4 w-4" />
@@ -1126,7 +1143,7 @@ function PositionsTab({ isAdmin }: { isAdmin: boolean }) {
                   <p className="text-sm text-muted-foreground">{pos.description}</p>
                 </CardContent>
               )}
-              {isAdmin && (
+              {canManage && (
                 <CardContent className="flex gap-2 pb-3 pt-0">
                   <Button size="sm" variant="outline" onClick={() => { setEditing(pos); setFormOpen(true); }}>
                     {t.common.edit}
@@ -1148,7 +1165,7 @@ function PositionsTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {/* Form dialog */}
-      {isAdmin && (
+      {canManage && (
         <DeptPosFormDialog
           open={formOpen}
           onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}

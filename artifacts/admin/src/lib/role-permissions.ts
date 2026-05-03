@@ -11,6 +11,7 @@ export const ROLE_PERMISSIONS = {
   manageUsers: ["admin"] as AppRole[],
   viewReports: ["admin", "manager", "accountant"] as AppRole[],
   viewHR: ["admin", "manager", "accountant"] as AppRole[],
+  manageHR: ["admin", "manager"] as AppRole[],
   viewDashboard: ["admin", "manager"] as AppRole[],
 } as const;
 

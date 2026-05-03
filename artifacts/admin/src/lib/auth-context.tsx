@@ -452,6 +452,27 @@ export function canViewAllTasks(role: AppRole | null): boolean {
   return role === "admin" || role === "manager";
 }
 
+export function canCreateTask(role: AppRole | null): boolean {
+  return role === "admin" || role === "manager";
+}
+
+export function canAssignTask(role: AppRole | null): boolean {
+  return role === "admin" || role === "manager";
+}
+
+export function canViewTaskPhotos(role: AppRole | null): boolean {
+  return hasPermission(role, "manageTasks");
+}
+
+export function canManageHR(role: AppRole | null): boolean {
+  return hasPermission(role, "manageHR");
+}
+
+/** Only admin can see salary_base — manager uses employee_basic_view which omits it. */
+export function canViewSalary(role: AppRole | null): boolean {
+  return role === "admin";
+}
+
 export function getDefaultRouteByRole(role: AppRole | null): string {
   if (role === "accountant") return "/revenues";
   if (role === "maintenance" || role === "cleaner" || role === "cleaningstaff" || role === "staff") return "/tasks";
