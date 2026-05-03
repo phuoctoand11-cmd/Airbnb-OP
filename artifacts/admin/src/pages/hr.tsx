@@ -188,6 +188,7 @@ function EmployeesTab({
   const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { role } = useAuth();
 
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
@@ -206,10 +207,18 @@ function EmployeesTab({
   const employeesQuery = useQuery({
     queryKey: ["employees", tableName],
     queryFn: async () => {
+      // eslint-disable-next-line no-console
+      console.info("[HR] query start", { role, tableName, canManage, isAdmin });
       const { data, error } = await supabase
         .from(tableName)
         .select("*")
         .order("full_name");
+      // eslint-disable-next-line no-console
+      console.info("[HR] query result", {
+        tableName,
+        rowCount: data?.length ?? 0,
+        error: error ? { message: error.message, code: error.code } : null,
+      });
       if (error) throw error;
       return (data ?? []) as Employee[];
     },
