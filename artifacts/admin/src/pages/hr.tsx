@@ -255,9 +255,14 @@ function EmployeesTab({
   });
 
   const filtered = useMemo(() => {
-    if (!employeesQuery.data) return [];
+    const raw = employeesQuery.data ?? [];
+    const activeFilters = { search, deptFilter, posFilter, statusFilter, typeFilter };
+    // eslint-disable-next-line no-console
+    console.info("[HR] filter start", { fetchedEmployeesLength: raw.length, activeFilters });
+
     const q = search.toLowerCase();
-    return employeesQuery.data.filter((e) => {
+    const result = raw.filter((e) => {
+      // UI search — no profile_id / team_id / email identity filters
       if (q && !e.full_name.toLowerCase().includes(q) &&
           !e.email.toLowerCase().includes(q) &&
           !(e.phone ?? "").toLowerCase().includes(q)) return false;
@@ -267,6 +272,14 @@ function EmployeesTab({
       if (typeFilter !== "all" && e.employment_type !== typeFilter) return false;
       return true;
     });
+
+    // eslint-disable-next-line no-console
+    console.info("[HR] filter done", {
+      fetchedEmployeesLength: raw.length,
+      filteredEmployeesLength: result.length,
+      activeFilters,
+    });
+    return result;
   }, [employeesQuery.data, search, deptFilter, posFilter, statusFilter, typeFilter]);
 
   const deptName = (id: string) => deptsQuery.data?.find((d) => d.id === id)?.name ?? "—";
@@ -359,9 +372,19 @@ function EmployeesTab({
         <div><span className="font-semibold">queryTable:</span> {tableName}</div>
         <div><span className="font-semibold">canManage:</span> {String(canManage)}</div>
         <div><span className="font-semibold">queryEnabled:</span> {String(role !== null)}</div>
-        <div><span className="font-semibold">rawEmployeesCount:</span> {employeesQuery.data === undefined ? "(pending)" : employeesQuery.data.length}</div>
-        <div><span className="font-semibold">filteredEmployeesCount:</span> {filtered.length}</div>
-        <div><span className="font-semibold">first5Emails:</span> {(employeesQuery.data ?? []).slice(0, 5).map((e) => e.email).join(", ") || "—"}</div>
+        <div className="mt-1 border-t border-yellow-300 pt-1">
+          <span className="font-semibold">fetchedEmployees.length (before filter):</span>{" "}
+          {employeesQuery.isLoading ? "(loading)" : employeesQuery.data === undefined ? "(pending)" : employeesQuery.data.length}
+        </div>
+        <div><span className="font-semibold">employees.length (after filter):</span> {filtered.length}</div>
+        <div className="mt-1 border-t border-yellow-300 pt-1">
+          <span className="font-semibold">activeFilters:</span>{" "}
+          {`search="${search || "(none)"}" | dept=${deptFilter} | pos=${posFilter} | status=${statusFilter} | type=${typeFilter}`}
+        </div>
+        <div className="mt-1 border-t border-yellow-300 pt-1">
+          <span className="font-semibold">first5Emails:</span>{" "}
+          {(employeesQuery.data ?? []).slice(0, 5).map((e) => e.email).join(", ") || "—"}
+        </div>
         {employeesQuery.error && (
           <div className="mt-1 text-red-600"><span className="font-semibold">error:</span> {(employeesQuery.error as Error).message}</div>
         )}
