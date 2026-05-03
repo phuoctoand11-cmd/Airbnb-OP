@@ -200,35 +200,37 @@ function EmployeesTab({
   const [employeeFormOpen, setEmployeeFormOpen] = useState(false);
   const [statusChangeTarget, setStatusChangeTarget] = useState<{ emp: Employee; status: EmployeeStatus } | null>(null);
 
-  // Admin and manager query employees table directly (includes salary_base).
-  // Accountant and other basic roles use employee_basic_view (salary_base omitted).
-  // NOTE: tableName must not be decided until role is known — otherwise the first
-  //       render (role=null → canManage=false) queues "employee_basic_view" and
-  //       the stale result may win over the correct "employees" fetch.
+  // ── Stage 1: Decide which table to query ──────────────────────────
+  // Wait until role is known before deciding — prevents an early render
+  // with role=null from queuing employee_basic_view and polluting the cache.
   const tableName: "employees" | "employee_basic_view" =
     role === null
-      ? "employees"            // placeholder; query is disabled until role loads
+      ? "employees"             // query is disabled anyway while role=null
       : canManage
-        ? "employees"
-        : "employee_basic_view";
+        ? "employees"           // admin / manager: full table with salary_base
+        : "employee_basic_view"; // everyone else: view without salary_base
 
+  // ── Stage 1: Raw fetch — NO client-side filters whatsoever ────────
   const employeesQuery = useQuery({
-    queryKey: ["employees", tableName, role],
-    // Do NOT fire until we know the role; avoids fetching the wrong table first.
-    enabled: role !== null,
-    staleTime: 0,
+    queryKey: ["hr-employees", role, tableName],
+    enabled: role !== null,   // never fire before we know who the user is
+    staleTime: 0,             // always treat as stale so refetch happens on mount
+    gcTime: 0,                // never serve from cache; discard immediately on unmount
+    refetchOnMount: "always", // force a fresh network request every time
     queryFn: async () => {
       // eslint-disable-next-line no-console
-      console.info("[HR] query start", { role, tableName, canManage, isAdmin });
-      const { data, error } = await supabase
+      console.info("[HR] FETCH start", { role, tableName, canManage });
+      const { data, error, count } = await supabase
         .from(tableName)
-        .select("*")
-        .order("full_name");
+        .select("*", { count: "exact" })  // ask PostgREST for the total count too
+        .order("full_name")
+        .limit(1000);                      // explicit upper bound — no hidden pagination
       // eslint-disable-next-line no-console
-      console.info("[HR] query result", {
+      console.info("[HR] FETCH done", {
         tableName,
-        rawCount: data?.length ?? 0,
-        first5: (data ?? []).slice(0, 5).map((e) => e.email),
+        rowsReturned: data?.length ?? 0,
+        totalCount: count,
+        first5Emails: (data ?? []).slice(0, 5).map((e: Employee) => e.email),
         error: error ? { message: error.message, code: error.code } : null,
       });
       if (error) throw error;
@@ -254,15 +256,30 @@ function EmployeesTab({
     },
   });
 
-  const filtered = useMemo(() => {
+  // ── Stage 2: Permission gate ───────────────────────────────────────
+  // For admin and manager: pass every row the DB returned through unchanged.
+  // No profile_id / team_id / email / employee.id filtering.
+  // (The DB already applied RLS; the view already hides salary_base for others.)
+  const afterPermissionFilter: Employee[] = useMemo(() => {
     const raw = employeesQuery.data ?? [];
-    const activeFilters = { search, deptFilter, posFilter, statusFilter, typeFilter };
     // eslint-disable-next-line no-console
-    console.info("[HR] filter start", { fetchedEmployeesLength: raw.length, activeFilters });
+    console.info("[HR] PERMISSION GATE", {
+      role,
+      canManage,
+      rawEmployeesCount: raw.length,
+      note: canManage
+        ? "admin/manager: all rows pass through"
+        : "other role: all rows pass through (DB/view already restricted)",
+    });
+    // No identity filtering — return everything the DB gave us.
+    return raw;
+  }, [employeesQuery.data, role, canManage]);
 
+  // ── Stage 3: UI filters (search / dropdowns only) ─────────────────
+  // No profile_id / team_id / email / id conditions here either.
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    const result = raw.filter((e) => {
-      // UI search — no profile_id / team_id / email identity filters
+    const result = afterPermissionFilter.filter((e) => {
       if (q && !e.full_name.toLowerCase().includes(q) &&
           !e.email.toLowerCase().includes(q) &&
           !(e.phone ?? "").toLowerCase().includes(q)) return false;
@@ -272,15 +289,14 @@ function EmployeesTab({
       if (typeFilter !== "all" && e.employment_type !== typeFilter) return false;
       return true;
     });
-
     // eslint-disable-next-line no-console
-    console.info("[HR] filter done", {
-      fetchedEmployeesLength: raw.length,
-      filteredEmployeesLength: result.length,
-      activeFilters,
+    console.info("[HR] UI FILTER done", {
+      afterPermissionFilterCount: afterPermissionFilter.length,
+      afterUIFilterCount: result.length,
+      activeFilters: { search, deptFilter, posFilter, statusFilter, typeFilter },
     });
     return result;
-  }, [employeesQuery.data, search, deptFilter, posFilter, statusFilter, typeFilter]);
+  }, [afterPermissionFilter, search, deptFilter, posFilter, statusFilter, typeFilter]);
 
   const deptName = (id: string) => deptsQuery.data?.find((d) => d.id === id)?.name ?? "—";
   const posName = (id: string) => positionsQuery.data?.find((p) => p.id === id)?.name ?? "—";
@@ -367,22 +383,35 @@ function EmployeesTab({
 
       {/* ── DEBUG PANEL (remove before launch) ─────────────────── */}
       <div className="mb-4 rounded border-2 border-yellow-400 bg-yellow-50 p-3 font-mono text-xs dark:bg-yellow-950">
-        <div className="mb-1 font-bold text-yellow-700 dark:text-yellow-300">HR DEBUG</div>
-        <div><span className="font-semibold">role:</span> {role ?? "(loading)"}</div>
-        <div><span className="font-semibold">queryTable:</span> {tableName}</div>
-        <div><span className="font-semibold">canManage:</span> {String(canManage)}</div>
-        <div><span className="font-semibold">queryEnabled:</span> {String(role !== null)}</div>
-        <div className="mt-1 border-t border-yellow-300 pt-1">
-          <span className="font-semibold">fetchedEmployees.length (before filter):</span>{" "}
-          {employeesQuery.isLoading ? "(loading)" : employeesQuery.data === undefined ? "(pending)" : employeesQuery.data.length}
+        <div className="mb-1 font-bold text-yellow-700 dark:text-yellow-300">HR DEBUG — role: {role ?? "(loading)"} | table: {tableName} | canManage: {String(canManage)}</div>
+        <div className="grid grid-cols-3 gap-x-4 border-t border-yellow-300 pt-1">
+          <div>
+            <div className="font-semibold">rawEmployeesCount</div>
+            <div className="text-lg font-bold">
+              {employeesQuery.isLoading ? "…" : (employeesQuery.data?.length ?? "—")}
+            </div>
+            <div className="text-yellow-600">(from DB, no frontend filter)</div>
+          </div>
+          <div>
+            <div className="font-semibold">afterPermissionFilterCount</div>
+            <div className="text-lg font-bold">{afterPermissionFilter.length}</div>
+            <div className="text-yellow-600">(admin/manager: same as raw)</div>
+          </div>
+          <div>
+            <div className="font-semibold">afterUIFilterCount</div>
+            <div className="text-lg font-bold">{filtered.length}</div>
+            <div className="text-yellow-600">(after search/dropdowns)</div>
+          </div>
         </div>
-        <div><span className="font-semibold">employees.length (after filter):</span> {filtered.length}</div>
-        <div className="mt-1 border-t border-yellow-300 pt-1">
-          <span className="font-semibold">activeFilters:</span>{" "}
-          {`search="${search || "(none)"}" | dept=${deptFilter} | pos=${posFilter} | status=${statusFilter} | type=${typeFilter}`}
+        <div className="mt-1 border-t border-yellow-300 pt-1 space-y-0.5">
+          <div><span className="font-semibold">dept filter:</span> {deptFilter}</div>
+          <div><span className="font-semibold">position filter:</span> {posFilter}</div>
+          <div><span className="font-semibold">status filter:</span> {statusFilter}</div>
+          <div><span className="font-semibold">employment type filter:</span> {typeFilter}</div>
+          <div><span className="font-semibold">search text:</span> "{search || "(none)"}"</div>
         </div>
         <div className="mt-1 border-t border-yellow-300 pt-1">
-          <span className="font-semibold">first5Emails:</span>{" "}
+          <span className="font-semibold">first5Emails from DB:</span>{" "}
           {(employeesQuery.data ?? []).slice(0, 5).map((e) => e.email).join(", ") || "—"}
         </div>
         {employeesQuery.error && (
