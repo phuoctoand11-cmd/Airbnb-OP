@@ -202,10 +202,21 @@ function EmployeesTab({
 
   // Admin and manager query employees table directly (includes salary_base).
   // Accountant and other basic roles use employee_basic_view (salary_base omitted).
-  const tableName = canManage ? "employees" : "employee_basic_view";
+  // NOTE: tableName must not be decided until role is known — otherwise the first
+  //       render (role=null → canManage=false) queues "employee_basic_view" and
+  //       the stale result may win over the correct "employees" fetch.
+  const tableName: "employees" | "employee_basic_view" =
+    role === null
+      ? "employees"            // placeholder; query is disabled until role loads
+      : canManage
+        ? "employees"
+        : "employee_basic_view";
 
   const employeesQuery = useQuery({
-    queryKey: ["employees", tableName],
+    queryKey: ["employees", tableName, role],
+    // Do NOT fire until we know the role; avoids fetching the wrong table first.
+    enabled: role !== null,
+    staleTime: 0,
     queryFn: async () => {
       // eslint-disable-next-line no-console
       console.info("[HR] query start", { role, tableName, canManage, isAdmin });
@@ -216,7 +227,8 @@ function EmployeesTab({
       // eslint-disable-next-line no-console
       console.info("[HR] query result", {
         tableName,
-        rowCount: data?.length ?? 0,
+        rawCount: data?.length ?? 0,
+        first5: (data ?? []).slice(0, 5).map((e) => e.email),
         error: error ? { message: error.message, code: error.code } : null,
       });
       if (error) throw error;
@@ -339,6 +351,22 @@ function EmployeesTab({
           </SelectContent>
         </Select>
       </div>
+
+      {/* ── DEBUG PANEL (remove before launch) ─────────────────── */}
+      <div className="mb-4 rounded border-2 border-yellow-400 bg-yellow-50 p-3 font-mono text-xs dark:bg-yellow-950">
+        <div className="mb-1 font-bold text-yellow-700 dark:text-yellow-300">HR DEBUG</div>
+        <div><span className="font-semibold">role:</span> {role ?? "(loading)"}</div>
+        <div><span className="font-semibold">queryTable:</span> {tableName}</div>
+        <div><span className="font-semibold">canManage:</span> {String(canManage)}</div>
+        <div><span className="font-semibold">queryEnabled:</span> {String(role !== null)}</div>
+        <div><span className="font-semibold">rawEmployeesCount:</span> {employeesQuery.data === undefined ? "(pending)" : employeesQuery.data.length}</div>
+        <div><span className="font-semibold">filteredEmployeesCount:</span> {filtered.length}</div>
+        <div><span className="font-semibold">first5Emails:</span> {(employeesQuery.data ?? []).slice(0, 5).map((e) => e.email).join(", ") || "—"}</div>
+        {employeesQuery.error && (
+          <div className="mt-1 text-red-600"><span className="font-semibold">error:</span> {(employeesQuery.error as Error).message}</div>
+        )}
+      </div>
+      {/* ─────────────────────────────────────────────────────────── */}
 
       {/* Read-only notice for accountant and other non-managing roles */}
       {!canManage && (
