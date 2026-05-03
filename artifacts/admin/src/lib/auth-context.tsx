@@ -468,9 +468,9 @@ export function canManageHR(role: AppRole | null): boolean {
   return hasPermission(role, "manageHR");
 }
 
-/** Only admin can see salary_base — manager uses employee_basic_view which omits it. */
+/** Admin and manager can see salary_base. Others use employee_basic_view which omits it. */
 export function canViewSalary(role: AppRole | null): boolean {
-  return role === "admin";
+  return role === "admin" || role === "manager";
 }
 
 export function getDefaultRouteByRole(role: AppRole | null): string {

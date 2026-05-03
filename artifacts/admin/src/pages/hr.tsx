@@ -199,10 +199,9 @@ function EmployeesTab({
   const [employeeFormOpen, setEmployeeFormOpen] = useState(false);
   const [statusChangeTarget, setStatusChangeTarget] = useState<{ emp: Employee; status: EmployeeStatus } | null>(null);
 
-  // Admin queries employees table (includes salary_base).
-  // Manager uses employee_basic_view (salary_base omitted by the view).
-  // Accountant and others also use employee_basic_view.
-  const tableName = isAdmin ? "employees" : "employee_basic_view";
+  // Admin and manager query employees table directly (includes salary_base).
+  // Accountant and other basic roles use employee_basic_view (salary_base omitted).
+  const tableName = canManage ? "employees" : "employee_basic_view";
 
   const employeesQuery = useQuery({
     queryKey: ["employees", tableName],
