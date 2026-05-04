@@ -1,0 +1,114 @@
+Upgrade Expenses and Reports modules.
+
+Goal:
+Track expenses by listing and view revenue/expense/profit by listing over a selected time range.
+
+Part 1: Expenses module
+Requirements:
+1. Expenses page should allow:
+- create expense
+- edit expense
+- delete/cancel expense if needed
+- select listing
+- enter amount in VND
+- choose category
+- enter description
+- vendor/supplier optional
+- spent_at date
+- upload receipt image optional
+
+2. Expenses filters:
+- listing filter: all listings or specific listing
+- date range filter
+- category filter
+- search description/vendor
+
+3. Expenses summary cards:
+- total expenses
+- expenses by selected listing
+- expenses by category
+- monthly expense trend
+- average expense per booking if possible
+
+4. Expense table:
+- date
+- listing
+- category
+- description
+- vendor
+- amount
+- receipt
+- actions
+
+5. Use existing currency formatter and currency toggle.
+Database stores VND only.
+
+Part 2: Reports module
+Requirements:
+1. Reports page should show revenue and expenses by listing.
+
+2. Filters:
+- date range
+- listing
+- category
+- booking status
+
+3. Listing financial report table:
+Columns:
+- listing name
+- revenue
+- expenses
+- profit = revenue - expenses
+- bookings count
+- occupancy if available
+- average revenue per booking
+- expense ratio = expenses / revenue
+
+4. Detail drilldown:
+Click a listing row to see:
+- all bookings/revenues in selected period
+- all expenses in selected period
+- profit summary
+- category breakdown
+
+5. Charts:
+- revenue vs expenses by month
+- profit by listing
+- expenses by category
+- top listings by profit
+
+Part 3: Database requirements
+Check existing tables:
+- expenses
+- revenues
+- bookings
+- listings
+
+If needed, add missing columns:
+expenses:
+- listing_id uuid references listings(id)
+- amount numeric(14,2)
+- category text
+- description text
+- vendor text
+- spent_at date
+- receipt_url text
+- created_at
+- updated_at
+
+revenues:
+- listing_id uuid references listings(id)
+- booking_id uuid references bookings(id)
+- amount numeric(14,2)
+- category text
+- description text
+- received_at date
+
+Part 4: Permissions
+- admin and manager can view all expenses/reports
+- accountant can view all expenses/reports and create/edit expenses
+- staff/sales/cleaner/maintenance cannot view finance reports unless explicitly allowed
+
+Part 5: Safety
+Show me any SQL migration before applying.
+Do not break existing booking, listing, task, HR, chat modules.
