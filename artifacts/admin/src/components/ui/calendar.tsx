@@ -29,7 +29,7 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        "bg-background group/calendar p-3 [--cell-size:2.25rem] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
+        "bg-background group/calendar [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className
@@ -42,31 +42,48 @@ function Calendar({
       }}
       classNames={{
         root: cn("w-fit", defaultClassNames.root),
+
         months: cn(
-          "relative flex flex-col gap-6 md:flex-row md:gap-8",
+          "relative flex flex-col gap-8 md:flex-row",
           defaultClassNames.months
         ),
-        month: cn("flex w-full flex-col gap-4", defaultClassNames.month),
+
+        // Each month column — min-width ensures grid doesn't collapse
+        month: cn(
+          "flex min-w-[280px] flex-col gap-3",
+          defaultClassNames.month
+        ),
+
+        // Prev / Next navigation — absolutely positioned at top corners
         nav: cn(
-          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
+          "absolute inset-x-0 top-0 flex w-full items-center justify-between",
           defaultClassNames.nav
         ),
         button_previous: cn(
           buttonVariants({ variant: buttonVariant }),
-          "h-[--cell-size] w-[--cell-size] select-none p-0 aria-disabled:opacity-30 rounded-lg hover:bg-muted/70",
+          "h-9 w-9 select-none p-0 rounded-lg text-slate-500",
+          "hover:bg-slate-100 hover:text-slate-700 aria-disabled:opacity-25",
           defaultClassNames.button_previous
         ),
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
-          "h-[--cell-size] w-[--cell-size] select-none p-0 aria-disabled:opacity-30 rounded-lg hover:bg-muted/70",
+          "h-9 w-9 select-none p-0 rounded-lg text-slate-500",
+          "hover:bg-slate-100 hover:text-slate-700 aria-disabled:opacity-25",
           defaultClassNames.button_next
         ),
+
+        // Month title row
         month_caption: cn(
-          "flex h-[--cell-size] w-full items-center justify-center px-[--cell-size]",
+          "flex h-9 w-full items-center justify-center px-9",
           defaultClassNames.month_caption
         ),
+        caption_label: cn(
+          "select-none text-sm font-semibold tracking-normal text-slate-800",
+          defaultClassNames.caption_label
+        ),
+
         dropdowns: cn(
-          "flex h-[--cell-size] w-full items-center justify-center gap-1.5 text-sm font-semibold",
+          "flex h-9 w-full items-center justify-center gap-1.5 text-sm font-semibold",
           defaultClassNames.dropdowns
         ),
         dropdown_root: cn(
@@ -77,85 +94,74 @@ function Calendar({
           "bg-popover absolute inset-0 opacity-0",
           defaultClassNames.dropdown
         ),
-        caption_label: cn(
-          "select-none font-semibold tracking-tight",
-          captionLayout === "label"
-            ? "text-sm"
-            : "[&>svg]:text-muted-foreground flex h-8 items-center gap-1 rounded-md pl-2 pr-1 text-sm [&>svg]:size-3.5",
-          defaultClassNames.caption_label
-        ),
-        table: "w-full border-collapse",
+
+        // ── Grid ────────────────────────────────────────────────────────────
+        // The <table>, <tr> rows, and <td>/<th> cells.
+        // We override display so every row is a 7-item flex row
+        // and every cell is flex-1 with a fixed height of 36px (h-9).
+        table: "w-full",
+
+        // Weekday header row — 7 equal columns
         weekdays: cn("flex", defaultClassNames.weekdays),
         weekday: cn(
-          "text-muted-foreground/70 flex-1 select-none rounded-md text-[0.75rem] font-medium",
+          // flex-1 so each header matches the day cell width
+          "flex h-8 flex-1 select-none items-center justify-center",
+          "text-[11px] font-semibold uppercase tracking-wide text-slate-400",
           defaultClassNames.weekday
         ),
-        week: cn("mt-1.5 flex w-full", defaultClassNames.week),
-        week_number_header: cn(
-          "w-[--cell-size] select-none",
-          defaultClassNames.week_number_header
-        ),
-        week_number: cn(
-          "text-muted-foreground select-none text-[0.8rem]",
-          defaultClassNames.week_number
-        ),
+
+        // Each week row — 7 equal columns, 4px gap between rows
+        week: cn("mt-1 flex", defaultClassNames.week),
+
+        // Each day cell (<td>) — flex-1 so it matches the header width
+        // h-9 = 36px fixed height; range band bg applied here
         day: cn(
-          "group/day relative aspect-square h-full w-full select-none p-0 text-center",
+          "group/day relative flex h-9 flex-1 select-none items-center justify-center p-0",
           defaultClassNames.day
         ),
-        // Range cells — light blue band through the middle
-        range_start: cn("bg-primary/12 rounded-l-full", defaultClassNames.range_start),
-        range_middle: cn("bg-primary/12 rounded-none", defaultClassNames.range_middle),
-        range_end: cn("bg-primary/12 rounded-r-full", defaultClassNames.range_end),
-        // Today — subtle ring (button handles the full ring)
-        today: cn("rounded-full", defaultClassNames.today),
+
+        // ── Range band colours on the <td> cell ─────────────────────────────
+        // Light blue stretches across the full cell width; endpoints get
+        // rounded caps so the band looks like a pill.
+        range_start: "bg-blue-100 rounded-l-full",
+        range_middle: "bg-blue-100",
+        range_end:   "bg-blue-100 rounded-r-full",
+
+        // Today — ring handled on the button via data-today-ring
+        today: "",
+
+        // Outside-month days — very muted
         outside: cn(
-          "text-muted-foreground/40 aria-selected:text-muted-foreground/40",
+          "text-slate-300 aria-selected:text-slate-300",
           defaultClassNames.outside
         ),
         disabled: cn(
-          "text-muted-foreground/30 opacity-40 cursor-not-allowed",
+          "text-slate-300 opacity-40 cursor-not-allowed",
           defaultClassNames.disabled
         ),
         hidden: cn("invisible", defaultClassNames.hidden),
+
         ...classNames,
       }}
       components={{
-        Root: ({ className, rootRef, ...props }) => {
-          return (
-            <div
-              data-slot="calendar"
-              ref={rootRef}
-              className={cn(className)}
-              {...props}
-            />
-          )
-        },
+        Root: ({ className, rootRef, ...props }) => (
+          <div data-slot="calendar" ref={rootRef} className={cn(className)} {...props} />
+        ),
         Chevron: ({ className, orientation, ...props }) => {
-          if (orientation === "left") {
-            return (
-              <ChevronLeftIcon className={cn("size-4", className)} {...props} />
-            )
-          }
-          if (orientation === "right") {
-            return (
-              <ChevronRightIcon className={cn("size-4", className)} {...props} />
-            )
-          }
-          return (
-            <ChevronDownIcon className={cn("size-4", className)} {...props} />
-          )
+          if (orientation === "left")
+            return <ChevronLeftIcon  className={cn("size-4", className)} {...props} />
+          if (orientation === "right")
+            return <ChevronRightIcon className={cn("size-4", className)} {...props} />
+          return   <ChevronDownIcon  className={cn("size-4", className)} {...props} />
         },
         DayButton: CalendarDayButton,
-        WeekNumber: ({ children, ...props }) => {
-          return (
-            <td {...props}>
-              <div className="flex size-[--cell-size] items-center justify-center text-center">
-                {children}
-              </div>
-            </td>
-          )
-        },
+        WeekNumber: ({ children, ...props }) => (
+          <td {...props}>
+            <div className="flex h-9 w-9 items-center justify-center text-center text-xs text-slate-400">
+              {children}
+            </div>
+          </td>
+        ),
         ...components,
       }}
       {...props}
@@ -169,47 +175,67 @@ function CalendarDayButton({
   modifiers,
   ...props
 }: React.ComponentProps<typeof DayButton>) {
-  const defaultClassNames = getDefaultClassNames()
-
   const ref = React.useRef<HTMLButtonElement>(null)
   React.useEffect(() => {
     if (modifiers.focused) ref.current?.focus()
   }, [modifiers.focused])
 
-  const isRangeEdge = modifiers.range_start || modifiers.range_end
-  const isInRange = modifiers.range_middle
   const isSingleSelected =
-    modifiers.selected && !modifiers.range_start && !modifiers.range_end && !modifiers.range_middle
-  const showTodayRing = modifiers.today && !modifiers.selected && !isInRange
+    modifiers.selected &&
+    !modifiers.range_start &&
+    !modifiers.range_end &&
+    !modifiers.range_middle
+
+  // Show today ring only when the day isn't inside a selected range
+  const showTodayRing =
+    modifiers.today && !modifiers.selected && !modifiers.range_middle
 
   return (
-    <Button
+    <button
       ref={ref}
-      variant="ghost"
-      size="icon"
-      data-day={day.date.toLocaleDateString()}
-      data-selected-single={isSingleSelected}
-      data-range-start={modifiers.range_start}
-      data-range-end={modifiers.range_end}
-      data-range-middle={isInRange}
-      data-today-ring={showTodayRing}
+      type="button"
+      data-selected-single={isSingleSelected || undefined}
+      data-range-start={modifiers.range_start || undefined}
+      data-range-end={modifiers.range_end || undefined}
+      data-range-middle={modifiers.range_middle || undefined}
+      data-today-ring={showTodayRing || undefined}
+      disabled={modifiers.disabled}
       className={cn(
-        // Base layout
-        "flex aspect-square h-auto w-full min-w-[--cell-size] flex-col gap-1 font-normal leading-none transition-colors",
-        // Single selected — solid blue circle
-        "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[selected-single=true]:rounded-full data-[selected-single=true]:hover:bg-primary/90",
-        // Range start — solid blue circle (left half of band)
-        "data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-start=true]:rounded-full data-[range-start=true]:hover:bg-primary/90",
-        // Range end — solid blue circle (right half of band)
-        "data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground data-[range-end=true]:rounded-full data-[range-end=true]:hover:bg-primary/90",
-        // Range middle — transparent button over the blue band
-        "data-[range-middle=true]:bg-transparent data-[range-middle=true]:text-foreground data-[range-middle=true]:rounded-none data-[range-middle=true]:hover:bg-primary/20",
-        // Today ring — visible when today is not selected/in range
-        "data-[today-ring=true]:ring-2 data-[today-ring=true]:ring-primary/50 data-[today-ring=true]:ring-offset-1 data-[today-ring=true]:rounded-full",
-        // Focus ring
-        "group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px]",
-        "[&>span]:text-xs [&>span]:opacity-70",
-        defaultClassNames.day,
+        // ── Base ──────────────────────────────────────────────────────────
+        // Fixed 36px square, centered within the flex-1 <td>,
+        // always rounded-lg for normal days
+        "relative flex h-9 w-9 items-center justify-center rounded-lg",
+        "text-sm font-medium tracking-normal text-slate-700",
+        "transition-colors duration-100 outline-none",
+        "cursor-pointer select-none",
+        // Normal hover
+        "hover:bg-slate-100 hover:text-slate-900",
+        // Focus
+        "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1",
+
+        // ── Single selection ──────────────────────────────────────────────
+        "data-[selected-single]:bg-blue-600 data-[selected-single]:text-white",
+        "data-[selected-single]:rounded-full data-[selected-single]:hover:bg-blue-700",
+
+        // ── Range start — solid blue circle ───────────────────────────────
+        "data-[range-start]:bg-blue-600 data-[range-start]:text-white",
+        "data-[range-start]:rounded-full data-[range-start]:hover:bg-blue-700",
+
+        // ── Range end — solid blue circle ─────────────────────────────────
+        "data-[range-end]:bg-blue-600 data-[range-end]:text-white",
+        "data-[range-end]:rounded-full data-[range-end]:hover:bg-blue-700",
+
+        // ── Range middle — transparent (band colour comes from <td>) ──────
+        "data-[range-middle]:bg-transparent data-[range-middle]:text-blue-900",
+        "data-[range-middle]:rounded-none data-[range-middle]:hover:bg-blue-200",
+
+        // ── Today ring ────────────────────────────────────────────────────
+        "data-[today-ring]:ring-1 data-[today-ring]:ring-blue-400",
+        "data-[today-ring]:rounded-full",
+
+        // ── Disabled ──────────────────────────────────────────────────────
+        "disabled:pointer-events-none disabled:opacity-30",
+
         className
       )}
       {...props}

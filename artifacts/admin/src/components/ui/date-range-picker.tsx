@@ -256,7 +256,7 @@ export function DateRangePicker({
                 onDayClick={handleDayClick}
                 onSelect={() => {}}
                 numberOfMonths={2}
-                className="p-3 [--cell-size:2.25rem]"
+                className="p-3"
               />
             </div>
 
