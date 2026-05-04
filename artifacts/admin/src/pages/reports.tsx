@@ -16,15 +16,21 @@ import {
   YAxis,
 } from "recharts";
 import {
+  addMonths,
   differenceInCalendarDays,
+  endOfMonth,
+  endOfQuarter,
   format,
   isWithinInterval,
   parseISO,
   startOfMonth,
+  startOfQuarter,
+  startOfYear,
   subDays,
   subMonths,
+  subQuarters,
 } from "date-fns";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronUp } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +62,7 @@ import {
 import { useI18n } from "@/i18n";
 import { useCurrency } from "@/lib/currency";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const CHART_COLORS = [
   "#0369a1",
@@ -80,6 +86,28 @@ const EXPENSE_CATEGORIES = [
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+type DatePreset =
+  | "7d"
+  | "30d"
+  | "60d"
+  | "90d"
+  | "this_month"
+  | "last_month"
+  | "this_quarter"
+  | "last_quarter"
+  | "this_year"
+  | "custom";
+
+interface DateRange {
+  startDate: Date;
+  endDate: Date;
+  startStr: string;
+  endStr: string;
+  displayStart: string;
+  displayEnd: string;
+  isValid: boolean;
+}
+
 interface ListingRow {
   listing: Listing;
   revenue: number;
@@ -101,24 +129,108 @@ interface DrillData {
   catBreakdown: [string, number][];
 }
 
+// ── Date range computation ─────────────────────────────────────────────────────
+
+function computeDateRange(
+  preset: DatePreset,
+  customStart: string,
+  customEnd: string
+): DateRange {
+  const today = new Date();
+  let start: Date;
+  let end: Date;
+
+  switch (preset) {
+    case "7d":
+      start = subDays(today, 7);
+      end = today;
+      break;
+    case "30d":
+      start = subDays(today, 30);
+      end = today;
+      break;
+    case "60d":
+      start = subDays(today, 60);
+      end = today;
+      break;
+    case "90d":
+      start = subDays(today, 90);
+      end = today;
+      break;
+    case "this_month":
+      start = startOfMonth(today);
+      end = today;
+      break;
+    case "last_month": {
+      const lm = subMonths(today, 1);
+      start = startOfMonth(lm);
+      end = endOfMonth(lm);
+      break;
+    }
+    case "this_quarter":
+      start = startOfQuarter(today);
+      end = today;
+      break;
+    case "last_quarter": {
+      const lq = subQuarters(today, 1);
+      start = startOfQuarter(lq);
+      end = endOfQuarter(lq);
+      break;
+    }
+    case "this_year":
+      start = startOfYear(today);
+      end = today;
+      break;
+    case "custom":
+      start = customStart ? parseISO(customStart) : subDays(today, 90);
+      end = customEnd ? parseISO(customEnd) : today;
+      break;
+    default:
+      start = subDays(today, 90);
+      end = today;
+  }
+
+  return {
+    startDate: start,
+    endDate: end,
+    startStr: format(start, "yyyy-MM-dd"),
+    endStr: format(end, "yyyy-MM-dd"),
+    displayStart: format(start, "dd/MM/yyyy"),
+    displayEnd: format(end, "dd/MM/yyyy"),
+    isValid: start <= end,
+  };
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function Reports() {
   const { t } = useI18n();
   const { fmt } = useCurrency();
 
-  // Filters
-  const [rangeDays, setRangeDays] = useState(90);
+  // ── Filter state ───────────────────────────────────────────────────────────
+  const [preset, setPreset] = useState<DatePreset>("90d");
+  const [customStart, setCustomStart] = useState(
+    format(subDays(new Date(), 90), "yyyy-MM-dd")
+  );
+  const [customEnd, setCustomEnd] = useState(format(new Date(), "yyyy-MM-dd"));
   const [listingFilter, setListingFilter] = useState("all");
   const [expCategoryFilter, setExpCategoryFilter] = useState("all");
   const [drillListingId, setDrillListingId] = useState<string | null>(null);
 
-  const start = subDays(new Date(), rangeDays);
-  const startStr = format(start, "yyyy-MM-dd");
+  // ── Computed date range ────────────────────────────────────────────────────
+  const dr = useMemo(
+    () => computeDateRange(preset, customStart, customEnd),
+    [preset, customStart, customEnd]
+  );
 
-  // ── Data fetch (date range pre-filtered on server) ─────────────────────────
+  const { startDate, endDate, startStr, endStr, displayStart, displayEnd, isValid } = dr;
+
+  // ── Data fetch ─────────────────────────────────────────────────────────────
+  // revenues filtered by received_at BETWEEN startStr AND endStr
+  // expenses filtered by spent_at    BETWEEN startStr AND endStr
+  // bookings fetched unfiltered (client-side date checks apply)
   const dataQuery = useQuery({
-    queryKey: ["reports", rangeDays],
+    queryKey: ["reports", startStr, endStr],
     queryFn: async () => {
       const [listings, bookings, revenues, expenses] = await Promise.all([
         supabase.from("listings").select("*"),
@@ -126,11 +238,13 @@ export default function Reports() {
         supabase
           .from("revenues")
           .select("*")
-          .gte("received_at", startStr),
+          .gte("received_at", startStr)
+          .lte("received_at", endStr),
         supabase
           .from("expenses")
           .select("*")
-          .gte("spent_at", startStr),
+          .gte("spent_at", startStr)
+          .lte("spent_at", endStr),
       ]);
       if (listings.error) throw listings.error;
       if (bookings.error) throw bookings.error;
@@ -143,10 +257,11 @@ export default function Reports() {
         expenses: (expenses.data ?? []) as Expense[],
       };
     },
+    enabled: isValid,
   });
 
   // ── Client-side filtered slices ────────────────────────────────────────────
-  // revenues filtered by listing
+
   const filteredRevenues = useMemo(() => {
     if (!dataQuery.data) return [];
     return dataQuery.data.revenues.filter(
@@ -154,7 +269,6 @@ export default function Reports() {
     );
   }, [dataQuery.data, listingFilter]);
 
-  // expenses filtered by listing + category
   const filteredExpenses = useMemo(() => {
     if (!dataQuery.data) return [];
     return dataQuery.data.expenses.filter(
@@ -174,7 +288,7 @@ export default function Reports() {
     return m;
   }, [filteredRevenues]);
 
-  // ── Step 2: Aggregate expenses by listing (separate Map — no cross-product) ─
+  // ── Step 2: Aggregate expenses by listing (separate Map) ───────────────────
   const expByListing = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of filteredExpenses) {
@@ -185,7 +299,6 @@ export default function Reports() {
   }, [filteredExpenses]);
 
   // ── Step 3: Join both aggregates to listings (profit = revenue − expenses) ──
-  // Never joins raw revenue rows to raw expense rows; each side is already summed.
   const listingPnL = useMemo((): ListingRow[] => {
     if (!dataQuery.data) return [];
     const scope =
@@ -201,7 +314,8 @@ export default function Reports() {
         const confirmedBookings = dataQuery.data!.bookings.filter(
           (b) =>
             b.listing_id === l.id &&
-            (b.status === "completed" || b.status === "confirmed")
+            (b.status === "completed" || b.status === "confirmed") &&
+            isWithinInterval(parseISO(b.check_in), { start: startDate, end: endDate })
         );
         const bookingCount = confirmedBookings.length;
         const avgRevPerBooking = bookingCount > 0 ? revenue / bookingCount : 0;
@@ -210,13 +324,19 @@ export default function Reports() {
       })
       .filter((row) => row.revenue > 0 || row.expenses > 0)
       .sort((a, b) => b.profit - a.profit);
-  }, [dataQuery.data, revByListing, expByListing, listingFilter]);
+  }, [dataQuery.data, revByListing, expByListing, listingFilter, startDate, endDate]);
 
-  // ── Monthly trend (filtered) ───────────────────────────────────────────────
+  // ── Monthly trend (months within selected range, max 12) ──────────────────
   const monthly = useMemo(() => {
-    const months = Array.from({ length: 6 }, (_, i) =>
-      startOfMonth(subMonths(new Date(), 5 - i))
-    );
+    const months: Date[] = [];
+    let m = startOfMonth(startDate);
+    const endMonth = startOfMonth(endDate);
+    while (m <= endMonth && months.length < 12) {
+      months.push(m);
+      m = addMonths(m, 1);
+    }
+    if (months.length === 0) months.push(startOfMonth(startDate));
+
     return months.map((m) => {
       const sameMonth = (d: string) => {
         const date = parseISO(d);
@@ -231,11 +351,16 @@ export default function Reports() {
       const expense = filteredExpenses
         .filter((e) => sameMonth(e.spent_at))
         .reduce((s, e) => s + Number(e.amount), 0);
-      return { label: format(m, "MMM"), revenue, expense, profit: revenue - expense };
+      return {
+        label: format(m, months.length > 6 ? "MMM yy" : "MMM"),
+        revenue,
+        expense,
+        profit: revenue - expense,
+      };
     });
-  }, [filteredRevenues, filteredExpenses]);
+  }, [filteredRevenues, filteredExpenses, startDate, endDate]);
 
-  // ── Occupancy trend (filtered by listing) ─────────────────────────────────
+  // ── Occupancy trend (months within selected range, max 12) ────────────────
   const occupancyTrend = useMemo(() => {
     if (!dataQuery.data) return [];
     const scopeListings =
@@ -243,11 +368,18 @@ export default function Reports() {
         ? dataQuery.data.listings
         : dataQuery.data.listings.filter((l) => l.id === listingFilter);
     const listingsCount = scopeListings.length || 1;
-    const months = Array.from({ length: 6 }, (_, i) =>
-      startOfMonth(subMonths(new Date(), 5 - i))
-    );
+
+    const months: Date[] = [];
+    let m = startOfMonth(startDate);
+    const endMonth = startOfMonth(endDate);
+    while (m <= endMonth && months.length < 12) {
+      months.push(m);
+      m = addMonths(m, 1);
+    }
+    if (months.length === 0) months.push(startOfMonth(startDate));
+
     return months.map((m) => {
-      const monthEnd = new Date(m.getFullYear(), m.getMonth() + 1, 0);
+      const monthEnd = endOfMonth(m);
       let bookedNights = 0;
       dataQuery.data!.bookings
         .filter(
@@ -263,17 +395,18 @@ export default function Reports() {
           const nights = differenceInCalendarDays(overlapEnd, overlapStart);
           if (nights > 0) bookedNights += nights;
         });
-      const availableNights = listingsCount * monthEnd.getDate();
+      const daysInMonth = monthEnd.getDate();
+      const availableNights = listingsCount * daysInMonth;
       return {
-        label: format(m, "MMM"),
+        label: format(m, months.length > 6 ? "MMM yy" : "MMM"),
         occupancy: availableNights
           ? Math.round((bookedNights / availableNights) * 100)
           : 0,
       };
     });
-  }, [dataQuery.data, listingFilter]);
+  }, [dataQuery.data, listingFilter, startDate, endDate]);
 
-  // ── Expense by category (uses filtered expenses) ───────────────────────────
+  // ── Expense by category (filtered) ────────────────────────────────────────
   const expenseByCategory = useMemo(() => {
     const map = new Map<string, number>();
     for (const e of filteredExpenses)
@@ -289,7 +422,7 @@ export default function Reports() {
     const revenue = filteredRevenues.reduce((s, r) => s + Number(r.amount), 0);
     const expense = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
     const inRange = (d: string) =>
-      isWithinInterval(parseISO(d), { start, end: new Date() });
+      isWithinInterval(parseISO(d), { start: startDate, end: endDate });
     const completed = dataQuery.data.bookings.filter(
       (b) =>
         b.status === "completed" &&
@@ -297,27 +430,25 @@ export default function Reports() {
         (listingFilter === "all" || b.listing_id === listingFilter)
     ).length;
     return { revenue, expense, profit: revenue - expense, completedBookings: completed };
-  }, [dataQuery.data, filteredRevenues, filteredExpenses, listingFilter, start]);
+  }, [dataQuery.data, filteredRevenues, filteredExpenses, listingFilter, startDate, endDate]);
 
-  // ── Drilldown data for selected listing ───────────────────────────────────
+  // ── Drilldown data ─────────────────────────────────────────────────────────
   const drillData = useMemo((): DrillData | null => {
     if (!drillListingId || !dataQuery.data) return null;
     const listing = dataQuery.data.listings.find((l) => l.id === drillListingId);
     if (!listing) return null;
-
-    // Use raw (unfiltered by category) revenues/expenses for the drilldown
-    // so the detail view always shows the full picture for that listing.
     const revs = dataQuery.data.revenues.filter((r) => r.listing_id === drillListingId);
     const exps = dataQuery.data.expenses.filter((e) => e.listing_id === drillListingId);
-    const bkgs = dataQuery.data.bookings.filter((b) => b.listing_id === drillListingId);
-
+    const bkgs = dataQuery.data.bookings.filter(
+      (b) =>
+        b.listing_id === drillListingId &&
+        isWithinInterval(parseISO(b.check_in), { start: startDate, end: endDate })
+    );
     const totalRevenue = revs.reduce((s, r) => s + Number(r.amount), 0);
     const totalExpenses = exps.reduce((s, e) => s + Number(e.amount), 0);
-
     const catMap = new Map<string, number>();
     for (const e of exps)
       catMap.set(e.category, (catMap.get(e.category) ?? 0) + Number(e.amount));
-
     return {
       listing,
       revenues: revs.sort((a, b) => b.received_at.localeCompare(a.received_at)),
@@ -328,42 +459,107 @@ export default function Reports() {
       profit: totalRevenue - totalExpenses,
       catBreakdown: Array.from(catMap.entries()).sort((a, b) => b[1] - a[1]),
     };
-  }, [drillListingId, dataQuery.data]);
+  }, [drillListingId, dataQuery.data, startDate, endDate]);
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
   const listings = dataQuery.data?.listings ?? [];
-  const hasFilters = listingFilter !== "all" || expCategoryFilter !== "all";
+  const hasContentFilters = listingFilter !== "all" || expCategoryFilter !== "all";
 
-  function clearFilters() {
+  function clearContentFilters() {
     setListingFilter("all");
     setExpCategoryFilter("all");
     setDrillListingId(null);
   }
 
+  function handlePresetChange(val: string) {
+    setPreset(val as DatePreset);
+    setDrillListingId(null);
+  }
+
+  const rangeLabel = t.reports.rangeDisplay
+    .replace("{start}", displayStart)
+    .replace("{end}", displayEnd);
+
+  // Preset label map keyed by preset value
+  const presetLabels: Record<DatePreset, string> = {
+    "7d": t.reports.last7,
+    "30d": t.reports.last30,
+    "60d": t.reports.last60,
+    "90d": t.reports.last90,
+    this_month: t.reports.thisMonth,
+    last_month: t.reports.lastMonth,
+    this_quarter: t.reports.thisQuarter,
+    last_quarter: t.reports.lastQuarter,
+    this_year: t.reports.thisYear,
+    custom: t.reports.custom,
+  };
+
   return (
     <AppLayout
       title={t.reports.title}
       action={
-        <Select
-          value={String(rangeDays)}
-          onValueChange={(v) => {
-            setRangeDays(Number(v));
-            setDrillListingId(null);
-          }}
-        >
-          <SelectTrigger className="w-[150px]">
+        <div className="flex items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground">
+          <CalendarRange className="h-4 w-4 shrink-0" />
+          <span className="font-medium">{rangeLabel}</span>
+        </div>
+      }
+    >
+      {/* ── Date range + listing + category filter bar ─────────────────────── */}
+      <div className="mb-2 flex flex-wrap items-start gap-3">
+        {/* Preset select */}
+        <Select value={preset} onValueChange={handlePresetChange}>
+          <SelectTrigger className="w-[190px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="30">{t.reports.last30}</SelectItem>
-            <SelectItem value="90">{t.reports.last90}</SelectItem>
-            <SelectItem value="180">{t.reports.last180}</SelectItem>
-            <SelectItem value="365">{t.reports.last365}</SelectItem>
+            <SelectItem value="7d">{t.reports.last7}</SelectItem>
+            <SelectItem value="30d">{t.reports.last30}</SelectItem>
+            <SelectItem value="60d">{t.reports.last60}</SelectItem>
+            <SelectItem value="90d">{t.reports.last90}</SelectItem>
+            <SelectItem value="this_month">{t.reports.thisMonth}</SelectItem>
+            <SelectItem value="last_month">{t.reports.lastMonth}</SelectItem>
+            <SelectItem value="this_quarter">{t.reports.thisQuarter}</SelectItem>
+            <SelectItem value="last_quarter">{t.reports.lastQuarter}</SelectItem>
+            <SelectItem value="this_year">{t.reports.thisYear}</SelectItem>
+            <SelectItem value="custom">{t.reports.custom}</SelectItem>
           </SelectContent>
         </Select>
-      }
-    >
-      {/* ── Filter bar ────────────────────────────────────────────────────── */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+
+        {/* Custom date inputs — shown only when preset === "custom" */}
+        {preset === "custom" && (
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-0.5">
+              <label className="text-xs text-muted-foreground">{t.reports.customFrom}</label>
+              <input
+                type="date"
+                value={customStart}
+                max={customEnd || format(new Date(), "yyyy-MM-dd")}
+                onChange={(e) => {
+                  setCustomStart(e.target.value);
+                  setDrillListingId(null);
+                }}
+                className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <span className="mt-4 text-muted-foreground">→</span>
+            <div className="flex flex-col gap-0.5">
+              <label className="text-xs text-muted-foreground">{t.reports.customTo}</label>
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart}
+                max={format(new Date(), "yyyy-MM-dd")}
+                onChange={(e) => {
+                  setCustomEnd(e.target.value);
+                  setDrillListingId(null);
+                }}
+                className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Listing filter */}
         <Select
           value={listingFilter}
           onValueChange={(v) => {
@@ -372,10 +568,10 @@ export default function Reports() {
           }}
         >
           <SelectTrigger className="w-[210px]">
-            <SelectValue placeholder="All listings" />
+            <SelectValue placeholder={t.reports.allListings} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All listings</SelectItem>
+            <SelectItem value="all">{t.reports.allListings}</SelectItem>
             {listings.map((l) => (
               <SelectItem key={l.id} value={l.id}>
                 {l.title}
@@ -384,12 +580,13 @@ export default function Reports() {
           </SelectContent>
         </Select>
 
+        {/* Expense category filter */}
         <Select value={expCategoryFilter} onValueChange={setExpCategoryFilter}>
-          <SelectTrigger className="w-[210px]">
-            <SelectValue placeholder="All expense categories" />
+          <SelectTrigger className="w-[220px]">
+            <SelectValue placeholder={t.reports.allCategories} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All expense categories</SelectItem>
+            <SelectItem value="all">{t.reports.allCategories}</SelectItem>
             {EXPENSE_CATEGORIES.map((c) => (
               <SelectItem key={c} value={c} className="capitalize">
                 {c.replace(/_/g, " ")}
@@ -398,15 +595,31 @@ export default function Reports() {
           </SelectContent>
         </Select>
 
-        {hasFilters && (
+        {hasContentFilters && (
           <button
-            className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-            onClick={clearFilters}
+            className="mt-1.5 text-sm text-muted-foreground underline-offset-2 hover:underline"
+            onClick={clearContentFilters}
           >
-            Clear filters
+            {t.reports.clearFilters}
           </button>
         )}
       </div>
+
+      {/* ── Validation error for custom range ────────────────────────────────── */}
+      {preset === "custom" && !isValid && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription>{t.reports.customRangeError}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* ── Active range display ──────────────────────────────────────────────── */}
+      {isValid && (
+        <p className="mb-6 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{presetLabels[preset]}</span>
+          {" · "}
+          {rangeLabel}
+        </p>
+      )}
 
       {dataQuery.error ? (
         <Alert variant="destructive">
@@ -454,10 +667,7 @@ export default function Reports() {
                         stroke="hsl(var(--muted-foreground))"
                         fontSize={12}
                       />
-                      <YAxis
-                        stroke="hsl(var(--muted-foreground))"
-                        fontSize={12}
-                      />
+                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
                       <Tooltip
                         contentStyle={{
                           background: "hsl(var(--card))",
@@ -588,9 +798,7 @@ export default function Reports() {
                             </TableCell>
                             <TableCell
                               className={`text-right tabular-nums font-semibold ${
-                                row.profit >= 0
-                                  ? "text-primary"
-                                  : "text-destructive"
+                                row.profit >= 0 ? "text-primary" : "text-destructive"
                               }`}
                             >
                               {fmt(row.profit)}
@@ -742,7 +950,6 @@ function DrilldownPanel({
         {data.listing.title} — Period Detail
       </p>
 
-      {/* Summary mini-cards */}
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border bg-card p-3">
           <div className="text-xs text-muted-foreground">Revenue</div>
@@ -768,9 +975,7 @@ function DrilldownPanel({
         </div>
       </div>
 
-      {/* Revenue + Expense tables side by side */}
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
-        {/* Revenues */}
         <div>
           <p className="mb-2 text-sm font-medium">
             Revenues ({data.revenues.length})
@@ -791,7 +996,7 @@ function DrilldownPanel({
                   {data.revenues.map((r) => (
                     <tr key={r.id} className="hover:bg-muted/30">
                       <td className="px-3 py-2">
-                        {format(parseISO(r.received_at), "MMM d, yyyy")}
+                        {format(parseISO(r.received_at), "dd/MM/yyyy")}
                       </td>
                       <td className="px-3 py-2 capitalize">
                         {r.category.replace(/_/g, " ")}
@@ -807,7 +1012,6 @@ function DrilldownPanel({
           )}
         </div>
 
-        {/* Expenses */}
         <div>
           <p className="mb-2 text-sm font-medium">
             Expenses ({data.expenses.length})
@@ -828,7 +1032,7 @@ function DrilldownPanel({
                   {data.expenses.map((e) => (
                     <tr key={e.id} className="hover:bg-muted/30">
                       <td className="px-3 py-2">
-                        {format(parseISO(e.spent_at), "MMM d, yyyy")}
+                        {format(parseISO(e.spent_at), "dd/MM/yyyy")}
                       </td>
                       <td className="px-3 py-2 capitalize">
                         {e.category.replace(/_/g, " ")}
@@ -845,7 +1049,6 @@ function DrilldownPanel({
         </div>
       </div>
 
-      {/* Expense category breakdown */}
       {data.catBreakdown.length > 0 && (
         <div>
           <p className="mb-2 text-sm font-medium">Expense Category Breakdown</p>
