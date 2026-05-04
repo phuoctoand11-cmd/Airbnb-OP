@@ -3,6 +3,7 @@ import {
   endOfMonth,
   endOfQuarter,
   format,
+  isBefore,
   startOfMonth,
   startOfQuarter,
   startOfYear,
@@ -11,7 +12,6 @@ import {
   subQuarters,
 } from "date-fns";
 import { CalendarRange } from "lucide-react";
-import type { DateRange } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -65,6 +65,13 @@ const PRESETS: { label: string; getRange: () => { from: Date; to: Date } }[] = [
   },
 ];
 
+// ── Selection phase ────────────────────────────────────────────────────────────
+// 0 = nothing selected
+// 1 = start date selected, waiting for end date
+// 2 = full range selected (next click resets)
+
+type Phase = 0 | 1 | 2;
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export interface DateRangePickerProps {
@@ -81,48 +88,90 @@ export function DateRangePicker({
   className,
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState<DateRange>({
-    from: startDate,
-    to: endDate,
-  });
 
+  // Pending selection (inside popover — not yet applied)
+  const [pendingFrom, setPendingFrom] = useState<Date | undefined>(startDate);
+  const [pendingTo, setPendingTo] = useState<Date | undefined>(endDate);
+  const [phase, setPhase] = useState<Phase>(2);
+
+  // Reset pending state to the last committed range when opening
   function handleOpenChange(isOpen: boolean) {
-    if (isOpen) setPending({ from: startDate, to: endDate });
+    if (isOpen) {
+      setPendingFrom(startDate);
+      setPendingTo(endDate);
+      setPhase(2);
+    }
     setOpen(isOpen);
   }
 
-  function applyPreset(getRange: () => { from: Date; to: Date }) {
-    const r = getRange();
-    setPending({ from: r.from, to: r.to });
-  }
-
-  function handleApply() {
-    const from = pending?.from;
-    const to = pending?.to ?? pending?.from;
-    if (from && to) {
-      onApply(from, to);
-      setOpen(false);
+  // ── Click handler for calendar days ───────────────────────────────────────
+  function handleDayClick(day: Date) {
+    if (phase === 0 || phase === 2) {
+      // Click 1 (or reset after phase 2): start a new range
+      setPendingFrom(day);
+      setPendingTo(undefined);
+      setPhase(1);
+    } else {
+      // Click 2: finalize the range (swap if needed)
+      const from = pendingFrom!;
+      if (isBefore(day, from)) {
+        setPendingFrom(day);
+        setPendingTo(from);
+      } else {
+        setPendingTo(day);
+      }
+      setPhase(2);
     }
   }
 
-  function handleCancel() {
-    setPending({ from: startDate, to: endDate });
+  // ── Preset click ──────────────────────────────────────────────────────────
+  function applyPreset(getRange: () => { from: Date; to: Date }) {
+    const r = getRange();
+    setPendingFrom(r.from);
+    setPendingTo(r.to);
+    setPhase(2);
+  }
+
+  // ── Apply / Cancel ────────────────────────────────────────────────────────
+  function handleApply() {
+    if (!pendingFrom) return;
+    const to = pendingTo ?? pendingFrom;
+    onApply(pendingFrom, to);
     setOpen(false);
   }
 
-  // Display the committed range on the trigger button
+  function handleCancel() {
+    // Restore to last committed range without applying
+    setPendingFrom(startDate);
+    setPendingTo(endDate);
+    setPhase(2);
+    setOpen(false);
+  }
+
+  // ── Display helpers ────────────────────────────────────────────────────────
+
+  // Trigger button — always shows the *committed* (applied) range
   const triggerLabel = `${format(startDate, "dd/MM/yyyy")} – ${format(endDate, "dd/MM/yyyy")}`;
 
-  // Display pending selection inside the popover footer
-  const footerText =
-    pending?.from && pending?.to
-      ? `${format(pending.from, "dd/MM/yyyy")} – ${format(pending.to, "dd/MM/yyyy")}`
-      : pending?.from
-      ? `${format(pending.from, "dd/MM/yyyy")} → chọn ngày kết thúc`
-      : "Chọn ngày bắt đầu";
+  // "Đang chọn" line inside the popover — shows the pending selection
+  let selectionText: string;
+  if (phase === 1 && pendingFrom) {
+    selectionText = `Đang chọn: ${format(pendingFrom, "dd/MM/yyyy")} → chọn ngày kết thúc`;
+  } else if (phase === 2 && pendingFrom && pendingTo) {
+    selectionText = `Đang chọn: ${format(pendingFrom, "dd/MM/yyyy")} - ${format(pendingTo, "dd/MM/yyyy")}`;
+  } else {
+    selectionText = "Nhấn vào ngày bắt đầu trên lịch";
+  }
 
-  const footerIsRange = !!(pending?.from && pending?.to);
-  const canApply = !!(pending?.from);
+  const canApply = phase !== 0 && !!pendingFrom;
+
+  // The `selected` prop drives the visual range highlight on the calendar
+  const calendarSelected =
+    pendingFrom && pendingTo
+      ? { from: pendingFrom, to: pendingTo }
+      : pendingFrom
+      ? { from: pendingFrom, to: undefined }
+      : undefined;
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -142,6 +191,8 @@ export function DateRangePicker({
         align="start"
         sideOffset={6}
         className="w-auto p-0 shadow-xl"
+        // Stop clicks inside the popover from bubbling up and toggling it closed
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex overflow-hidden rounded-md divide-x">
           {/* ── Preset sidebar ──────────────────────────────────────────── */}
@@ -160,30 +211,33 @@ export function DateRangePicker({
             ))}
           </div>
 
-          {/* ── Calendar area ────────────────────────────────────────────── */}
+          {/* ── Calendar + footer ────────────────────────────────────────── */}
           <div className="flex flex-col">
             <Calendar
               mode="range"
-              selected={pending}
-              onSelect={(r) =>
-                setPending(r ?? { from: undefined, to: undefined })
-              }
+              selected={calendarSelected}
+              // Use onDayClick for our custom state machine; suppress onSelect
+              onDayClick={handleDayClick}
+              onSelect={() => {}}
               numberOfMonths={2}
-              disabled={{ after: new Date() }}
               className="p-3"
             />
 
-            {/* Footer: range display + action buttons */}
-            <div className="flex items-center justify-between gap-6 border-t bg-muted/20 px-4 py-2.5">
-              <span
+            {/* ── Footer ──────────────────────────────────────────────────── */}
+            <div className="flex flex-col gap-2 border-t bg-muted/20 px-4 py-3">
+              {/* Visible selection indicator */}
+              <p
                 className={cn(
                   "text-sm",
-                  footerIsRange ? "font-medium text-foreground" : "text-muted-foreground"
+                  phase === 2
+                    ? "font-medium text-foreground"
+                    : "text-muted-foreground"
                 )}
               >
-                {footerText}
-              </span>
-              <div className="flex shrink-0 gap-2">
+                {selectionText}
+              </p>
+
+              <div className="flex items-center justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={handleCancel}>
                   Hủy
                 </Button>
