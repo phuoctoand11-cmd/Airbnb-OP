@@ -36,6 +36,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase, type Listing, type PricingRule } from "@/lib/supabase";
+import { useCurrency, formatMoney, type Currency } from "@/lib/currency";
 
 interface Props {
   listing: Listing;
@@ -57,6 +58,7 @@ type FormValues = z.infer<typeof ruleSchema>;
 
 export function ListingPricingTab({ listing, canManage }: Props) {
   const { toast } = useToast();
+  const { currency } = useCurrency();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
@@ -186,7 +188,7 @@ export function ListingPricingTab({ listing, canManage }: Props) {
                     {!r.active && <Badge variant="secondary">Inactive</Badge>}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {describeRule(r)}
+                    {describeRule(r, currency)}
                   </div>
                 </div>
                 {canManage && (
@@ -349,13 +351,14 @@ export function ListingPricingTab({ listing, canManage }: Props) {
   );
 }
 
-function describeRule(r: PricingRule) {
+function describeRule(r: PricingRule, currency: Currency) {
+  const v = Number(r.adjustment_value);
   const value =
     r.adjustment_type === "percentage"
-      ? `${r.adjustment_value}%`
+      ? `${v}%`
       : r.adjustment_type === "absolute"
-      ? `set to $${Number(r.adjustment_value).toFixed(0)}`
-      : `${r.adjustment_value > 0 ? "+" : ""}$${Number(r.adjustment_value).toFixed(0)}`;
+      ? `set to ${formatMoney(v, currency)}`
+      : `${v > 0 ? "+" : ""}${formatMoney(v, currency)}`;
   const dates =
     r.start_date && r.end_date
       ? `${r.start_date} → ${r.end_date}`

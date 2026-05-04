@@ -49,6 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { hasPermission, useAuth } from "@/lib/auth-context";
 import { supabase, type Booking, type Employee, type Listing } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
+import { useCurrency } from "@/lib/currency";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,7 @@ export default function Bookings() {
   const { role } = useAuth();
   const { toast } = useToast();
   const { t } = useI18n();
+  const { fmt } = useCurrency();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageBookings");
 
@@ -443,7 +445,7 @@ export default function Bookings() {
                       </TableCell>
                       <TableCell className="text-right">{nights}</TableCell>
                       <TableCell className="text-right">
-                        ${Number(b.total_amount).toFixed(2)}
+                        {fmt(Number(b.total_amount))}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {b.source ?? "—"}

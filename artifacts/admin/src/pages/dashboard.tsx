@@ -50,9 +50,11 @@ import {
 } from "@/lib/supabase";
 import { useAuth, canViewPrices } from "@/lib/auth-context";
 import { useI18n } from "@/i18n";
+import { useCurrency } from "@/lib/currency";
 
 export default function Dashboard() {
   const { t } = useI18n();
+  const { fmt } = useCurrency();
   const { role } = useAuth();
   const showPrices = canViewPrices(role);
   const showFinance = role === "admin" || role === "accountant" || role === "manager";
@@ -209,10 +211,10 @@ export default function Dashboard() {
             <KpiCard label={t.dashboard.activeListings} icon={<Home className="h-4 w-4" />} value={stats?.listings} loading={!stats} />
             <KpiCard label={t.dashboard.totalBookings} icon={<Users className="h-4 w-4" />} value={stats?.bookings} loading={!stats} />
             {showFinance && (
-              <KpiCard label={t.dashboard.revenue} icon={<DollarSign className="h-4 w-4" />} value={stats ? `$${stats.revenue.toLocaleString()}` : undefined} loading={!stats} accent="positive" />
+              <KpiCard label={t.dashboard.revenue} icon={<DollarSign className="h-4 w-4" />} value={stats ? fmt(stats.revenue) : undefined} loading={!stats} accent="positive" />
             )}
             {showFinance && (
-              <KpiCard label={t.dashboard.netProfit} icon={<TrendingUp className="h-4 w-4" />} value={stats ? `$${stats.profit.toLocaleString()}` : undefined} loading={!stats} accent={stats && stats.profit >= 0 ? "positive" : "negative"} />
+              <KpiCard label={t.dashboard.netProfit} icon={<TrendingUp className="h-4 w-4" />} value={stats ? fmt(stats.profit) : undefined} loading={!stats} accent={stats && stats.profit >= 0 ? "positive" : "negative"} />
             )}
           </div>
 
@@ -220,7 +222,7 @@ export default function Dashboard() {
             <KpiCard label={t.dashboard.completedBookings} icon={<CheckCircle2 className="h-4 w-4" />} value={stats?.completed} loading={!stats} />
             <KpiCard label={t.dashboard.cancelledBookings} icon={<XCircle className="h-4 w-4" />} value={stats?.cancelled} loading={!stats} />
             {showFinance && (
-              <KpiCard label={t.dashboard.expenses} icon={<TrendingDown className="h-4 w-4" />} value={stats ? `$${stats.expense.toLocaleString()}` : undefined} loading={!stats} />
+              <KpiCard label={t.dashboard.expenses} icon={<TrendingDown className="h-4 w-4" />} value={stats ? fmt(stats.expense) : undefined} loading={!stats} />
             )}
             <KpiCard label={t.dashboard.occupancy30d} icon={<Percent className="h-4 w-4" />} value={stats ? `${stats.occupancyRate}%` : undefined} loading={!stats} />
           </div>
@@ -331,7 +333,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-medium">${Number(b.total_amount).toFixed(0)}</span>
+                          <span className="font-medium">{fmt(Number(b.total_amount))}</span>
                           <Badge variant="outline" className="capitalize">{b.status}</Badge>
                         </div>
                       </li>

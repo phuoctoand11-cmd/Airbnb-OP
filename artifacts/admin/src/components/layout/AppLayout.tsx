@@ -33,6 +33,7 @@ import {
 import { hasPermission, type Permission, useAuth } from "@/lib/auth-context";
 import { ROLE_LABELS } from "@/lib/supabase";
 import { useI18n, type Lang } from "@/i18n";
+import { useCurrency, type Currency } from "@/lib/currency";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -49,6 +50,7 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
   const [location] = useLocation();
   const { profile, role, signOut, blockError, session, employee } = useAuth();
   const { t, lang, setLang } = useI18n();
+  const { currency, setCurrency } = useCurrency();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [warningDismissed, setWarningDismissed] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -129,6 +131,31 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
         </nav>
 
         <div className="border-t p-3 space-y-2">
+          {/* Currency toggle */}
+          <div className="px-1 space-y-1">
+            <div className="flex items-center gap-1.5 rounded-md">
+              <span className="text-xs text-muted-foreground flex-1">Currency</span>
+              <div className="flex overflow-hidden rounded border text-[11px] font-semibold">
+                {(["VND", "USD"] as Currency[]).map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setCurrency(c)}
+                    className={`px-2 py-1 transition-colors ${
+                      currency === c
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              Chỉ đổi hiển thị, dữ liệu lưu bằng VND.
+            </p>
+          </div>
+
           {/* Language switcher */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth, hasPermission, canViewPrices } from "@/lib/auth-context";
 import { supabase, type Listing } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
+import { useCurrency } from "@/lib/currency";
 
 const STATUS_BADGE: Record<Listing["status"], "default" | "secondary" | "outline"> = {
   active: "default",
@@ -32,6 +33,7 @@ const STATUS_BADGE: Record<Listing["status"], "default" | "secondary" | "outline
 export default function Listings() {
   const { role } = useAuth();
   const { toast } = useToast();
+  const { fmt } = useCurrency();
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
@@ -203,7 +205,7 @@ export default function Listings() {
                         <span className="italic text-muted-foreground">{t.listings.contactManager}</span>
                       ) : (
                         <>
-                          <span className="font-medium">${Number(listing.base_price).toFixed(0)}</span>{" "}
+                          <span className="font-medium">{fmt(Number(listing.base_price))}</span>{" "}
                           <span className="text-muted-foreground">/ night</span>
                         </>
                       )}

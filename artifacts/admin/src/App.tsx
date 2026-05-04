@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth, getDefaultRouteByRole } from "@/lib/auth-context";
 import { I18nProvider } from "@/i18n";
+import { CurrencyProvider } from "@/lib/currency";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 
 import Login from "@/pages/login";
@@ -144,6 +145,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
+        <CurrencyProvider>
         <AuthProvider>
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
@@ -152,6 +154,7 @@ function App() {
             <Toaster />
           </TooltipProvider>
         </AuthProvider>
+        </CurrencyProvider>
       </I18nProvider>
     </QueryClientProvider>
   );

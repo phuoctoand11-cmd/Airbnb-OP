@@ -61,6 +61,7 @@ import {
   type Position,
 } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
+import { useCurrency } from "@/lib/currency";
 
 // ── Constants ──────────────────────────────────────────────────────
 
@@ -124,10 +125,6 @@ type DeptPosFormValues = z.infer<typeof deptPosSchema>;
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-function formatCurrency(n: number | null) {
-  if (n === null) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // MAIN PAGE
@@ -186,6 +183,7 @@ function EmployeesTab({
   showSalary: boolean;
 }) {
   const { t } = useI18n();
+  const { fmt } = useCurrency();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { role } = useAuth();
@@ -369,44 +367,6 @@ function EmployeesTab({
         </Select>
       </div>
 
-      {/* ── DEBUG PANEL (remove before launch) ─────────────────── */}
-      <div className="mb-4 rounded border-2 border-yellow-400 bg-yellow-50 p-3 font-mono text-xs dark:bg-yellow-950">
-        <div className="mb-1 font-bold text-yellow-700 dark:text-yellow-300">HR DEBUG — role: {role ?? "(loading)"} | source: RPC get_hr_employees | canManage: {String(canManage)}</div>
-        <div className="grid grid-cols-3 gap-x-4 border-t border-yellow-300 pt-1">
-          <div>
-            <div className="font-semibold">rawEmployeesCount</div>
-            <div className="text-lg font-bold">
-              {employeesQuery.isLoading ? "…" : (employeesQuery.data?.length ?? "—")}
-            </div>
-            <div className="text-yellow-600">(from DB, no frontend filter)</div>
-          </div>
-          <div>
-            <div className="font-semibold">afterPermissionFilterCount</div>
-            <div className="text-lg font-bold">{afterPermissionFilter.length}</div>
-            <div className="text-yellow-600">(admin/manager: same as raw)</div>
-          </div>
-          <div>
-            <div className="font-semibold">afterUIFilterCount</div>
-            <div className="text-lg font-bold">{filtered.length}</div>
-            <div className="text-yellow-600">(after search/dropdowns)</div>
-          </div>
-        </div>
-        <div className="mt-1 border-t border-yellow-300 pt-1 space-y-0.5">
-          <div><span className="font-semibold">dept filter:</span> {deptFilter}</div>
-          <div><span className="font-semibold">position filter:</span> {posFilter}</div>
-          <div><span className="font-semibold">status filter:</span> {statusFilter}</div>
-          <div><span className="font-semibold">employment type filter:</span> {typeFilter}</div>
-          <div><span className="font-semibold">search text:</span> "{search || "(none)"}"</div>
-        </div>
-        <div className="mt-1 border-t border-yellow-300 pt-1">
-          <span className="font-semibold">first5Emails from DB:</span>{" "}
-          {(employeesQuery.data ?? []).slice(0, 5).map((e) => e.email).join(", ") || "—"}
-        </div>
-        {employeesQuery.error && (
-          <div className="mt-1 text-red-600"><span className="font-semibold">error:</span> {(employeesQuery.error as Error).message}</div>
-        )}
-      </div>
-      {/* ─────────────────────────────────────────────────────────── */}
 
       {/* Read-only notice for accountant and other non-managing roles */}
       {!canManage && (
@@ -440,7 +400,7 @@ function EmployeesTab({
                 <th className="px-4 py-3 text-left font-medium">{t.hr.department}</th>
                 <th className="px-4 py-3 text-left font-medium">{t.hr.position}</th>
                 <th className="px-4 py-3 text-left font-medium">{t.hr.employmentType}</th>
-                {showSalary && <th className="px-4 py-3 text-left font-medium">{t.hr.salaryBase}</th>}
+                {showSalary && <th className="px-4 py-3 text-left font-medium">{t.hr.salaryBase} (VND)</th>}
                 <th className="px-4 py-3 text-left font-medium">{t.hr.statusBadge}</th>
                 {canManage && <th className="px-4 py-3 text-left font-medium">Login</th>}
                 {canManage && <th className="px-4 py-3 text-left font-medium">{t.common.actions}</th>}
@@ -459,7 +419,7 @@ function EmployeesTab({
                     </Badge>
                   </td>
                   {showSalary && (
-                    <td className="px-4 py-3 font-mono text-sm">{formatCurrency(emp.salary_base)}</td>
+                    <td className="px-4 py-3 font-mono text-sm">{emp.salary_base != null ? fmt(emp.salary_base) : "—"}</td>
                   )}
                   <td className="px-4 py-3">
                     <Badge variant={STATUS_VARIANT[emp.status]} className="capitalize">
@@ -819,7 +779,7 @@ function EmployeeFormDialog({
             {showSalary && (
               <FormField control={form.control} name="salary_base" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t.hr.salaryBase}</FormLabel>
+                  <FormLabel>{t.hr.salaryBase} (VND)</FormLabel>
                   <FormControl><Input type="number" min={0} step="0.01" placeholder="0.00" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>

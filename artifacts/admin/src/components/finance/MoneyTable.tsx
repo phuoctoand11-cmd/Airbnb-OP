@@ -52,6 +52,7 @@ import { useToast } from "@/hooks/use-toast";
 import { hasPermission, useAuth } from "@/lib/auth-context";
 import { supabase, type Listing } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
+import { useCurrency } from "@/lib/currency";
 
 interface MoneyRecord {
   id: string;
@@ -86,6 +87,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
   const { role } = useAuth();
   const { toast } = useToast();
   const { t } = useI18n();
+  const { fmt } = useCurrency();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageFinance");
   const [open, setOpen] = useState(false);
@@ -225,7 +227,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
             <CardTitle className="text-sm font-medium text-muted-foreground">{t.finance.allTimeTotal}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="text-2xl font-bold">{fmt(total)}</div>
           </CardContent>
         </Card>
         {monthBuckets.slice(-3).map((m) => (
@@ -234,7 +236,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
               <CardTitle className="text-sm font-medium text-muted-foreground">{m.label}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${m.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="text-2xl font-bold">{fmt(m.total)}</div>
             </CardContent>
           </Card>
         ))}
@@ -256,7 +258,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                       <div
                         className="w-full rounded-t-md bg-primary"
                         style={{ height: `${Math.max(heightPct, 2)}%` }}
-                        title={`$${m.total.toFixed(0)}`}
+                        title={fmt(m.total)}
                       />
                     </div>
                     <span className="text-xs text-muted-foreground">{m.label}</span>
@@ -278,7 +280,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                 {categoryBreakdown.slice(0, 6).map(([cat, amt]) => (
                   <li key={cat} className="flex items-center justify-between text-sm">
                     <span className="capitalize">{cat.replace(/_/g, " ")}</span>
-                    <span className="font-medium">${amt.toFixed(2)}</span>
+                    <span className="font-medium">{fmt(amt)}</span>
                   </li>
                 ))}
               </ul>
@@ -333,7 +335,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                     <TableCell className="max-w-[260px] truncate text-muted-foreground">
                       {r.description ?? "—"}
                     </TableCell>
-                    <TableCell className="text-right font-medium">${r.amount.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-medium">{fmt(r.amount)}</TableCell>
                     {canManage && (
                       <TableCell className="text-right">
                         <Button
@@ -367,7 +369,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t.finance.amount}</FormLabel>
+                      <FormLabel>{t.finance.amount} (VND)</FormLabel>
                       <FormControl>
                         <Input type="number" step="0.01" min={0} {...field} />
                       </FormControl>

@@ -44,11 +44,13 @@ import {
   type Revenue,
 } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
+import { useCurrency } from "@/lib/currency";
 
 const CHART_COLORS = ["#0369a1", "#0d9488", "#0e7490", "#65a30d", "#ca8a04", "#dc2626", "#7c3aed"];
 
 export default function Reports() {
   const { t } = useI18n();
+  const { fmt } = useCurrency();
   const [rangeDays, setRangeDays] = useState(90);
   const start = subDays(new Date(), rangeDays);
 
@@ -198,11 +200,11 @@ export default function Reports() {
       ) : (
         <>
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard label={t.reports.totalRevenue} value={`$${summary.revenue.toLocaleString()}`} />
-            <KpiCard label={t.reports.totalExpenses} value={`$${summary.expense.toLocaleString()}`} />
+            <KpiCard label={t.reports.totalRevenue} value={fmt(summary.revenue)} />
+            <KpiCard label={t.reports.totalExpenses} value={fmt(summary.expense)} />
             <KpiCard
               label={t.reports.netProfit}
-              value={`$${summary.profit.toLocaleString()}`}
+              value={fmt(summary.profit)}
               accent={summary.profit >= 0 ? "positive" : "negative"}
             />
             <KpiCard label={t.bookings.title} value={summary.completedBookings.toString()} />
@@ -293,7 +295,7 @@ export default function Reports() {
                             <span className="font-medium">
                               {i + 1}. {l.name}
                             </span>
-                            <span className="text-muted-foreground">${l.revenue.toFixed(0)}</span>
+                            <span className="text-muted-foreground">{fmt(l.revenue)}</span>
                           </div>
                           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                             <div

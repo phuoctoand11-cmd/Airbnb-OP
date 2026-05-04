@@ -144,8 +144,8 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
               <NumberField name="bedrooms" label="Bedrooms" form={form} disabled={!canManage} />
               <NumberField name="bathrooms" label="Bathrooms" form={form} disabled={!canManage} />
               <NumberField name="max_guests" label="Max guests" form={form} disabled={!canManage} />
-              <NumberField name="base_price" label="Base price" form={form} disabled={!canManage} step="0.01" />
-              <NumberField name="cleaning_fee" label="Cleaning fee" form={form} disabled={!canManage} step="0.01" />
+              <NumberField name="base_price" label="Giá cơ bản / đêm (VND)" form={form} disabled={!canManage} step="1" />
+              <NumberField name="cleaning_fee" label="Cleaning fee (VND)" form={form} disabled={!canManage} step="1" />
             </div>
             <FormField
               control={form.control}

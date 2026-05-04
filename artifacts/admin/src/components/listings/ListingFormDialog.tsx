@@ -233,9 +233,9 @@ export function ListingFormDialog({
                 name="base_price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Base price</FormLabel>
+                    <FormLabel>Giá cơ bản / đêm (VND)</FormLabel>
                     <FormControl>
-                      <Input type="number" min={0} step="0.01" {...field} />
+                      <Input type="number" min={0} step="1" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -246,9 +246,9 @@ export function ListingFormDialog({
                 name="cleaning_fee"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Cleaning fee</FormLabel>
+                    <FormLabel>Cleaning fee (VND)</FormLabel>
                     <FormControl>
-                      <Input type="number" min={0} step="0.01" {...field} />
+                      <Input type="number" min={0} step="1" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

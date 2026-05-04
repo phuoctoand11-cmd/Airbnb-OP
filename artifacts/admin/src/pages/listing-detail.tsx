@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, canViewPrices, useAuth } from "@/lib/auth-context";
 import { supabase, type Listing } from "@/lib/supabase";
+import { useCurrency } from "@/lib/currency";
 import { ListingOverviewTab } from "@/components/listings/ListingOverviewTab";
 import { ListingImagesTab } from "@/components/listings/ListingImagesTab";
 import { ListingAmenitiesTab } from "@/components/listings/ListingAmenitiesTab";
@@ -24,6 +25,7 @@ export default function ListingDetail() {
   const id = params?.id;
   const { role } = useAuth();
   const { toast } = useToast();
+  const { fmt } = useCurrency();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageListings");
   const showPrices = canViewPrices(role);
@@ -139,7 +141,7 @@ export default function ListingDetail() {
                   {!showPrices ? (
                     <Stat label="Price" value={<span className="italic text-muted-foreground text-sm">Contact manager</span>} />
                   ) : (
-                    <Stat label="Base / night" value={`$${Number(listing.base_price).toFixed(0)}`} />
+                    <Stat label="Base / night" value={fmt(Number(listing.base_price))} />
                   )}
                 </div>
               </CardContent>
