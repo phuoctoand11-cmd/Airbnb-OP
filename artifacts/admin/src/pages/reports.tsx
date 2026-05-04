@@ -19,24 +19,20 @@ import {
   addMonths,
   differenceInCalendarDays,
   endOfMonth,
-  endOfQuarter,
   format,
   isWithinInterval,
   parseISO,
   startOfMonth,
-  startOfQuarter,
-  startOfYear,
   subDays,
-  subMonths,
-  subQuarters,
 } from "date-fns";
-import { CalendarRange, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   Select,
   SelectContent,
@@ -86,28 +82,6 @@ const EXPENSE_CATEGORIES = [
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type DatePreset =
-  | "7d"
-  | "30d"
-  | "60d"
-  | "90d"
-  | "this_month"
-  | "last_month"
-  | "this_quarter"
-  | "last_quarter"
-  | "this_year"
-  | "custom";
-
-interface DateRange {
-  startDate: Date;
-  endDate: Date;
-  startStr: string;
-  endStr: string;
-  displayStart: string;
-  displayEnd: string;
-  isValid: boolean;
-}
-
 interface ListingRow {
   listing: Listing;
   revenue: number;
@@ -129,78 +103,6 @@ interface DrillData {
   catBreakdown: [string, number][];
 }
 
-// ── Date range computation ─────────────────────────────────────────────────────
-
-function computeDateRange(
-  preset: DatePreset,
-  customStart: string,
-  customEnd: string
-): DateRange {
-  const today = new Date();
-  let start: Date;
-  let end: Date;
-
-  switch (preset) {
-    case "7d":
-      start = subDays(today, 7);
-      end = today;
-      break;
-    case "30d":
-      start = subDays(today, 30);
-      end = today;
-      break;
-    case "60d":
-      start = subDays(today, 60);
-      end = today;
-      break;
-    case "90d":
-      start = subDays(today, 90);
-      end = today;
-      break;
-    case "this_month":
-      start = startOfMonth(today);
-      end = today;
-      break;
-    case "last_month": {
-      const lm = subMonths(today, 1);
-      start = startOfMonth(lm);
-      end = endOfMonth(lm);
-      break;
-    }
-    case "this_quarter":
-      start = startOfQuarter(today);
-      end = today;
-      break;
-    case "last_quarter": {
-      const lq = subQuarters(today, 1);
-      start = startOfQuarter(lq);
-      end = endOfQuarter(lq);
-      break;
-    }
-    case "this_year":
-      start = startOfYear(today);
-      end = today;
-      break;
-    case "custom":
-      start = customStart ? parseISO(customStart) : subDays(today, 90);
-      end = customEnd ? parseISO(customEnd) : today;
-      break;
-    default:
-      start = subDays(today, 90);
-      end = today;
-  }
-
-  return {
-    startDate: start,
-    endDate: end,
-    startStr: format(start, "yyyy-MM-dd"),
-    endStr: format(end, "yyyy-MM-dd"),
-    displayStart: format(start, "dd/MM/yyyy"),
-    displayEnd: format(end, "dd/MM/yyyy"),
-    isValid: start <= end,
-  };
-}
-
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function Reports() {
@@ -208,22 +110,15 @@ export default function Reports() {
   const { fmt } = useCurrency();
 
   // ── Filter state ───────────────────────────────────────────────────────────
-  const [preset, setPreset] = useState<DatePreset>("90d");
-  const [customStart, setCustomStart] = useState(
-    format(subDays(new Date(), 90), "yyyy-MM-dd")
-  );
-  const [customEnd, setCustomEnd] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [startDate, setStartDate] = useState<Date>(() => subDays(new Date(), 90));
+  const [endDate, setEndDate] = useState<Date>(() => new Date());
   const [listingFilter, setListingFilter] = useState("all");
   const [expCategoryFilter, setExpCategoryFilter] = useState("all");
   const [drillListingId, setDrillListingId] = useState<string | null>(null);
 
-  // ── Computed date range ────────────────────────────────────────────────────
-  const dr = useMemo(
-    () => computeDateRange(preset, customStart, customEnd),
-    [preset, customStart, customEnd]
-  );
-
-  const { startDate, endDate, startStr, endStr, displayStart, displayEnd, isValid } = dr;
+  // ── Derived date strings ───────────────────────────────────────────────────
+  const startStr = format(startDate, "yyyy-MM-dd");
+  const endStr = format(endDate, "yyyy-MM-dd");
 
   // ── Data fetch ─────────────────────────────────────────────────────────────
   // revenues filtered by received_at BETWEEN startStr AND endStr
@@ -257,7 +152,6 @@ export default function Reports() {
         expenses: (expenses.data ?? []) as Expense[],
       };
     },
-    enabled: isValid,
   });
 
   // ── Client-side filtered slices ────────────────────────────────────────────
@@ -471,93 +365,20 @@ export default function Reports() {
     setDrillListingId(null);
   }
 
-  function handlePresetChange(val: string) {
-    setPreset(val as DatePreset);
-    setDrillListingId(null);
-  }
-
-  const rangeLabel = t.reports.rangeDisplay
-    .replace("{start}", displayStart)
-    .replace("{end}", displayEnd);
-
-  // Preset label map keyed by preset value
-  const presetLabels: Record<DatePreset, string> = {
-    "7d": t.reports.last7,
-    "30d": t.reports.last30,
-    "60d": t.reports.last60,
-    "90d": t.reports.last90,
-    this_month: t.reports.thisMonth,
-    last_month: t.reports.lastMonth,
-    this_quarter: t.reports.thisQuarter,
-    last_quarter: t.reports.lastQuarter,
-    this_year: t.reports.thisYear,
-    custom: t.reports.custom,
-  };
-
   return (
-    <AppLayout
-      title={t.reports.title}
-      action={
-        <div className="flex items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground">
-          <CalendarRange className="h-4 w-4 shrink-0" />
-          <span className="font-medium">{rangeLabel}</span>
-        </div>
-      }
-    >
-      {/* ── Date range + listing + category filter bar ─────────────────────── */}
-      <div className="mb-2 flex flex-wrap items-start gap-3">
-        {/* Preset select */}
-        <Select value={preset} onValueChange={handlePresetChange}>
-          <SelectTrigger className="w-[190px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7d">{t.reports.last7}</SelectItem>
-            <SelectItem value="30d">{t.reports.last30}</SelectItem>
-            <SelectItem value="60d">{t.reports.last60}</SelectItem>
-            <SelectItem value="90d">{t.reports.last90}</SelectItem>
-            <SelectItem value="this_month">{t.reports.thisMonth}</SelectItem>
-            <SelectItem value="last_month">{t.reports.lastMonth}</SelectItem>
-            <SelectItem value="this_quarter">{t.reports.thisQuarter}</SelectItem>
-            <SelectItem value="last_quarter">{t.reports.lastQuarter}</SelectItem>
-            <SelectItem value="this_year">{t.reports.thisYear}</SelectItem>
-            <SelectItem value="custom">{t.reports.custom}</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* Custom date inputs — shown only when preset === "custom" */}
-        {preset === "custom" && (
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col gap-0.5">
-              <label className="text-xs text-muted-foreground">{t.reports.customFrom}</label>
-              <input
-                type="date"
-                value={customStart}
-                max={customEnd || format(new Date(), "yyyy-MM-dd")}
-                onChange={(e) => {
-                  setCustomStart(e.target.value);
-                  setDrillListingId(null);
-                }}
-                className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <span className="mt-4 text-muted-foreground">→</span>
-            <div className="flex flex-col gap-0.5">
-              <label className="text-xs text-muted-foreground">{t.reports.customTo}</label>
-              <input
-                type="date"
-                value={customEnd}
-                min={customStart}
-                max={format(new Date(), "yyyy-MM-dd")}
-                onChange={(e) => {
-                  setCustomEnd(e.target.value);
-                  setDrillListingId(null);
-                }}
-                className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-          </div>
-        )}
+    <AppLayout title={t.reports.title}>
+      {/* ── Date range picker + listing + category filter bar ──────────────── */}
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        {/* Calendar date-range picker */}
+        <DateRangePicker
+          startDate={startDate}
+          endDate={endDate}
+          onApply={(s, e) => {
+            setStartDate(s);
+            setEndDate(e);
+            setDrillListingId(null);
+          }}
+        />
 
         {/* Listing filter */}
         <Select
@@ -597,7 +418,7 @@ export default function Reports() {
 
         {hasContentFilters && (
           <button
-            className="mt-1.5 text-sm text-muted-foreground underline-offset-2 hover:underline"
+            className="text-sm text-muted-foreground underline-offset-2 hover:underline"
             onClick={clearContentFilters}
           >
             {t.reports.clearFilters}
@@ -605,21 +426,17 @@ export default function Reports() {
         )}
       </div>
 
-      {/* ── Validation error for custom range ────────────────────────────────── */}
-      {preset === "custom" && !isValid && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertDescription>{t.reports.customRangeError}</AlertDescription>
-        </Alert>
-      )}
-
       {/* ── Active range display ──────────────────────────────────────────────── */}
-      {isValid && (
-        <p className="mb-6 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{presetLabels[preset]}</span>
-          {" · "}
-          {rangeLabel}
-        </p>
-      )}
+      <p className="mb-6 text-sm text-muted-foreground">
+        Báo cáo từ{" "}
+        <span className="font-medium text-foreground">
+          {format(startDate, "dd/MM/yyyy")}
+        </span>
+        {" đến "}
+        <span className="font-medium text-foreground">
+          {format(endDate, "dd/MM/yyyy")}
+        </span>
+      </p>
 
       {dataQuery.error ? (
         <Alert variant="destructive">
