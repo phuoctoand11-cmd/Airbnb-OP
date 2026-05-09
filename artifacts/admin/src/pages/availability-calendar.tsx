@@ -69,6 +69,8 @@ import {
   type Booking,
   type Listing,
   type ListingBlock,
+  type ListingCalendar,
+  BLOCKING_CAL_STATUSES,
 } from "@/lib/supabase";
 import { useCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
@@ -535,6 +537,7 @@ function TimelineView({
   listings,
   bookings,
   blocks,
+  calBlockedSet,
   periodStart,
   periodDays,
   onBookingClick,
@@ -542,6 +545,7 @@ function TimelineView({
   listings: Listing[];
   bookings: Booking[];
   blocks: ListingBlock[];
+  calBlockedSet: Set<string>;
   periodStart: Date;
   periodDays: number;
   onBookingClick: (b: Booking) => void;
@@ -574,9 +578,9 @@ function TimelineView({
       // Background state per date cell
       const dateStates = dates.map((d) => {
         const ds = format(d, "yyyy-MM-dd");
-        const blocked = lBlocks.some(
-          (bl) => ds >= bl.start_date && ds < bl.end_date,
-        );
+        const blocked =
+          lBlocks.some((bl) => ds >= bl.start_date && ds < bl.end_date) ||
+          calBlockedSet.has(`${listing.id}:${ds}`);
         if (blocked) return "blocked" as const;
         const ci = lBookings.some((b) => b.check_in === ds);
         const co = lBookings.some((b) => b.check_out === ds);
@@ -633,7 +637,7 @@ function TimelineView({
 
       return { listing, dateStates, bookingSegs, blockSegs, occupancyPct };
     });
-  }, [listings, bookings, blocks, dates, periodStart, periodDays]);
+  }, [listings, bookings, blocks, calBlockedSet, dates, periodStart, periodDays]);
 
   const CELL_BG: Record<string, string> = {
     available:  "bg-background",
@@ -882,12 +886,14 @@ function MonthView({
   listings,
   bookings,
   blocks,
+  calBlockedSet,
   viewDate,
   onBookingClick,
 }: {
   listings: Listing[];
   bookings: Booking[];
   blocks: ListingBlock[];
+  calBlockedSet: Set<string>;
   viewDate: Date;
   onBookingClick: (b: Booking) => void;
 }) {
@@ -946,12 +952,14 @@ function MonthView({
               )
               .slice(0, 4);
 
-            const blocked = blocks.some(
-              (bl) =>
-                listings.some((l) => l.id === bl.listing_id) &&
-                ds >= bl.start_date &&
-                ds < bl.end_date,
-            );
+            const blocked =
+              blocks.some(
+                (bl) =>
+                  listings.some((l) => l.id === bl.listing_id) &&
+                  ds >= bl.start_date &&
+                  ds < bl.end_date,
+              ) ||
+              listings.some((l) => calBlockedSet.has(`${l.id}:${ds}`));
 
             return (
               <div
@@ -1029,12 +1037,14 @@ function OccupancyStrip({
   listings,
   bookings,
   blocks,
+  calBlockedSet,
   periodStart,
   periodDays,
 }: {
   listings: Listing[];
   bookings: Booking[];
   blocks: ListingBlock[];
+  calBlockedSet: Set<string>;
   periodStart: Date;
   periodDays: number;
 }) {
@@ -1052,7 +1062,8 @@ function OccupancyStrip({
       const bookedDays = dates.filter(
         (ds) =>
           lBookings.some((b) => ds >= b.check_in && ds < b.check_out) ||
-          lBlocks.some((bl) => ds >= bl.start_date && ds < bl.end_date),
+          lBlocks.some((bl) => ds >= bl.start_date && ds < bl.end_date) ||
+          calBlockedSet.has(`${listing.id}:${ds}`),
       ).length;
 
       return {
@@ -1061,7 +1072,7 @@ function OccupancyStrip({
         bookedDays,
       };
     });
-  }, [listings, bookings, blocks, periodStart, periodDays]);
+  }, [listings, bookings, blocks, calBlockedSet, periodStart, periodDays]);
 
   if (data.length === 0) return null;
 
@@ -1194,6 +1205,23 @@ export default function AvailabilityCalendar() {
     },
   });
 
+  // Also read listing_calendar for blocking statuses (blocked/maintenance/owner_stay/cleaning_hold)
+  // so the global calendar stays in sync with per-listing status edits
+  const listingCalQuery = useQuery({
+    queryKey: ["listing_calendar_global"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("listing_calendar")
+        .select("id,listing_id,date,status")
+        .in("status", BLOCKING_CAL_STATUSES);
+      if (error) {
+        // Table may not exist yet — silently ignore
+        return [] as Pick<ListingCalendar, "id" | "listing_id" | "date" | "status">[];
+      }
+      return (data ?? []) as Pick<ListingCalendar, "id" | "listing_id" | "date" | "status">[];
+    },
+  });
+
   // ── Mutations ────────────────────────────────────────────────────────────
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: Booking["status"] }) => {
@@ -1248,6 +1276,13 @@ export default function AvailabilityCalendar() {
   }, [bookingsQuery.data, statusFilter, sourceFilter]);
 
   const blocks = blocksQuery.data ?? [];
+
+  // Build a Set of "listingId:date" for listing_calendar blocking days (O(1) lookup)
+  const calBlockedSet = useMemo(() => {
+    const s = new Set<string>();
+    (listingCalQuery.data ?? []).forEach((e) => s.add(`${e.listing_id}:${e.date.slice(0, 10)}`));
+    return s;
+  }, [listingCalQuery.data]);
 
   // ── Period helpers ────────────────────────────────────────────────────────
   const TIMELINE_DAYS = 42; // ~6 weeks
@@ -1407,6 +1442,7 @@ export default function AvailabilityCalendar() {
           listings={listings}
           bookings={bookingsQuery.data ?? []}
           blocks={blocks}
+          calBlockedSet={calBlockedSet}
           periodStart={periodStart}
           periodDays={view === "month" ? getDaysInMonth(viewDate) : periodDays}
         />
@@ -1489,6 +1525,7 @@ export default function AvailabilityCalendar() {
           listings={listings}
           bookings={bookings}
           blocks={blocks}
+          calBlockedSet={calBlockedSet}
           viewDate={viewDate}
           onBookingClick={setSelectedBooking}
         />
@@ -1497,6 +1534,7 @@ export default function AvailabilityCalendar() {
           listings={listings}
           bookings={bookings}
           blocks={blocks}
+          calBlockedSet={calBlockedSet}
           periodStart={periodStart}
           periodDays={periodDays}
           onBookingClick={setSelectedBooking}

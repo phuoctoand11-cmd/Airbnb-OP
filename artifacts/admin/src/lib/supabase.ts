@@ -131,6 +131,48 @@ export interface CalendarEntry {
   note: string | null;
 }
 
+export type ListingCalStatus =
+  | "available"
+  | "blocked"
+  | "maintenance"
+  | "owner_stay"
+  | "cleaning_hold";
+
+export const LISTING_CAL_STATUSES: ListingCalStatus[] = [
+  "available",
+  "blocked",
+  "maintenance",
+  "owner_stay",
+  "cleaning_hold",
+];
+
+export const LISTING_CAL_STATUS_LABELS: Record<ListingCalStatus, string> = {
+  available: "Trống",
+  blocked: "Đã khóa",
+  maintenance: "Bảo trì",
+  owner_stay: "Chủ nhà ở",
+  cleaning_hold: "Đang dọn",
+};
+
+/** Statuses that prevent new bookings on that date */
+export const BLOCKING_CAL_STATUSES: ListingCalStatus[] = [
+  "blocked",
+  "maintenance",
+  "owner_stay",
+  "cleaning_hold",
+];
+
+export interface ListingCalendar {
+  id: string;
+  listing_id: string;
+  date: string;
+  status: ListingCalStatus;
+  price_override: number | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PricingRule {
   id: string;
   listing_id: string;

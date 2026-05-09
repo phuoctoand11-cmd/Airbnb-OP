@@ -1,0 +1,80 @@
+Upgrade Listing Calendar to support direct multi-day status editing.
+
+Goal:
+On each listing detail page → Calendar tab, allow admin/manager to select one or multiple dates and apply a calendar status directly.
+
+Requirements:
+
+1. Multi-day selection
+- User can click one date to select it.
+- User can click multiple dates to select several separate days.
+- User can click and drag or use shift-click to select a date range if feasible.
+- Selected dates should be highlighted clearly.
+- User can clear selection.
+
+2. Bulk status editor
+When at least one date is selected, show a bulk edit panel:
+- Selected dates count
+- Calendar status dropdown:
+  - available
+  - blocked
+  - maintenance
+  - owner_stay
+  - cleaning_hold
+- Price override per night optional
+- Note optional
+- Apply button
+- Clear selection button
+
+3. Save logic
+For each selected date:
+- create or update calendar entry for that listing/date
+- status = selected status
+- price_override = optional
+- note = optional
+
+4. Database
+Use existing listing_calendar table if available.
+If missing, show SQL migration before applying:
+
+listing_calendar:
+- id uuid primary key default gen_random_uuid()
+- listing_id uuid references listings(id) on delete cascade
+- date date not null
+- status text not null default 'available'
+- price_override numeric(14,2)
+- note text
+- created_at timestamptz default now()
+- updated_at timestamptz default now()
+
+Unique constraint:
+- unique(listing_id, date)
+
+5. Calendar display
+Show each day color based on status:
+- available neutral
+- blocked dark gray
+- maintenance orange
+- owner_stay purple
+- cleaning_hold yellow
+- booked blue from bookings
+
+6. Conflict rules
+- If a date has confirmed booking, do not allow changing it to blocked/maintenance/owner_stay/cleaning_hold.
+- Show warning: "Không thể đổi trạng thái ngày đã có booking."
+- Available status can clear manual block if no booking exists.
+
+7. Availability calendar sync
+The global availability calendar must read these listing_calendar statuses and show same colors.
+Blocked/maintenance/owner_stay/cleaning_hold dates must prevent new bookings.
+
+8. Permissions
+- admin and manager can edit calendar status
+- staff/sales/cleaner/maintenance can only view
+
+9. UX
+- Add legend
+- Add selected date count
+- Add toast success/error
+- Keep current price override and note features
+- Do not break existing booking display
