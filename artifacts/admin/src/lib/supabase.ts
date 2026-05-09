@@ -157,6 +157,9 @@ export interface Booking {
   status: "pending" | "confirmed" | "completed" | "cancelled";
   source: string | null;
   notes: string | null;
+  deposit_amount: number;
+  deposit_paid_at: string | null;
+  deposit_note: string | null;
   created_at: string;
 }
 

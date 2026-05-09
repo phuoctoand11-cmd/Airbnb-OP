@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -135,6 +135,10 @@ const bookingSchema = z
     status: z.enum(["pending", "confirmed", "completed", "cancelled"]),
     source: z.string().optional(),
     notes: z.string().optional(),
+    // Deposit
+    deposit_amount: z.coerce.number().min(0).default(0),
+    deposit_paid_at: z.string().optional(),
+    deposit_note: z.string().optional(),
     // Optional task assignees — one per auto-created task
     checkin_assignee_id: z.string().optional(),
     checkout_assignee_id: z.string().optional(),
@@ -156,6 +160,7 @@ export default function Bookings() {
   const { fmt } = useCurrency();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageBookings");
+  const canEditDeposit = role === "admin" || role === "manager";
 
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -242,6 +247,9 @@ export default function Bookings() {
       status: "pending",
       source: "",
       notes: "",
+      deposit_amount: 0,
+      deposit_paid_at: "",
+      deposit_note: "",
       checkin_assignee_id: "",
       checkout_assignee_id: "",
       cleaning_assignee_id: "",
@@ -251,6 +259,15 @@ export default function Bookings() {
   const watchCheckIn = form.watch("check_in");
   const watchCheckOut = form.watch("check_out");
   const watchGuestName = form.watch("guest_name");
+  const watchTotalAmount = form.watch("total_amount");
+  const watchDepositAmount = form.watch("deposit_amount");
+
+  // Auto-fill deposit_paid_at with today when a deposit is entered and the date is still empty
+  useEffect(() => {
+    if (watchDepositAmount > 0 && !form.getValues("deposit_paid_at")) {
+      form.setValue("deposit_paid_at", format(new Date(), "yyyy-MM-dd"));
+    }
+  }, [watchDepositAmount, form]);
 
   const checkOverlap = async (listingId: string, checkIn: string, checkOut: string) => {
     if (!listingId || !checkIn || !checkOut) {
@@ -293,6 +310,9 @@ export default function Bookings() {
           status: values.status,
           source: values.source || null,
           notes: values.notes || null,
+          deposit_amount: values.deposit_amount ?? 0,
+          deposit_paid_at: values.deposit_paid_at || null,
+          deposit_note: values.deposit_note || null,
         })
         .select("id")
         .single();
@@ -343,15 +363,43 @@ export default function Bookings() {
       // 3. Insert tasks — non-blocking: a task failure doesn't roll back the booking
       const { error: tasksError } = await supabase.from("tasks").insert(autoTaskRows);
 
-      return { tasksError };
+      // 4. Upsert deposit revenue row when deposit_amount > 0
+      let depositError: Error | null = null;
+      if ((values.deposit_amount ?? 0) > 0) {
+        const depositDate =
+          values.deposit_paid_at || format(new Date(), "yyyy-MM-dd");
+        // Delete any pre-existing deposit row for this booking (idempotent on create,
+        // guards against accidental duplicates on retry)
+        await supabase
+          .from("revenues")
+          .delete()
+          .eq("booking_id", newBooking.id)
+          .eq("category", "deposit");
+        const { error: depErr } = await supabase.from("revenues").insert({
+          listing_id: values.listing_id,
+          booking_id: newBooking.id,
+          amount: values.deposit_amount,
+          category: "deposit",
+          description: `Deposit - ${values.guest_name}`,
+          received_at: depositDate,
+        });
+        if (depErr) depositError = depErr;
+      }
+
+      return { tasksError, depositError };
     },
-    onSuccess: ({ tasksError }) => {
+    onSuccess: ({ tasksError, depositError }) => {
       if (tasksError) {
-        // Booking created but tasks failed
         toast({
           variant: "destructive",
           title: t.bookings.taskCreationFailed,
           description: tasksError.message,
+        });
+      } else if (depositError) {
+        toast({
+          variant: "destructive",
+          title: "Lưu tiền cọc thất bại",
+          description: depositError.message,
         });
       } else {
         toast({ title: t.bookings.created });
@@ -748,6 +796,64 @@ export default function Bookings() {
                   )}
                 />
               </div>
+
+              {/* ── Deposit ──────────────────────────────────────────────── */}
+              {canEditDeposit && (
+                <div className="rounded-lg border border-dashed p-4 space-y-3">
+                  <p className="text-sm font-semibold">Tiền cọc</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="deposit_amount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tiền cọc (VND)</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="1" min={0} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="deposit_paid_at"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Ngày nhận cọc</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {watchDepositAmount > 0 && (
+                    <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
+                      <span className="text-muted-foreground">Còn lại</span>
+                      <span className="font-semibold tabular-nums">
+                        {fmt(Math.max(0, (watchTotalAmount ?? 0) - (watchDepositAmount ?? 0)))}
+                      </span>
+                    </div>
+                  )}
+
+                  <FormField
+                    control={form.control}
+                    name="deposit_note"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Ghi chú cọc</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Ghi chú về tiền cọc…" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
 
               {/* Source */}
               <FormField
