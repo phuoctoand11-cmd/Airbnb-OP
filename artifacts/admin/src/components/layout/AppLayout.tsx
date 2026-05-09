@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   AlertTriangle,
-  Building,
+  Building2,
   CalendarDays,
   CalendarRange,
   CheckSquare,
@@ -89,23 +89,30 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-card transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-16 shrink-0 items-center gap-2 border-b px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Building className="h-4 w-4" />
+        {/* Logo */}
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground text-background shadow-sm">
+            <Building2 className="h-4.5 w-4.5" />
           </div>
           <div>
-            <div className="text-sm font-semibold leading-none">Airbnb Ops</div>
-            <div className="text-xs text-muted-foreground">{t.nav.operationsCockpit}</div>
+            <div className="text-sm font-semibold leading-none tracking-tight text-foreground">
+              Airbnb Ops
+            </div>
+            <div className="mt-0.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+              {t.nav.operationsCockpit}
+            </div>
           </div>
         </div>
 
+        {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          <ul className="space-y-1">
+          <ul className="space-y-0.5">
             {visibleNav.map((item) => {
               const isActive =
                 location === item.href ||
@@ -114,14 +121,14 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
                 <li key={item.href}>
                   <Link href={item.href} onClick={() => setMobileMenuOpen(false)}>
                     <div
-                      className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
                         isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          ? "bg-foreground text-background shadow-sm"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
                       }`}
                     >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{item.label}</span>
                     </div>
                   </Link>
                 </li>
@@ -130,36 +137,38 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
           </ul>
         </nav>
 
-        <div className="border-t p-3 space-y-2">
+        {/* Footer controls */}
+        <div className="border-t border-border p-3 space-y-1.5">
           {/* Currency toggle */}
-          <div className="px-1 space-y-1">
-            <div className="flex items-center gap-1.5 rounded-md">
-              <span className="text-xs text-muted-foreground flex-1">Currency</span>
-              <div className="flex overflow-hidden rounded border text-[11px] font-semibold">
-                {(["VND", "USD"] as Currency[]).map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setCurrency(c)}
-                    className={`px-2 py-1 transition-colors ${
-                      currency === c
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
+          <div className="px-1 flex items-center gap-2">
+            <span className="text-[11px] font-medium text-muted-foreground flex-1 uppercase tracking-wide">
+              Currency
+            </span>
+            <div className="flex overflow-hidden rounded-lg border border-border text-[11px] font-semibold">
+              {(["VND", "USD"] as Currency[]).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCurrency(c)}
+                  className={`px-2.5 py-1 transition-colors ${
+                    currency === c
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:bg-accent"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
             </div>
-            <p className="text-[10px] text-muted-foreground leading-snug">
-              Chỉ đổi hiển thị, dữ liệu lưu bằng VND.
-            </p>
           </div>
 
           {/* Language switcher */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="w-full justify-start px-2 text-muted-foreground">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start px-2 text-muted-foreground hover:bg-accent hover:text-foreground rounded-xl"
+              >
                 <span className="mr-2 text-base">{currentLangOption.flag}</span>
                 {currentLangOption.label}
               </Button>
@@ -169,7 +178,7 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
                 <DropdownMenuItem
                   key={opt.value}
                   onClick={() => setLang(opt.value)}
-                  className={lang === opt.value ? "font-semibold text-primary" : ""}
+                  className={lang === opt.value ? "font-semibold" : ""}
                 >
                   <span className="mr-2 text-base">{opt.flag}</span>
                   {opt.label}
@@ -181,32 +190,40 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
           {/* User menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-auto w-full justify-start px-2 py-2">
+              <Button
+                variant="ghost"
+                className="h-auto w-full justify-start px-2 py-2 rounded-xl hover:bg-accent"
+              >
                 <div className="flex w-full items-center gap-3 overflow-hidden text-left">
-                  <Avatar className="h-9 w-9 border">
+                  <Avatar className="h-8 w-8 border border-border">
                     <AvatarImage src={profile?.avatar_url ?? ""} />
-                    <AvatarFallback>{initials}</AvatarFallback>
+                    <AvatarFallback className="bg-foreground text-background text-xs font-semibold">
+                      {initials}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">
+                    <p className="truncate text-sm font-semibold text-foreground">
                       {profile?.full_name ?? profile?.email ?? "User"}
                     </p>
-                    <div className="flex items-center gap-1">
-                      {role && (
-                        <Badge variant="outline" className="px-1 py-0 text-[10px] capitalize">
-                          {ROLE_LABELS[role] ?? role}
-                        </Badge>
-                      )}
-                    </div>
+                    {role && (
+                      <Badge
+                        variant="outline"
+                        className="mt-0.5 px-1.5 py-0 text-[10px] font-medium capitalize border-border text-muted-foreground"
+                      >
+                        {ROLE_LABELS[role] ?? role}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>{profile?.email}</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                {profile?.email}
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                className="cursor-pointer text-destructive"
+                className="cursor-pointer text-destructive focus:text-destructive"
                 onClick={() => signOut()}
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -217,29 +234,32 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
         </div>
       </aside>
 
+      {/* ── Main content ────────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center">
+        {/* Top bar */}
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
-              className="mr-2 md:hidden"
+              className="md:hidden rounded-xl"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-xl font-semibold">{title}</h1>
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">{title}</h1>
           </div>
           {action && <div className="ml-4">{action}</div>}
         </header>
 
+        {/* Block-error banner */}
         {blockError && !warningDismissed && (
-          <div className="flex items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+          <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
             <span className="flex-1">{blockError}</span>
             <button
               onClick={() => setWarningDismissed(true)}
-              className="ml-auto rounded p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900"
+              className="ml-auto rounded-lg p-0.5 hover:bg-amber-100"
               aria-label="Dismiss"
             >
               <X className="h-4 w-4" />
@@ -247,29 +267,31 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
           </div>
         )}
 
+        {/* Page content */}
         <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl">{children}</div>
         </main>
       </div>
 
+      {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          className="fixed inset-0 z-40 bg-black/30 md:hidden backdrop-blur-sm"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
 
-      {/* ── Temporary auth debug panel ──────────────────────────────────── */}
+      {/* ── Auth debug panel ─────────────────────────────────────────────── */}
       <div className="fixed bottom-3 right-3 z-50">
         {debugOpen ? (
-          <div className="w-72 rounded-lg border border-zinc-300 bg-white/95 shadow-lg backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
-            <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-700">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+          <div className="w-72 rounded-2xl border border-border bg-background shadow-lg">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Auth Debug
               </span>
               <button
                 onClick={() => setDebugOpen(false)}
-                className="rounded p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                className="rounded-lg p-0.5 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -285,7 +307,7 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
         ) : (
           <button
             onClick={() => setDebugOpen(true)}
-            className="rounded-full border border-zinc-300 bg-white/90 px-2.5 py-1 text-[10px] font-semibold text-zinc-500 shadow hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-400"
+            className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-muted-foreground shadow-sm hover:bg-accent"
           >
             debug
           </button>
@@ -298,8 +320,8 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
 function DebugRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-1">
-      <span className="w-32 shrink-0 text-zinc-400">{label}</span>
-      <span className="min-w-0 break-all text-zinc-800 dark:text-zinc-200">{value}</span>
+      <span className="w-32 shrink-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 break-all text-foreground">{value}</span>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, Building, Loader2 } from "lucide-react";
+import { AlertTriangle, Building2, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { AppRole } from "@/lib/supabase";
@@ -78,7 +78,6 @@ export default function Login() {
     try {
       setIsLoading(true);
       await signIn(data.email, data.password);
-      // Redirect to "/" — RootRedirect will pick the correct page based on role
       setLocation("/");
     } catch (error) {
       toast({
@@ -113,23 +112,27 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="bg-primary p-3 rounded-xl mb-4">
-            <Building className="h-8 w-8 text-primary-foreground" />
+
+        {/* Logo + headline */}
+        <div className="flex flex-col items-center mb-10">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-foreground text-background shadow-md mb-5">
+            <Building2 className="h-8 w-8" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">{t.login.title}</h1>
-          <p className="text-muted-foreground mt-2">{t.login.subtitle}</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+            {t.login.title}
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t.login.subtitle}</p>
         </div>
 
-        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-          <div className="mb-1 font-semibold uppercase tracking-wide text-amber-700">
+        {/* Debug banner */}
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <div className="mb-1 font-semibold uppercase tracking-wide text-amber-700 text-[10px]">
             Debug (temporary)
           </div>
           <div className="break-all">
-            <span className="font-medium">NEXT_PUBLIC_SUPABASE_URL:</span>{" "}
-            {DEBUG_SUPABASE_URL}
+            <span className="font-medium">SUPABASE_URL:</span> {DEBUG_SUPABASE_URL}
           </div>
           <div>
             <span className="font-medium">anon key loaded:</span>{" "}
@@ -138,23 +141,31 @@ export default function Login() {
         </div>
 
         {blockError && (
-          <Alert variant="destructive" className="mb-4">
+          <Alert variant="destructive" className="mb-5 rounded-xl">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>{blockError}</AlertDescription>
           </Alert>
         )}
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "register")}>
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="login">{t.login.loginTab}</TabsTrigger>
-            <TabsTrigger value="register">{t.login.registerTab}</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 mb-5 rounded-xl bg-card">
+            <TabsTrigger value="login" className="rounded-lg">
+              {t.login.loginTab}
+            </TabsTrigger>
+            <TabsTrigger value="register" className="rounded-lg">
+              {t.login.registerTab}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="login">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t.login.welcomeBack}</CardTitle>
-                <CardDescription>{t.login.enterCredentials}</CardDescription>
+            <Card className="rounded-2xl border-border shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold tracking-tight">
+                  {t.login.welcomeBack}
+                </CardTitle>
+                <CardDescription className="text-sm text-muted-foreground">
+                  {t.login.enterCredentials}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Form {...loginForm}>
@@ -164,9 +175,15 @@ export default function Login() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t.login.email}</FormLabel>
+                          <FormLabel className="text-sm font-medium text-foreground">
+                            {t.login.email}
+                          </FormLabel>
                           <FormControl>
-                            <Input placeholder="you@company.com" {...field} />
+                            <Input
+                              placeholder="you@company.com"
+                              className="rounded-xl border-border bg-background h-11"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -177,15 +194,26 @@ export default function Login() {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t.login.password}</FormLabel>
+                          <FormLabel className="text-sm font-medium text-foreground">
+                            {t.login.password}
+                          </FormLabel>
                           <FormControl>
-                            <Input type="password" placeholder="••••••••" {...field} />
+                            <Input
+                              type="password"
+                              placeholder="••••••••"
+                              className="rounded-xl border-border bg-background h-11"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" className="w-full" disabled={isLoading}>
+                    <Button
+                      type="submit"
+                      className="w-full h-11 rounded-xl bg-foreground text-background font-semibold hover:bg-foreground/90 transition-colors"
+                      disabled={isLoading}
+                    >
                       {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {t.login.loginBtn}
                     </Button>
@@ -196,13 +224,17 @@ export default function Login() {
           </TabsContent>
 
           <TabsContent value="register">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t.login.createAccount}</CardTitle>
-                <CardDescription>{t.login.signUpDesc}</CardDescription>
+            <Card className="rounded-2xl border-border shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold tracking-tight">
+                  {t.login.createAccount}
+                </CardTitle>
+                <CardDescription className="text-sm text-muted-foreground">
+                  {t.login.signUpDesc}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="bg-muted p-3 rounded-md mb-4 text-xs text-muted-foreground">
+                <div className="rounded-xl bg-muted px-3 py-2.5 mb-4 text-xs text-muted-foreground">
                   {t.login.roleNote}
                 </div>
                 <Form {...registerForm}>
@@ -212,9 +244,15 @@ export default function Login() {
                       name="fullName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t.login.fullName}</FormLabel>
+                          <FormLabel className="text-sm font-medium text-foreground">
+                            {t.login.fullName}
+                          </FormLabel>
                           <FormControl>
-                            <Input placeholder="Jane Doe" {...field} />
+                            <Input
+                              placeholder="Jane Doe"
+                              className="rounded-xl border-border bg-background h-11"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -225,9 +263,15 @@ export default function Login() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t.login.email}</FormLabel>
+                          <FormLabel className="text-sm font-medium text-foreground">
+                            {t.login.email}
+                          </FormLabel>
                           <FormControl>
-                            <Input placeholder="you@company.com" {...field} />
+                            <Input
+                              placeholder="you@company.com"
+                              className="rounded-xl border-border bg-background h-11"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -238,9 +282,16 @@ export default function Login() {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t.login.password}</FormLabel>
+                          <FormLabel className="text-sm font-medium text-foreground">
+                            {t.login.password}
+                          </FormLabel>
                           <FormControl>
-                            <Input type="password" placeholder="••••••••" {...field} />
+                            <Input
+                              type="password"
+                              placeholder="••••••••"
+                              className="rounded-xl border-border bg-background h-11"
+                              {...field}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -251,10 +302,12 @@ export default function Login() {
                       name="role"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>{t.common.role}</FormLabel>
+                          <FormLabel className="text-sm font-medium text-foreground">
+                            {t.common.role}
+                          </FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
-                              <SelectTrigger>
+                              <SelectTrigger className="rounded-xl border-border bg-background h-11">
                                 <SelectValue placeholder={t.login.selectRole} />
                               </SelectTrigger>
                             </FormControl>
@@ -270,7 +323,11 @@ export default function Login() {
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" className="w-full" disabled={isLoading}>
+                    <Button
+                      type="submit"
+                      className="w-full h-11 rounded-xl bg-foreground text-background font-semibold hover:bg-foreground/90 transition-colors"
+                      disabled={isLoading}
+                    >
                       {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {t.login.registerBtn}
                     </Button>
