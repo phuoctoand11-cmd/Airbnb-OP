@@ -70,7 +70,9 @@ import {
   type Listing,
   type ListingBlock,
   type ListingCalendar,
+  type ListingCalStatus,
   BLOCKING_CAL_STATUSES,
+  LISTING_CAL_STATUS_LABELS,
 } from "@/lib/supabase";
 import { useCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
@@ -117,6 +119,30 @@ const STATUS_BADGE_CLS: Record<Booking["status"], string> = {
 // Block type color classes: maintenance=orange blocked=dark-gray
 const BLOCK_BG_STYLE = "rgba(234,88,12,0.08)"; // orange-600 tint for maintenance
 const BLOCK_BORDER_CLS = "border-orange-400/70 text-orange-700";
+
+// Per-status style map for listing_calendar single-day overlays in the timeline
+const CAL_SEG_STYLE: Record<string, { bg: string; stripe: string; borderCls: string; textCls: string }> = {
+  maintenance:   { bg: "rgba(234,88,12,0.10)",  stripe: "rgba(234,88,12,0.08)",  borderCls: "border-orange-400/70", textCls: "text-orange-700"  },
+  blocked:       { bg: "rgba(55,65,81,0.10)",    stripe: "rgba(55,65,81,0.08)",   borderCls: "border-gray-500/60",   textCls: "text-gray-600"    },
+  owner_stay:    { bg: "rgba(147,51,234,0.10)",  stripe: "rgba(147,51,234,0.08)", borderCls: "border-purple-400/60", textCls: "text-purple-700"  },
+  cleaning_hold: { bg: "rgba(245,158,11,0.12)",  stripe: "rgba(245,158,11,0.08)", borderCls: "border-amber-400/60",  textCls: "text-amber-700"   },
+};
+
+// Month-view cell background for each listing_calendar status
+const CAL_MONTH_BG: Partial<Record<ListingCalStatus, string>> = {
+  maintenance:   "bg-orange-50/70",
+  blocked:       "bg-slate-100/70",
+  owner_stay:    "bg-purple-50/50",
+  cleaning_hold: "bg-amber-50/50",
+};
+
+// Month-view label color for each listing_calendar status
+const CAL_MONTH_TEXT: Partial<Record<ListingCalStatus, string>> = {
+  maintenance:   "text-orange-500",
+  blocked:       "text-gray-500",
+  owner_stay:    "text-purple-500",
+  cleaning_hold: "text-amber-600",
+};
 
 const ALL_SOURCES = ["Airbnb", "Vrbo", "Booking.com", "Direct", "Other"];
 
@@ -537,7 +563,7 @@ function TimelineView({
   listings,
   bookings,
   blocks,
-  calBlockedSet,
+  calEntryMap,
   periodStart,
   periodDays,
   onBookingClick,
@@ -545,7 +571,7 @@ function TimelineView({
   listings: Listing[];
   bookings: Booking[];
   blocks: ListingBlock[];
-  calBlockedSet: Set<string>;
+  calEntryMap: Map<string, ListingCalendar>;
   periodStart: Date;
   periodDays: number;
   onBookingClick: (b: Booking) => void;
@@ -576,12 +602,10 @@ function TimelineView({
       const lBlocks = blocks.filter((bl) => bl.listing_id === listing.id);
 
       // Background state per date cell
+      // Priority: booking > maintenance > blocked > owner_stay > cleaning_hold > available
       const dateStates = dates.map((d) => {
         const ds = format(d, "yyyy-MM-dd");
-        const blocked =
-          lBlocks.some((bl) => ds >= bl.start_date && ds < bl.end_date) ||
-          calBlockedSet.has(`${listing.id}:${ds}`);
-        if (blocked) return "blocked" as const;
+        // Bookings: highest priority
         const ci = lBookings.some((b) => b.check_in === ds);
         const co = lBookings.some((b) => b.check_out === ds);
         if (ci && co) return "turnaround" as const;
@@ -589,6 +613,14 @@ function TimelineView({
         if (co) return "checkout" as const;
         const mid = lBookings.some((b) => ds > b.check_in && ds < b.check_out);
         if (mid) return "booked" as const;
+        // listing_calendar status
+        const calStatus = calEntryMap.get(`${listing.id}:${ds}`)?.status;
+        if (calStatus === "maintenance") return "cal_maintenance" as const;
+        // listing_blocks (legacy multi-day blocks — same visual as maintenance)
+        if (lBlocks.some((bl) => ds >= bl.start_date && ds < bl.end_date)) return "cal_maintenance" as const;
+        if (calStatus === "blocked")       return "cal_blocked"   as const;
+        if (calStatus === "owner_stay")    return "cal_owner"     as const;
+        if (calStatus === "cleaning_hold") return "cal_cleaning"  as const;
         return "available" as const;
       });
 
@@ -613,7 +645,7 @@ function TimelineView({
         })
         .filter(Boolean) as NonNullable<ReturnType<typeof clampToPeriod> & { booking: Booking; left: number; width: number; nights: number; clippedLeft: boolean; clippedRight: boolean }>[];
 
-      // Block overlay segments
+      // Block overlay segments (legacy listing_blocks — multi-day)
       const blockSegs = lBlocks
         .map((bl) => {
           const startOffset = differenceInCalendarDays(parseISO(bl.start_date), periodStart);
@@ -629,23 +661,42 @@ function TimelineView({
         })
         .filter(Boolean) as { block: ListingBlock; left: number; width: number }[];
 
+      // listing_calendar single-day overlays (skip dates that already have a booking or legacy block)
+      const calSegs: { entry: ListingCalendar; left: number }[] = [];
+      for (const [key, entry] of calEntryMap.entries()) {
+        if (!key.startsWith(listing.id + ":")) continue;
+        const ds = key.slice(listing.id.length + 1);
+        const offset = differenceInCalendarDays(parseISO(ds), periodStart);
+        if (offset < 0 || offset >= periodDays) continue;
+        // Skip if a booking exists on this date
+        const hasBooking = lBookings.some((b) => ds >= b.check_in && ds < b.check_out);
+        if (hasBooking) continue;
+        // Skip if a legacy listing_block already covers this date (shown as blockSegs)
+        const hasLegacyBlock = lBlocks.some((bl) => ds >= bl.start_date && ds < bl.end_date);
+        if (hasLegacyBlock) continue;
+        calSegs.push({ entry, left: offset * CELL_W });
+      }
+
       // Occupancy %
       const bookedCount = dateStates.filter(
         (s) => s === "booked" || s === "checkin" || s === "turnaround",
       ).length;
       const occupancyPct = Math.round((bookedCount / periodDays) * 100);
 
-      return { listing, dateStates, bookingSegs, blockSegs, occupancyPct };
+      return { listing, dateStates, bookingSegs, blockSegs, calSegs, occupancyPct };
     });
-  }, [listings, bookings, blocks, calBlockedSet, dates, periodStart, periodDays]);
+  }, [listings, bookings, blocks, calEntryMap, dates, periodStart, periodDays]);
 
   const CELL_BG: Record<string, string> = {
-    available:  "bg-background",
-    booked:     "bg-blue-50/50",
-    checkin:    "bg-emerald-50/70",
-    checkout:   "bg-blue-50/30",
-    turnaround: "bg-amber-50/60",
-    blocked:    "bg-orange-50/60",
+    available:       "bg-background",
+    booked:          "bg-blue-50/50",
+    checkin:         "bg-emerald-50/70",
+    checkout:        "bg-blue-50/30",
+    turnaround:      "bg-amber-50/60",
+    cal_maintenance: "bg-orange-50/70",
+    cal_blocked:     "bg-slate-100/80",
+    cal_owner:       "bg-purple-50/60",
+    cal_cleaning:    "bg-amber-50/50",
   };
 
   // Weekend column tint (Saturday=6, Sunday=0)
@@ -762,7 +813,7 @@ function TimelineView({
             </div>
 
             {/* Listing rows */}
-            {rows.map(({ listing, dateStates, bookingSegs, blockSegs }) => (
+            {rows.map(({ listing, dateStates, bookingSegs, blockSegs, calSegs }) => (
               <div
                 key={listing.id}
                 className="relative flex border-b last:border-b-0"
@@ -797,7 +848,7 @@ function TimelineView({
                   );
                 })}
 
-                {/* Maintenance block overlays */}
+                {/* Legacy listing_block overlays (multi-day maintenance) */}
                 {blockSegs.map((seg, idx) => (
                   <div
                     key={`bl-${idx}`}
@@ -820,6 +871,33 @@ function TimelineView({
                     <span className="truncate">{seg.block.reason ?? "Bảo trì"}</span>
                   </div>
                 ))}
+
+                {/* listing_calendar single-day status overlays */}
+                {calSegs.map((seg, idx) => {
+                  const st = seg.entry.status as ListingCalStatus;
+                  const style = CAL_SEG_STYLE[st] ?? CAL_SEG_STYLE.blocked;
+                  const label = LISTING_CAL_STATUS_LABELS[st] ?? st;
+                  return (
+                    <div
+                      key={`cs-${idx}`}
+                      title={`${label}${seg.entry.note ? ` — ${seg.entry.note}` : ""}`}
+                      className={cn(
+                        "absolute flex items-center overflow-hidden rounded-sm border text-[10px] font-medium px-1 select-none cursor-default",
+                        style.borderCls,
+                      )}
+                      style={{
+                        left: seg.left + 1,
+                        top: 7,
+                        width: CELL_W - 2,
+                        height: ROW_H - 14,
+                        backgroundColor: style.bg,
+                        backgroundImage: `repeating-linear-gradient(-45deg,transparent,transparent 4px,${style.stripe} 4px,${style.stripe} 8px)`,
+                      }}
+                    >
+                      <span className={cn("truncate leading-tight", style.textCls)}>{label}</span>
+                    </div>
+                  );
+                })}
 
                 {/* Booking overlays */}
                 {bookingSegs.map((seg, idx) => {
@@ -886,14 +964,14 @@ function MonthView({
   listings,
   bookings,
   blocks,
-  calBlockedSet,
+  calEntryMap,
   viewDate,
   onBookingClick,
 }: {
   listings: Listing[];
   bookings: Booking[];
   blocks: ListingBlock[];
-  calBlockedSet: Set<string>;
+  calEntryMap: Map<string, ListingCalendar>;
   viewDate: Date;
   onBookingClick: (b: Booking) => void;
 }) {
@@ -952,14 +1030,22 @@ function MonthView({
               )
               .slice(0, 4);
 
-            const blocked =
-              blocks.some(
+            // Determine dominant listing_calendar status for this day across all visible listings
+            // Priority: maintenance > blocked > owner_stay > cleaning_hold
+            const dominantCalStatus = (() => {
+              const hasLegacyBlock = blocks.some(
                 (bl) =>
                   listings.some((l) => l.id === bl.listing_id) &&
                   ds >= bl.start_date &&
                   ds < bl.end_date,
-              ) ||
-              listings.some((l) => calBlockedSet.has(`${l.id}:${ds}`));
+              );
+              if (hasLegacyBlock) return "maintenance" as ListingCalStatus;
+              const priority: ListingCalStatus[] = ["maintenance", "blocked", "owner_stay", "cleaning_hold"];
+              for (const s of priority) {
+                if (listings.some((l) => calEntryMap.get(`${l.id}:${ds}`)?.status === s)) return s;
+              }
+              return null;
+            })();
 
             return (
               <div
@@ -969,7 +1055,7 @@ function MonthView({
                   !inMonth && "bg-muted/20",
                   inMonth && wkndCol && !today && "bg-amber-50/30",
                   today && "bg-blue-50",
-                  blocked && !today && "bg-orange-50/40",
+                  !today && dominantCalStatus && CAL_MONTH_BG[dominantCalStatus],
                 )}
               >
                 {/* Day number */}
@@ -988,9 +1074,10 @@ function MonthView({
                   >
                     {format(day, "d")}
                   </span>
-                  {blocked && (
-                    <Wrench className="h-3 w-3 text-orange-400" />
-                  )}
+                  {dominantCalStatus === "maintenance"   && <Wrench className="h-3 w-3 text-orange-400" />}
+                  {dominantCalStatus === "blocked"       && <Ban    className="h-3 w-3 text-gray-400"   />}
+                  {dominantCalStatus === "owner_stay"    && <span className="h-2.5 w-2.5 rounded-full bg-purple-400 shrink-0" />}
+                  {dominantCalStatus === "cleaning_hold" && <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shrink-0"  />}
                 </div>
 
                 {/* Booking chips */}
@@ -1018,8 +1105,10 @@ function MonthView({
                       </button>
                     );
                   })}
-                  {dayBookings.length === 0 && blocked && (
-                    <p className="text-[10px] text-orange-500 px-1 font-medium">Bảo trì</p>
+                  {dayBookings.length === 0 && dominantCalStatus && (
+                    <p className={cn("text-[10px] px-1 font-medium", CAL_MONTH_TEXT[dominantCalStatus])}>
+                      {LISTING_CAL_STATUS_LABELS[dominantCalStatus]}
+                    </p>
                   )}
                 </div>
               </div>
@@ -1037,14 +1126,14 @@ function OccupancyStrip({
   listings,
   bookings,
   blocks,
-  calBlockedSet,
+  calEntryMap,
   periodStart,
   periodDays,
 }: {
   listings: Listing[];
   bookings: Booking[];
   blocks: ListingBlock[];
-  calBlockedSet: Set<string>;
+  calEntryMap: Map<string, ListingCalendar>;
   periodStart: Date;
   periodDays: number;
 }) {
@@ -1063,7 +1152,7 @@ function OccupancyStrip({
         (ds) =>
           lBookings.some((b) => ds >= b.check_in && ds < b.check_out) ||
           lBlocks.some((bl) => ds >= bl.start_date && ds < bl.end_date) ||
-          calBlockedSet.has(`${listing.id}:${ds}`),
+          calEntryMap.has(`${listing.id}:${ds}`),
       ).length;
 
       return {
@@ -1072,7 +1161,7 @@ function OccupancyStrip({
         bookedDays,
       };
     });
-  }, [listings, bookings, blocks, calBlockedSet, periodStart, periodDays]);
+  }, [listings, bookings, blocks, calEntryMap, periodStart, periodDays]);
 
   if (data.length === 0) return null;
 
@@ -1205,20 +1294,34 @@ export default function AvailabilityCalendar() {
     },
   });
 
-  // Also read listing_calendar for blocking statuses (blocked/maintenance/owner_stay/cleaning_hold)
-  // so the global calendar stays in sync with per-listing status edits
+  // Compute visible date range for the listing_calendar query (must stay in sync with view/viewDate)
+  const calQueryStart = format(
+    view === "week" ? startOfWeek(viewDate, { weekStartsOn: 1 }) : startOfMonth(viewDate),
+    "yyyy-MM-dd",
+  );
+  const calQueryEnd = format(
+    addDays(
+      view === "week" ? startOfWeek(viewDate, { weekStartsOn: 1 }) : startOfMonth(viewDate),
+      view === "week" ? 6 : 41,
+    ),
+    "yyyy-MM-dd",
+  );
+
+  // Fetch listing_calendar for the visible date range (all non-available statuses)
   const listingCalQuery = useQuery({
-    queryKey: ["listing_calendar_global"],
+    queryKey: ["listing_calendar_global", calQueryStart, calQueryEnd],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("listing_calendar")
-        .select("id,listing_id,date,status")
-        .in("status", BLOCKING_CAL_STATUSES);
+        .select("id,listing_id,date,status,note,price_override")
+        .neq("status", "available")
+        .gte("date", calQueryStart)
+        .lte("date", calQueryEnd);
       if (error) {
-        // Table may not exist yet — silently ignore
-        return [] as Pick<ListingCalendar, "id" | "listing_id" | "date" | "status">[];
+        // Table may not exist yet — silently return empty
+        return [] as ListingCalendar[];
       }
-      return (data ?? []) as Pick<ListingCalendar, "id" | "listing_id" | "date" | "status">[];
+      return (data ?? []) as ListingCalendar[];
     },
   });
 
@@ -1277,11 +1380,13 @@ export default function AvailabilityCalendar() {
 
   const blocks = blocksQuery.data ?? [];
 
-  // Build a Set of "listingId:date" for listing_calendar blocking days (O(1) lookup)
-  const calBlockedSet = useMemo(() => {
-    const s = new Set<string>();
-    (listingCalQuery.data ?? []).forEach((e) => s.add(`${e.listing_id}:${e.date.slice(0, 10)}`));
-    return s;
+  // Build a Map<"listingId:date", ListingCalendar> — preserves status for per-status coloring
+  const calEntryMap = useMemo(() => {
+    const m = new Map<string, ListingCalendar>();
+    (listingCalQuery.data ?? []).forEach((e) =>
+      m.set(`${e.listing_id}:${e.date.slice(0, 10)}`, e),
+    );
+    return m;
   }, [listingCalQuery.data]);
 
   // ── Period helpers ────────────────────────────────────────────────────────
@@ -1442,7 +1547,7 @@ export default function AvailabilityCalendar() {
           listings={listings}
           bookings={bookingsQuery.data ?? []}
           blocks={blocks}
-          calBlockedSet={calBlockedSet}
+          calEntryMap={calEntryMap}
           periodStart={periodStart}
           periodDays={view === "month" ? getDaysInMonth(viewDate) : periodDays}
         />
@@ -1490,11 +1595,55 @@ export default function AvailabilityCalendar() {
                 "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(234,88,12,0.12) 2px,rgba(234,88,12,0.12) 4px)",
             }}
           />
-          Bảo trì
+          Bảo trì (khối)
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 shrink-0 rounded-sm bg-amber-50 border border-amber-200" />
           Cuối tuần
+        </span>
+
+        <span className="w-px h-4 bg-border mx-1" />
+
+        {/* listing_calendar statuses */}
+        <span className="flex items-center gap-1.5 font-medium">
+          <span
+            className="h-3 w-3 shrink-0 rounded-sm border border-orange-400/70"
+            style={{
+              backgroundColor: "rgba(234,88,12,0.10)",
+              backgroundImage: "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(234,88,12,0.08) 2px,rgba(234,88,12,0.08) 4px)",
+            }}
+          />
+          <span className="text-orange-700">Bảo trì</span>
+        </span>
+        <span className="flex items-center gap-1.5 font-medium">
+          <span
+            className="h-3 w-3 shrink-0 rounded-sm border border-gray-500/60"
+            style={{
+              backgroundColor: "rgba(55,65,81,0.10)",
+              backgroundImage: "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(55,65,81,0.08) 2px,rgba(55,65,81,0.08) 4px)",
+            }}
+          />
+          <span className="text-gray-600">Đã khóa</span>
+        </span>
+        <span className="flex items-center gap-1.5 font-medium">
+          <span
+            className="h-3 w-3 shrink-0 rounded-sm border border-purple-400/60"
+            style={{
+              backgroundColor: "rgba(147,51,234,0.10)",
+              backgroundImage: "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(147,51,234,0.08) 2px,rgba(147,51,234,0.08) 4px)",
+            }}
+          />
+          <span className="text-purple-700">Chủ nhà ở</span>
+        </span>
+        <span className="flex items-center gap-1.5 font-medium">
+          <span
+            className="h-3 w-3 shrink-0 rounded-sm border border-amber-400/60"
+            style={{
+              backgroundColor: "rgba(245,158,11,0.12)",
+              backgroundImage: "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(245,158,11,0.08) 2px,rgba(245,158,11,0.08) 4px)",
+            }}
+          />
+          <span className="text-amber-700">Đang dọn</span>
         </span>
       </div>
 
@@ -1525,7 +1674,7 @@ export default function AvailabilityCalendar() {
           listings={listings}
           bookings={bookings}
           blocks={blocks}
-          calBlockedSet={calBlockedSet}
+          calEntryMap={calEntryMap}
           viewDate={viewDate}
           onBookingClick={setSelectedBooking}
         />
@@ -1534,7 +1683,7 @@ export default function AvailabilityCalendar() {
           listings={listings}
           bookings={bookings}
           blocks={blocks}
-          calBlockedSet={calBlockedSet}
+          calEntryMap={calEntryMap}
           periodStart={periodStart}
           periodDays={periodDays}
           onBookingClick={setSelectedBooking}
