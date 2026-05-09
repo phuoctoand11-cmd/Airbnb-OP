@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
-import { CalendarDays, ClipboardCheck, Loader2, Plus, Sparkles, Brush } from "lucide-react";
+import { CalendarDays, ChevronDown, ClipboardCheck, Loader2, Plus, Sparkles, Brush } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,6 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -54,6 +60,15 @@ import { useCurrency } from "@/lib/currency";
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type AssignableEmployee = Pick<Employee, "id" | "full_name" | "email" | "status">;
+
+// ── Status options (for multi-select filter) ─────────────────────────────────
+
+const STATUS_OPTIONS: { value: Booking["status"]; label: string }[] = [
+  { value: "pending",   label: "Chờ xác nhận" },
+  { value: "confirmed", label: "Đã xác nhận" },
+  { value: "completed", label: "Hoàn thành" },
+  { value: "cancelled", label: "Đã hủy" },
+];
 
 // ── Status styles ─────────────────────────────────────────────────────────────
 
@@ -142,7 +157,8 @@ export default function Bookings() {
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageBookings");
 
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
 
@@ -188,9 +204,24 @@ export default function Bookings() {
 
   const filtered = useMemo(() => {
     if (!bookingsQuery.data) return [];
-    if (statusFilter === "all") return bookingsQuery.data;
-    return bookingsQuery.data.filter((b) => b.status === statusFilter);
+    if (statusFilter.length === 0) return bookingsQuery.data;
+    return bookingsQuery.data.filter((b) => statusFilter.includes(b.status));
   }, [bookingsQuery.data, statusFilter]);
+
+  // ── Multi-select helpers ───────────────────────────────────────────────────
+
+  function toggleStatus(val: string) {
+    setStatusFilter((prev) =>
+      prev.includes(val) ? prev.filter((s) => s !== val) : [...prev, val]
+    );
+  }
+
+  const filterLabel =
+    statusFilter.length === 0
+      ? t.status.allStatuses
+      : statusFilter.length === 1
+      ? (STATUS_OPTIONS.find((o) => o.value === statusFilter[0])?.label ?? statusFilter[0])
+      : `${statusFilter.length} trạng thái`;
 
   const listingTitle = (id: string) =>
     listingsQuery.data?.find((l) => l.id === id)?.title ?? "—";
@@ -371,18 +402,60 @@ export default function Bookings() {
       }
     >
       <div className="mb-4 flex justify-end">
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t.status.allStatuses}</SelectItem>
-            <SelectItem value="pending">{t.status.pending}</SelectItem>
-            <SelectItem value="confirmed">{t.status.confirmed}</SelectItem>
-            <SelectItem value="completed">{t.status.completed}</SelectItem>
-            <SelectItem value="cancelled">{t.status.cancelled}</SelectItem>
-          </SelectContent>
-        </Select>
+        <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="h-9 w-[220px] justify-between px-3 font-normal"
+            >
+              <span className={statusFilter.length === 0 ? "text-muted-foreground" : "font-medium"}>
+                {filterLabel}
+              </span>
+              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-[220px] p-0"
+            align="end"
+            sideOffset={6}
+          >
+            {/* Action row */}
+            <div className="flex items-center justify-between border-b px-3 py-2">
+              <button
+                className="text-xs font-medium text-primary hover:underline"
+                onClick={() => setStatusFilter(STATUS_OPTIONS.map((o) => o.value))}
+              >
+                Chọn tất cả
+              </button>
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                onClick={() => setStatusFilter([])}
+              >
+                Xóa lọc
+              </button>
+            </div>
+
+            {/* Checkbox list */}
+            <div className="p-1">
+              {STATUS_OPTIONS.map((opt) => {
+                const checked = statusFilter.includes(opt.value);
+                return (
+                  <label
+                    key={opt.value}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm hover:bg-muted/60 select-none"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => toggleStatus(opt.value)}
+                      id={`filter-${opt.value}`}
+                    />
+                    <span className={checked ? "font-medium" : ""}>{opt.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <Card>
