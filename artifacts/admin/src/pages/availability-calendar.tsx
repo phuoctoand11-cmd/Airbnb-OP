@@ -97,19 +97,24 @@ const STATUS_LABELS: Record<Booking["status"], string> = {
 };
 
 // Full Tailwind class strings — NO dynamic concatenation (purge-safe)
+// Booking status: pending=#F59E0B confirmed=#2563EB completed=#059669 cancelled=#DC2626
 const STATUS_BLOCK_CLS: Record<Booking["status"], string> = {
   confirmed: "bg-blue-600 border-blue-700 text-white",
   pending:   "bg-amber-500 border-amber-600 text-white",
   completed: "bg-emerald-600 border-emerald-700 text-white",
-  cancelled: "bg-slate-300 border-slate-400 text-slate-600",
+  cancelled: "bg-red-600 border-red-700 text-white",
 };
 
 const STATUS_BADGE_CLS: Record<Booking["status"], string> = {
   confirmed: "bg-blue-100 text-blue-700 border-blue-200",
   pending:   "bg-amber-100 text-amber-700 border-amber-200",
   completed: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  cancelled: "bg-slate-100 text-slate-600 border-slate-200",
+  cancelled: "bg-red-100 text-red-700 border-red-200",
 };
+
+// Block type color classes: maintenance=orange blocked=dark-gray
+const BLOCK_BG_STYLE = "rgba(234,88,12,0.08)"; // orange-600 tint for maintenance
+const BLOCK_BORDER_CLS = "border-orange-400/70 text-orange-700";
 
 const ALL_SOURCES = ["Airbnb", "Vrbo", "Booking.com", "Direct", "Other"];
 
@@ -631,13 +636,16 @@ function TimelineView({
   }, [listings, bookings, blocks, dates, periodStart, periodDays]);
 
   const CELL_BG: Record<string, string> = {
-    available: "bg-background",
-    booked: "bg-blue-50/40 dark:bg-blue-950/10",
-    checkin: "bg-emerald-50/60 dark:bg-emerald-950/15",
-    checkout: "bg-orange-50/60 dark:bg-orange-950/15",
-    turnaround: "bg-yellow-50/60 dark:bg-yellow-950/15",
-    blocked: "bg-slate-100 dark:bg-slate-800/40",
+    available:  "bg-background",
+    booked:     "bg-blue-50/50",
+    checkin:    "bg-emerald-50/70",
+    checkout:   "bg-blue-50/30",
+    turnaround: "bg-amber-50/60",
+    blocked:    "bg-orange-50/60",
   };
+
+  // Weekend column tint (Saturday=6, Sunday=0)
+  const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
   return (
     <div className="rounded-lg border overflow-hidden shadow-sm">
@@ -703,36 +711,45 @@ function TimelineView({
 
             {/* Date header */}
             <div
-              className="sticky top-0 z-10 flex border-b bg-muted/60 backdrop-blur-sm"
+              className="sticky top-0 z-10 flex border-b bg-card/90 backdrop-blur-sm"
               style={{ height: HEADER_H }}
             >
               {dates.map((date, i) => {
-                const isMonth = monthBoundaries.has(i);
+                const isMonth   = monthBoundaries.has(i);
+                const todayCell = isToday(date);
+                const weekend   = isWeekend(date);
                 return (
                   <div
                     key={i}
                     className={cn(
                       "relative flex-none flex flex-col items-center justify-center border-r text-xs",
-                      isMonth && "border-l-2 border-l-primary/30",
+                      isMonth  && "border-l-2 border-l-foreground/20",
+                      todayCell && "bg-blue-50",
+                      weekend && !todayCell && "bg-muted/40",
                     )}
                     style={{ width: CELL_W }}
                   >
                     {isMonth && (
-                      <span className="absolute -top-px left-1 text-[9px] font-bold uppercase text-primary/60 leading-none">
+                      <span className="absolute -top-px left-1 text-[9px] font-bold uppercase text-foreground/40 leading-none">
                         {format(date, "MMM")}
                       </span>
                     )}
                     <span
                       className={cn(
                         "font-semibold leading-none",
-                        isToday(date)
+                        todayCell
                           ? "flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white text-[11px]"
+                          : weekend
+                          ? "text-muted-foreground"
                           : "text-foreground",
                       )}
                     >
                       {format(date, "d")}
                     </span>
-                    <span className="mt-0.5 text-[10px] text-muted-foreground leading-none">
+                    <span className={cn(
+                      "mt-0.5 text-[10px] leading-none",
+                      weekend ? "text-muted-foreground font-medium" : "text-muted-foreground",
+                    )}>
                       {format(date, "EEE")}
                     </span>
                   </div>
@@ -748,35 +765,54 @@ function TimelineView({
                 style={{ height: ROW_H }}
               >
                 {/* Background cells */}
-                {dateStates.map((state, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "flex-none border-r last:border-r-0",
-                      monthBoundaries.has(i) && "border-l-2 border-l-primary/15",
-                      CELL_BG[state] ?? "bg-background",
-                    )}
-                    style={{ width: CELL_W, height: ROW_H }}
-                  />
-                ))}
+                {dateStates.map((state, i) => {
+                  const d = dates[i];
+                  const wknd = d ? isWeekend(d) : false;
+                  const isCheckin  = state === "checkin"  || state === "turnaround";
+                  const isCheckout = state === "checkout" || state === "turnaround";
+                  return (
+                    <div
+                      key={i}
+                      className={cn(
+                        "relative flex-none border-r last:border-r-0",
+                        monthBoundaries.has(i) && "border-l-2 border-l-foreground/10",
+                        CELL_BG[state] ?? "bg-background",
+                        wknd && state === "available" && "bg-muted/30",
+                      )}
+                      style={{ width: CELL_W, height: ROW_H }}
+                    >
+                      {/* Check-in left accent */}
+                      {isCheckin && (
+                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-500" />
+                      )}
+                      {/* Check-out right accent */}
+                      {isCheckout && (
+                        <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-orange-400" />
+                      )}
+                    </div>
+                  );
+                })}
 
                 {/* Maintenance block overlays */}
                 {blockSegs.map((seg, idx) => (
                   <div
                     key={`bl-${idx}`}
                     title={seg.block.reason ?? "Bảo trì / Khóa phòng"}
-                    className="absolute flex items-center gap-1.5 overflow-hidden rounded border border-slate-400/60 text-slate-500 text-[11px] px-2 select-none cursor-default"
+                    className={cn(
+                      "absolute flex items-center gap-1.5 overflow-hidden rounded-md border text-[11px] font-medium px-2 select-none cursor-default shadow-sm",
+                      BLOCK_BORDER_CLS,
+                    )}
                     style={{
                       left: seg.left + 1,
                       top: 7,
                       width: seg.width - 2,
                       height: ROW_H - 14,
                       backgroundImage:
-                        "repeating-linear-gradient(-45deg,transparent,transparent 5px,rgba(0,0,0,0.04) 5px,rgba(0,0,0,0.04) 10px)",
-                      backgroundColor: "rgb(241 245 249 / 0.9)",
+                        "repeating-linear-gradient(-45deg,transparent,transparent 5px,rgba(234,88,12,0.06) 5px,rgba(234,88,12,0.06) 10px)",
+                      backgroundColor: BLOCK_BG_STYLE,
                     }}
                   >
-                    <Wrench className="h-3 w-3 shrink-0 opacity-70" />
+                    <Wrench className="h-3 w-3 shrink-0" />
                     <span className="truncate">{seg.block.reason ?? "Bảo trì"}</span>
                   </div>
                 ))}
@@ -791,8 +827,9 @@ function TimelineView({
                       key={`bk-${idx}`}
                       onClick={() => onBookingClick(seg.booking)}
                       className={cn(
-                        "absolute flex items-center gap-1.5 border text-[11px] font-medium px-2 overflow-hidden transition-all duration-150",
-                        "hover:brightness-110 hover:shadow-lg active:scale-[0.99] select-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "absolute flex items-center gap-1.5 border text-[11px] font-semibold px-2 overflow-hidden",
+                        "transition-all duration-150 hover:brightness-110 hover:shadow-md hover:-translate-y-px",
+                        "active:scale-[0.98] select-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         seg.clippedLeft ? "" : "rounded-l-md",
                         seg.clippedRight ? "" : "rounded-r-md",
                         STATUS_BLOCK_CLS[seg.booking.status],
@@ -802,19 +839,16 @@ function TimelineView({
                         top: 7,
                         width: seg.width,
                         height: ROW_H - 14,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
                       }}
                       title={`${seg.booking.guest_name} • ${nights} đêm • ${STATUS_LABELS[seg.booking.status]}`}
                     >
                       {showSource && seg.booking.source && (
-                        <span
-                          className={cn(
-                            "h-1.5 w-1.5 rounded-full shrink-0 bg-white/70",
-                          )}
-                        />
+                        <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-white/60" />
                       )}
                       <span className="truncate">{seg.booking.guest_name}</span>
                       {showNights && (
-                        <span className="shrink-0 opacity-75 text-[10px]">
+                        <span className="shrink-0 opacity-70 text-[10px] font-medium ml-auto pl-1">
                           {nights}đ
                         </span>
                       )}
@@ -825,8 +859,12 @@ function TimelineView({
                 {/* Today marker line */}
                 {showToday && (
                   <div
-                    className="absolute top-0 bottom-0 w-px bg-blue-500/40 pointer-events-none z-10"
-                    style={{ left: todayOffset * CELL_W + CELL_W / 2 }}
+                    className="absolute top-0 bottom-0 pointer-events-none z-10"
+                    style={{
+                      left: todayOffset * CELL_W + CELL_W / 2 - 1,
+                      width: 2,
+                      background: "linear-gradient(to bottom, #2563EB, #2563EB99)",
+                    }}
                   />
                 )}
               </div>
@@ -865,15 +903,22 @@ function MonthView({
   }
 
   const DAY_NAMES = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+  // T7 (index 5) and CN (index 6) are weekends
+  const isWeekendCol = (colIdx: number) => colIdx === 5 || colIdx === 6;
 
   return (
-    <div className="rounded-lg border overflow-hidden shadow-sm">
+    <div className="rounded-xl border overflow-hidden shadow-sm">
       {/* Day headers */}
-      <div className="grid grid-cols-7 border-b bg-muted/50">
-        {DAY_NAMES.map((d) => (
+      <div className="grid grid-cols-7 border-b bg-card/80">
+        {DAY_NAMES.map((d, idx) => (
           <div
             key={d}
-            className="py-2 text-center text-xs font-semibold text-muted-foreground"
+            className={cn(
+              "py-2.5 text-center text-xs font-semibold",
+              isWeekendCol(idx)
+                ? "text-amber-600/80 bg-amber-50/60"
+                : "text-muted-foreground",
+            )}
           >
             {d}
           </div>
@@ -883,10 +928,11 @@ function MonthView({
       {/* Calendar weeks */}
       {weeks.map((week, wi) => (
         <div key={wi} className="grid grid-cols-7">
-          {week.map((day) => {
+          {week.map((day, colIdx) => {
             const ds = format(day, "yyyy-MM-dd");
-            const inMonth = isSameMonth(day, viewDate);
-            const today   = isToday(day);
+            const inMonth  = isSameMonth(day, viewDate);
+            const today    = isToday(day);
+            const wkndCol  = isWeekendCol(colIdx);
 
             // All bookings touching this day
             const dayBookings = bookings
@@ -912,27 +958,30 @@ function MonthView({
                 key={ds}
                 className={cn(
                   "min-h-[100px] border-b border-r p-1.5 last:border-r-0",
-                  !inMonth && "bg-muted/25",
-                  today && "bg-blue-50/60 dark:bg-blue-950/10",
-                  blocked && "bg-slate-50 dark:bg-slate-900/20",
+                  !inMonth && "bg-muted/20",
+                  inMonth && wkndCol && !today && "bg-amber-50/30",
+                  today && "bg-blue-50",
+                  blocked && !today && "bg-orange-50/40",
                 )}
               >
                 {/* Day number */}
                 <div className="mb-1 flex items-center justify-between">
                   <span
                     className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-sm",
+                      "flex h-6 w-6 items-center justify-center rounded-full text-sm font-medium",
                       today
                         ? "bg-blue-600 text-white font-bold"
                         : !inMonth
-                        ? "text-muted-foreground/40 text-xs"
-                        : "font-medium",
+                        ? "text-muted-foreground/30 text-xs"
+                        : wkndCol
+                        ? "text-amber-700/70"
+                        : "text-foreground",
                     )}
                   >
                     {format(day, "d")}
                   </span>
                   {blocked && (
-                    <Wrench className="h-3 w-3 text-slate-400" />
+                    <Wrench className="h-3 w-3 text-orange-400" />
                   )}
                 </div>
 
@@ -946,7 +995,8 @@ function MonthView({
                         key={b.id}
                         onClick={() => onBookingClick(b)}
                         className={cn(
-                          "flex w-full items-center gap-1 overflow-hidden px-1.5 py-px text-[11px] font-medium text-white transition-all hover:brightness-110 focus:outline-none",
+                          "flex w-full items-center gap-1 overflow-hidden px-1.5 py-0.5 text-[11px] font-semibold text-white",
+                          "transition-all hover:brightness-110 hover:shadow-sm focus:outline-none",
                           isStart ? "rounded-l-sm" : "",
                           isEnd ? "rounded-r-sm" : "",
                           STATUS_BLOCK_CLS[b.status].split(" ")[0],
@@ -961,7 +1011,7 @@ function MonthView({
                     );
                   })}
                   {dayBookings.length === 0 && blocked && (
-                    <p className="text-[10px] text-slate-400 px-1">Bảo trì</p>
+                    <p className="text-[10px] text-orange-500 px-1 font-medium">Bảo trì</p>
                   )}
                 </div>
               </div>
@@ -1016,47 +1066,55 @@ function OccupancyStrip({
   if (data.length === 0) return null;
 
   return (
-    <div className="mb-4 flex flex-wrap gap-3">
-      {data.map(({ listing, pct, bookedDays }) => (
-        <div
-          key={listing.id}
-          className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-sm"
-        >
-          <div>
-            <p className="text-xs text-muted-foreground truncate max-w-28">
-              {listing.title}
-            </p>
-            <p className="text-sm font-bold tabular-nums">{pct}%</p>
+    <div className="mb-4 flex flex-wrap gap-2.5">
+      {data.map(({ listing, pct, bookedDays }) => {
+        // Color ring based on occupancy level
+        const ringColor =
+          pct >= 80 ? "#059669"   // emerald — high
+          : pct >= 50 ? "#2563EB" // blue — medium
+          : pct >= 25 ? "#F59E0B" // amber — low-medium
+          : "#9CA3AF";            // gray — low
+        const circumference = 87.96;
+        const dash = (pct / 100) * circumference;
+
+        return (
+          <div
+            key={listing.id}
+            className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-2.5 shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="min-w-0">
+              <p className="text-[11px] text-muted-foreground truncate max-w-28 leading-tight">
+                {listing.title}
+              </p>
+              <p className="text-base font-bold tabular-nums text-foreground leading-tight mt-0.5">
+                {pct}%
+              </p>
+              <p className="text-[10px] text-muted-foreground tabular-nums">
+                {bookedDays}đêm
+              </p>
+            </div>
+            <div className="w-11 h-11 relative shrink-0">
+              <svg viewBox="0 0 36 36" className="rotate-[-90deg] w-full h-full">
+                <circle
+                  cx="18" cy="18" r="14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3.5"
+                  className="text-border"
+                />
+                <circle
+                  cx="18" cy="18" r="14"
+                  fill="none"
+                  stroke={ringColor}
+                  strokeWidth="3.5"
+                  strokeDasharray={`${dash} ${circumference}`}
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
           </div>
-          <div className="w-12 h-12 relative">
-            <svg viewBox="0 0 36 36" className="rotate-[-90deg]">
-              <circle
-                cx="18"
-                cy="18"
-                r="14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="text-muted/30"
-              />
-              <circle
-                cx="18"
-                cy="18"
-                r="14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeDasharray={`${(pct / 100) * 87.96} 87.96`}
-                className="text-blue-500"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold">
-              {bookedDays}d
-            </span>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1355,29 +1413,52 @@ export default function AvailabilityCalendar() {
       )}
 
       {/* ── Legend ────────────────────────────────────────────────────────── */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border bg-card/60 px-4 py-2.5 text-xs text-muted-foreground">
+        {/* Booking statuses */}
         {[
-          { cls: "bg-white border border-border", label: "Trống" },
-          { cls: "bg-blue-600", label: "Đã xác nhận" },
-          { cls: "bg-amber-500", label: "Chờ xác nhận" },
-          { cls: "bg-emerald-600", label: "Hoàn thành" },
-          { cls: "bg-emerald-50 border border-emerald-200", label: "Check-in" },
-          { cls: "bg-orange-50 border border-orange-200", label: "Check-out" },
-        ].map(({ cls, label }) => (
-          <span key={label} className="flex items-center gap-1.5">
-            <span className={cn("h-3 w-3 shrink-0 rounded-sm", cls)} />
+          { color: "#2563EB", label: "Đã xác nhận" },
+          { color: "#F59E0B", label: "Chờ xác nhận" },
+          { color: "#059669", label: "Hoàn thành" },
+          { color: "#DC2626", label: "Đã hủy" },
+        ].map(({ color, label }) => (
+          <span key={label} className="flex items-center gap-1.5 font-medium">
+            <span
+              className="h-3 w-3 shrink-0 rounded-sm shadow-sm"
+              style={{ backgroundColor: color }}
+            />
             {label}
           </span>
         ))}
+
+        <span className="w-px h-4 bg-border mx-1" />
+
+        {/* Cell states */}
+        <span className="flex items-center gap-1.5">
+          <span className="relative h-3 w-3 shrink-0 rounded-sm border border-emerald-300 bg-emerald-50">
+            <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-500 rounded-l-sm" />
+          </span>
+          Check-in
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="relative h-3 w-3 shrink-0 rounded-sm border border-blue-200 bg-blue-50">
+            <span className="absolute right-0 top-0 bottom-0 w-0.5 bg-orange-400 rounded-r-sm" />
+          </span>
+          Check-out
+        </span>
         <span className="flex items-center gap-1.5">
           <span
-            className="h-3 w-3 shrink-0 rounded-sm border border-slate-400/60 bg-slate-100"
+            className="h-3 w-3 shrink-0 rounded-sm border border-orange-400/70"
             style={{
+              backgroundColor: BLOCK_BG_STYLE,
               backgroundImage:
-                "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(0,0,0,0.08) 2px,rgba(0,0,0,0.08) 4px)",
+                "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(234,88,12,0.12) 2px,rgba(234,88,12,0.12) 4px)",
             }}
           />
           Bảo trì
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 shrink-0 rounded-sm bg-amber-50 border border-amber-200" />
+          Cuối tuần
         </span>
       </div>
 
