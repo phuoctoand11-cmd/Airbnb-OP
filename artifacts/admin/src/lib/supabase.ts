@@ -235,6 +235,15 @@ export interface Expense {
   spent_at: string;
 }
 
+export interface ListingBlock {
+  id: string;
+  listing_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  created_at: string;
+}
+
 export const LISTINGS_BUCKET = "listing-images";
 
 // ── HR / Recruitment types ────────────────────────────────────────
