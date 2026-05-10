@@ -72,7 +72,7 @@ interface MoneyTableConfig {
   showVendor: boolean;
 }
 
-const REVENUE_CATEGORIES = ["booking", "deposit", "extra", "refund", "other"];
+const REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue", "extra", "other"];
 const EXPENSE_CATEGORIES = [
   "cleaning",
   "supplies",

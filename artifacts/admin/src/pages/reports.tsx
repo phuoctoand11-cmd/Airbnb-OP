@@ -81,6 +81,9 @@ const EXPENSE_CATEGORIES = [
   "other",
 ];
 
+// Categories stored in revenues table that are cashflow-only — must be excluded from P&L revenue
+const CASHFLOW_ONLY_CATEGORIES = ["deposit", "refund"];
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface ListingRow {
@@ -98,10 +101,13 @@ interface DrillData {
   revenues: Revenue[];
   expenses: Expense[];
   bookings: Booking[];
+  payments: Payment[];
   totalRevenue: number;
   totalExpenses: number;
   profit: number;
   catBreakdown: [string, number][];
+  totalCashIn: number;
+  totalRefunds: number;
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
@@ -166,7 +172,9 @@ export default function Reports() {
   const filteredRevenues = useMemo(() => {
     if (!dataQuery.data) return [];
     return dataQuery.data.revenues.filter(
-      (r) => listingFilter === "all" || r.listing_id === listingFilter
+      (r) =>
+        !CASHFLOW_ONLY_CATEGORIES.includes(r.category) &&
+        (listingFilter === "all" || r.listing_id === listingFilter)
     );
   }, [dataQuery.data, listingFilter]);
 
@@ -387,15 +395,27 @@ export default function Reports() {
     if (!drillListingId || !dataQuery.data) return null;
     const listing = dataQuery.data.listings.find((l) => l.id === drillListingId);
     if (!listing) return null;
-    const revs = dataQuery.data.revenues.filter((r) => r.listing_id === drillListingId);
+    // Revenues: exclude deposit / refund — those are cashflow only
+    const revs = dataQuery.data.revenues.filter(
+      (r) => r.listing_id === drillListingId && !CASHFLOW_ONLY_CATEGORIES.includes(r.category)
+    );
     const exps = dataQuery.data.expenses.filter((e) => e.listing_id === drillListingId);
     const bkgs = dataQuery.data.bookings.filter(
       (b) =>
         b.listing_id === drillListingId &&
         isWithinInterval(parseISO(b.check_in), { start: startDate, end: endDate })
     );
+    const pmts = (dataQuery.data.payments ?? []).filter(
+      (p) => p.listing_id === drillListingId
+    );
     const totalRevenue = revs.reduce((s, r) => s + Number(r.amount), 0);
     const totalExpenses = exps.reduce((s, e) => s + Number(e.amount), 0);
+    const totalCashIn = pmts
+      .filter((p) => p.status === "paid" && (p.payment_type === "deposit" || p.payment_type === "balance"))
+      .reduce((s, p) => s + Number(p.amount), 0);
+    const totalRefunds = pmts
+      .filter((p) => p.payment_type === "refund")
+      .reduce((s, p) => s + Number(p.amount), 0);
     const catMap = new Map<string, number>();
     for (const e of exps)
       catMap.set(e.category, (catMap.get(e.category) ?? 0) + Number(e.amount));
@@ -404,10 +424,13 @@ export default function Reports() {
       revenues: revs.sort((a, b) => b.received_at.localeCompare(a.received_at)),
       expenses: exps.sort((a, b) => b.spent_at.localeCompare(a.spent_at)),
       bookings: bkgs.sort((a, b) => b.check_in.localeCompare(a.check_in)),
+      payments: pmts.sort((a, b) => b.paid_at.localeCompare(a.paid_at)),
       totalRevenue,
       totalExpenses,
       profit: totalRevenue - totalExpenses,
       catBreakdown: Array.from(catMap.entries()).sort((a, b) => b[1] - a[1]),
+      totalCashIn,
+      totalRefunds,
     };
   }, [drillListingId, dataQuery.data, startDate, endDate]);
 
@@ -869,27 +892,35 @@ function DrilldownPanel({
   data: DrillData;
   fmt: (v: number | null | undefined) => string;
 }) {
+  const depositIn = data.payments
+    .filter((p) => p.payment_type === "deposit" && p.status === "paid")
+    .reduce((s, p) => s + Number(p.amount), 0);
+  const balanceIn = data.payments
+    .filter((p) => p.payment_type === "balance" && p.status === "paid")
+    .reduce((s, p) => s + Number(p.amount), 0);
+
   return (
     <div className="border-t bg-muted/20 px-6 py-5">
       <p className="mb-3 text-sm font-semibold text-muted-foreground">
         {data.listing.title} — Period Detail
       </p>
 
+      {/* ── Revenue / Expense / Profit summary ── */}
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-lg border bg-card p-3">
-          <div className="text-xs text-muted-foreground">Revenue</div>
+          <div className="text-xs text-muted-foreground">Doanh thu (Revenue)</div>
           <div className="text-xl font-bold text-primary">
             {fmt(data.totalRevenue)}
           </div>
         </div>
         <div className="rounded-lg border bg-card p-3">
-          <div className="text-xs text-muted-foreground">Expenses</div>
+          <div className="text-xs text-muted-foreground">Chi phí (Expenses)</div>
           <div className="text-xl font-bold text-destructive">
             {fmt(data.totalExpenses)}
           </div>
         </div>
         <div className="rounded-lg border bg-card p-3">
-          <div className="text-xs text-muted-foreground">Profit</div>
+          <div className="text-xs text-muted-foreground">Lợi nhuận (Profit)</div>
           <div
             className={`text-xl font-bold ${
               data.profit >= 0 ? "text-primary" : "text-destructive"
@@ -900,21 +931,94 @@ function DrilldownPanel({
         </div>
       </div>
 
+      {/* ── Cashflow section ── */}
+      <div className="mb-5">
+        <p className="mb-2 text-sm font-semibold">Dòng tiền (Cashflow)</p>
+        <div className="grid gap-2 sm:grid-cols-4">
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Cọc nhận được</div>
+            <div className="text-lg font-bold text-primary">{fmt(depositIn)}</div>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Thanh toán còn lại</div>
+            <div className="text-lg font-bold text-primary">{fmt(balanceIn)}</div>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Hoàn tiền</div>
+            <div className="text-lg font-bold text-destructive">
+              {fmt(data.totalRefunds)}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Net cashflow</div>
+            <div
+              className={`text-lg font-bold ${
+                data.totalCashIn - data.totalRefunds >= 0
+                  ? "text-primary"
+                  : "text-destructive"
+              }`}
+            >
+              {fmt(data.totalCashIn - data.totalRefunds)}
+            </div>
+          </div>
+        </div>
+        {data.payments.length > 0 && (
+          <div className="mt-2 overflow-hidden rounded border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Ngày</th>
+                  <th className="px-3 py-2 text-left font-medium">Loại</th>
+                  <th className="px-3 py-2 text-left font-medium">Trạng thái</th>
+                  <th className="px-3 py-2 text-right font-medium">Số tiền</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {data.payments.map((p) => {
+                  const isOut = p.payment_type === "refund";
+                  return (
+                    <tr key={p.id} className="hover:bg-muted/30">
+                      <td className="px-3 py-2">
+                        {format(new Date(p.paid_at), "dd/MM/yyyy")}
+                      </td>
+                      <td className="px-3 py-2 capitalize">
+                        {p.payment_type.replace(/_/g, " ")}
+                      </td>
+                      <td className="px-3 py-2 capitalize text-muted-foreground">
+                        {p.status}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right font-mono font-medium ${
+                          isOut ? "text-destructive" : "text-primary"
+                        }`}
+                      >
+                        {isOut ? "−" : "+"}{fmt(Number(p.amount))}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Revenue / Expense detail tables ── */}
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <div>
           <p className="mb-2 text-sm font-medium">
-            Revenues ({data.revenues.length})
+            Doanh thu ghi nhận ({data.revenues.length})
           </p>
           {data.revenues.length === 0 ? (
-            <p className="text-sm text-muted-foreground">None in this period.</p>
+            <p className="text-sm text-muted-foreground">Chưa có doanh thu được ghi nhận.</p>
           ) : (
             <div className="overflow-hidden rounded border">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium">Date</th>
-                    <th className="px-3 py-2 text-left font-medium">Category</th>
-                    <th className="px-3 py-2 text-right font-medium">Amount</th>
+                    <th className="px-3 py-2 text-left font-medium">Ngày</th>
+                    <th className="px-3 py-2 text-left font-medium">Danh mục</th>
+                    <th className="px-3 py-2 text-right font-medium">Số tiền</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -939,18 +1043,18 @@ function DrilldownPanel({
 
         <div>
           <p className="mb-2 text-sm font-medium">
-            Expenses ({data.expenses.length})
+            Chi phí ({data.expenses.length})
           </p>
           {data.expenses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">None in this period.</p>
+            <p className="text-sm text-muted-foreground">Chưa có chi phí.</p>
           ) : (
             <div className="overflow-hidden rounded border">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium">Date</th>
-                    <th className="px-3 py-2 text-left font-medium">Category</th>
-                    <th className="px-3 py-2 text-right font-medium">Amount</th>
+                    <th className="px-3 py-2 text-left font-medium">Ngày</th>
+                    <th className="px-3 py-2 text-left font-medium">Danh mục</th>
+                    <th className="px-3 py-2 text-right font-medium">Số tiền</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -976,7 +1080,7 @@ function DrilldownPanel({
 
       {data.catBreakdown.length > 0 && (
         <div>
-          <p className="mb-2 text-sm font-medium">Expense Category Breakdown</p>
+          <p className="mb-2 text-sm font-medium">Phân tích chi phí</p>
           <div className="flex flex-wrap gap-2">
             {data.catBreakdown.map(([cat, amt]) => (
               <div
