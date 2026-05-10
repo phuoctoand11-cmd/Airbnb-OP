@@ -388,17 +388,11 @@ export interface ChatMessageRead {
 
 export interface ActivityLog {
   id: string;
-  actor_profile_id: string | null;
-  actor_employee_id: string | null;
-  actor_name: string | null;
-  actor_role: string | null;
+  user_id: string | null;
   action: string;
-  module: string;
-  target_table: string | null;
-  target_id: string | null;
-  target_label: string | null;
-  old_data: Record<string, unknown> | null;
-  new_data: Record<string, unknown> | null;
+  entity_type: string | null;
+  entity_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
+  updated_at: string | null;
 }

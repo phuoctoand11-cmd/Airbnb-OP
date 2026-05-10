@@ -389,16 +389,18 @@ export default function Tasks() {
     onSuccess: ({ id, v }) => {
       log({
         action: "task_created",
-        module: "tasks",
-        target_table: "tasks",
-        target_id: id ?? null,
-        target_label: v.title,
-        new_data: {
-          title: v.title,
-          task_type: v.task_type ?? null,
-          status: v.status,
-          priority: v.priority,
-          due_date: v.due_date || null,
+        entityType: "tasks",
+        entityId: id ?? null,
+        metadata: {
+          module: "tasks",
+          label: v.title,
+          new_data: {
+            title: v.title,
+            task_type: v.task_type ?? null,
+            status: v.status,
+            priority: v.priority,
+            due_date: v.due_date || null,
+          },
         },
       });
       toast({ title: t.tasks.created });
@@ -419,11 +421,13 @@ export default function Tasks() {
     onSuccess: (_, { id, status, title }) => {
       log({
         action: "task_status_updated",
-        module: "tasks",
-        target_table: "tasks",
-        target_id: id,
-        target_label: title ?? id,
-        new_data: { status },
+        entityType: "tasks",
+        entityId: id,
+        metadata: {
+          module: "tasks",
+          label: title ?? id,
+          new_data: { status },
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
@@ -439,13 +443,15 @@ export default function Tasks() {
     onSuccess: (_, { id, checklist, title }) => {
       log({
         action: "task_checklist_updated",
-        module: "tasks",
-        target_table: "tasks",
-        target_id: id,
-        target_label: title ?? id,
-        new_data: {
-          total: checklist.length,
-          checked: checklist.filter((c) => c.checked).length,
+        entityType: "tasks",
+        entityId: id,
+        metadata: {
+          module: "tasks",
+          label: title ?? id,
+          new_data: {
+            total: checklist.length,
+            checked: checklist.filter((c) => c.checked).length,
+          },
         },
       });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
@@ -453,11 +459,23 @@ export default function Tasks() {
   });
 
   const updatePhotosMutation = useMutation({
-    mutationFn: async ({ id, photos }: { id: string; photos: PhotoEntry[] }) => {
+    mutationFn: async ({ id, photos, title }: { id: string; photos: PhotoEntry[]; title?: string }) => {
       const { error } = await supabase.from("tasks").update({ photos }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+    onSuccess: (_, { id, photos, title }) => {
+      log({
+        action: "task_photo_uploaded",
+        entityType: "tasks",
+        entityId: id,
+        metadata: {
+          module: "tasks",
+          label: title ?? id,
+          new_data: { photo_count: photos.length },
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
     onError: (err: Error) =>
       toast({ variant: "destructive", title: "Không thể lưu ảnh", description: err.message }),
   });
@@ -599,7 +617,7 @@ export default function Tasks() {
                           }
                         }}
                         onPhotosUpdate={(photos) =>
-                          updatePhotosMutation.mutate({ id: tk.id, photos })
+                          updatePhotosMutation.mutate({ id: tk.id, photos, title: tk.title })
                         }
                         onViewDetail={canManageAll ? () => setDetailTask(tk) : undefined}
                       />

@@ -298,11 +298,13 @@ function EmployeesTab({
     onSuccess: (_, { id, status, name }) => {
       log({
         action: "employee_status_changed",
-        module: "hr",
-        target_table: "employees",
-        target_id: id,
-        target_label: name ?? id,
-        new_data: { status },
+        entityType: "employees",
+        entityId: id,
+        metadata: {
+          module: "hr",
+          label: name ?? id,
+          new_data: { status },
+        },
       });
       toast({ title: t.hr.statusChanged });
       setStatusChangeTarget(null);
@@ -632,17 +634,19 @@ function EmployeeFormDialog({
     onSuccess: (_, v) => {
       log({
         action: isEdit ? "employee_updated" : "employee_created",
-        module: "hr",
-        target_table: "employees",
-        target_id: isEdit ? employee?.id : undefined,
-        target_label: v.full_name,
-        new_data: {
-          full_name: v.full_name,
-          email: v.email,
-          status: v.status,
-          employment_type: v.employment_type,
-          department_id: v.department_id,
-          position_id: v.position_id,
+        entityType: "employees",
+        entityId: isEdit ? employee?.id : null,
+        metadata: {
+          module: "hr",
+          label: v.full_name,
+          new_data: {
+            full_name: v.full_name,
+            email: v.email,
+            status: v.status,
+            employment_type: v.employment_type,
+            department_id: v.department_id,
+            position_id: v.position_id,
+          },
         },
       });
       toast({ title: isEdit ? t.hr.employeeUpdated : t.hr.employeeCreated });

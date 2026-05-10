@@ -254,15 +254,17 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
     onSuccess: (_, rows) => {
       log({
         action: "calendar_status_updated",
-        module: "calendar",
-        target_table: "listing_calendar",
-        target_id: listing.id,
-        target_label: `${listing.title} — ${rows.length} ngày`,
-        new_data: {
-          listing_id: listing.id,
-          dates: rows.map((r) => r.date),
-          status: rows[0]?.status ?? null,
-          count: rows.length,
+        entityType: "listing_calendar",
+        entityId: listing.id,
+        metadata: {
+          module: "calendar",
+          label: `${listing.title} — ${rows.length} ngày`,
+          new_data: {
+            listing_id: listing.id,
+            dates: rows.map((r) => r.date),
+            status: rows[0]?.status ?? null,
+            count: rows.length,
+          },
         },
       });
       toast({ title: `Đã cập nhật ${rows.length} ngày.` });
