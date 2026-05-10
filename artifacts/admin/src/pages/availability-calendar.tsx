@@ -1238,7 +1238,7 @@ CREATE POLICY "listing_blocks_all" ON listing_blocks
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AvailabilityCalendar() {
-  const { role } = useAuth();
+  const { role, profile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const log = useLogActivity();
@@ -1343,9 +1343,19 @@ export default function AvailabilityCalendar() {
         .update({ status })
         .eq("id", id);
       if (error) throw error;
-      // Revenue sync: upsert booking_balance when booking is marked completed
-      let balanceError: Error | null = null;
-      if (status === "completed" && booking) {
+
+      // ── Revenue lifecycle sync ────────────────────────────────────────────
+      let revenueError: Error | null = null;
+
+      if (status === "cancelled") {
+        // Delete ALL revenue rows linked to this booking (deposit + balance)
+        const { error: delErr } = await supabase
+          .from("revenues")
+          .delete()
+          .eq("booking_id", id);
+        if (delErr) revenueError = delErr;
+      } else if (status === "completed" && booking) {
+        // Upsert booking_balance = total - deposit
         const balanceAmount = (booking.total_amount ?? 0) - (booking.deposit_amount ?? 0);
         if (balanceAmount > 0) {
           await supabase
@@ -1361,17 +1371,19 @@ export default function AvailabilityCalendar() {
             description: `Balance - ${booking.guest_name}`,
             received_at: booking.check_out || format(new Date(), "yyyy-MM-dd"),
           });
-          if (balErr) balanceError = balErr;
+          if (balErr) revenueError = balErr;
         }
       }
-      return { balanceError };
+      // pending / confirmed transitions: no revenue change needed
+
+      return { revenueError };
     },
-    onSuccess: ({ balanceError }, { id, status, booking }) => {
-      if (balanceError) {
+    onSuccess: ({ revenueError }, { id, status, booking }) => {
+      if (revenueError) {
         toast({
           variant: "destructive",
-          title: "Cảnh báo: Không thể tạo doanh thu",
-          description: balanceError.message,
+          title: "Cảnh báo: Lỗi đồng bộ doanh thu",
+          description: revenueError.message,
         });
       }
       log({
@@ -1387,6 +1399,7 @@ export default function AvailabilityCalendar() {
           old_status: booking?.status ?? null,
           new_status: status,
           total_amount: booking?.total_amount ?? null,
+          changed_by: profile?.email ?? null,
           changed_at: new Date().toISOString(),
         },
       });
