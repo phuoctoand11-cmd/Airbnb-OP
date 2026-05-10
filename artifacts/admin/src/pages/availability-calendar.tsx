@@ -64,6 +64,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, useAuth } from "@/lib/auth-context";
+import { useLogActivity } from "@/lib/activity-log";
 import {
   supabase,
   type Booking,
@@ -1240,6 +1241,7 @@ export default function AvailabilityCalendar() {
   const { role } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const log = useLogActivity();
   const canManage = hasPermission(role, "manageCalendar");
 
   // ── View & navigation ────────────────────────────────────────────────────
@@ -1327,17 +1329,73 @@ export default function AvailabilityCalendar() {
 
   // ── Mutations ────────────────────────────────────────────────────────────
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: Booking["status"] }) => {
+    mutationFn: async ({
+      id,
+      status,
+      booking,
+    }: {
+      id: string;
+      status: Booking["status"];
+      booking?: Booking;
+    }) => {
       const { error } = await supabase
         .from("bookings")
         .update({ status })
         .eq("id", id);
       if (error) throw error;
+      // Revenue sync: upsert booking_balance when booking is marked completed
+      let balanceError: Error | null = null;
+      if (status === "completed" && booking) {
+        const balanceAmount = (booking.total_amount ?? 0) - (booking.deposit_amount ?? 0);
+        if (balanceAmount > 0) {
+          await supabase
+            .from("revenues")
+            .delete()
+            .eq("booking_id", id)
+            .eq("category", "booking_balance");
+          const { error: balErr } = await supabase.from("revenues").insert({
+            listing_id: booking.listing_id,
+            booking_id: id,
+            amount: balanceAmount,
+            category: "booking_balance",
+            description: `Balance - ${booking.guest_name}`,
+            received_at: booking.check_out || format(new Date(), "yyyy-MM-dd"),
+          });
+          if (balErr) balanceError = balErr;
+        }
+      }
+      return { balanceError };
     },
-    onSuccess: () => {
+    onSuccess: ({ balanceError }, { id, status, booking }) => {
+      if (balanceError) {
+        toast({
+          variant: "destructive",
+          title: "Cảnh báo: Không thể tạo doanh thu",
+          description: balanceError.message,
+        });
+      }
+      log({
+        action: "booking_status_updated",
+        entityType: "bookings",
+        entityId: id,
+        metadata: {
+          module: "availability_calendar",
+          label: booking?.guest_name ?? id,
+          new_data: {
+            status,
+            listing_id: booking?.listing_id,
+            check_in: booking?.check_in,
+            check_out: booking?.check_out,
+            total_amount: booking?.total_amount,
+          },
+        },
+      });
       toast({ title: "Cập nhật thành công" });
       setSelectedBooking(null);
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["revenues"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_logs"] });
     },
     onError: (err: Error) =>
       toast({ variant: "destructive", title: "Lỗi cập nhật", description: err.message }),
@@ -1696,7 +1754,9 @@ export default function AvailabilityCalendar() {
         listing={selectedListing}
         open={Boolean(selectedBooking)}
         onClose={() => setSelectedBooking(null)}
-        onStatusChange={(id, status) => updateStatusMutation.mutate({ id, status })}
+        onStatusChange={(id, status) =>
+          updateStatusMutation.mutate({ id, status, booking: selectedBooking ?? undefined })
+        }
         isUpdating={updateStatusMutation.isPending}
         canManage={canManage}
       />

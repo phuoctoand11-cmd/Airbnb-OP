@@ -371,8 +371,6 @@ export default function Bookings() {
       if ((values.deposit_amount ?? 0) > 0) {
         const depositDate =
           values.deposit_paid_at || format(new Date(), "yyyy-MM-dd");
-        // Delete any pre-existing deposit row for this booking (idempotent on create,
-        // guards against accidental duplicates on retry)
         await supabase
           .from("revenues")
           .delete()
@@ -389,9 +387,33 @@ export default function Bookings() {
         if (depErr) depositError = depErr;
       }
 
-      return { newBookingId: newBooking.id, values, tasksError, depositError };
+      // 5. If booking is created as completed, upsert booking_balance revenue
+      let balanceError: Error | null = null;
+      if (values.status === "completed" && values.total_amount > 0) {
+        const balanceAmount = values.total_amount - (values.deposit_amount ?? 0);
+        if (balanceAmount > 0) {
+          await supabase
+            .from("revenues")
+            .delete()
+            .eq("booking_id", newBooking.id)
+            .eq("category", "booking_balance");
+          const { error: balErr } = await supabase.from("revenues").insert({
+            listing_id: values.listing_id,
+            booking_id: newBooking.id,
+            amount: balanceAmount,
+            category: "booking_balance",
+            description: `Balance - ${values.guest_name}`,
+            received_at: values.check_out || format(new Date(), "yyyy-MM-dd"),
+          });
+          if (balErr) balanceError = balErr;
+        }
+      }
+
+      return { newBookingId: newBooking.id, values, tasksError, depositError, balanceError };
     },
-    onSuccess: ({ newBookingId, values, tasksError, depositError }) => {
+    onSuccess: ({ newBookingId, values, tasksError, depositError, balanceError }) => {
+      const listingTitle =
+        listingsQuery.data?.find((l) => l.id === values.listing_id)?.title ?? values.listing_id;
       log({
         action: "booking_created",
         entityType: "bookings",
@@ -401,10 +423,12 @@ export default function Bookings() {
           label: values.guest_name,
           new_data: {
             guest_name: values.guest_name,
+            listing_id: values.listing_id,
+            listing_title: listingTitle,
             check_in: values.check_in,
             check_out: values.check_out,
-            status: values.status,
             total_amount: values.total_amount,
+            status: values.status,
           },
         },
       });
@@ -420,6 +444,12 @@ export default function Bookings() {
           title: "Lưu tiền cọc thất bại",
           description: depositError.message,
         });
+      } else if (balanceError) {
+        toast({
+          variant: "destructive",
+          title: "Cảnh báo: Không thể tạo doanh thu",
+          description: balanceError.message,
+        });
       } else {
         toast({ title: t.bookings.created });
       }
@@ -428,6 +458,9 @@ export default function Bookings() {
       setOverlapWarning(null);
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["revenues"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_logs"] });
     },
     onError: (err: Error) =>
       toast({
@@ -438,11 +471,50 @@ export default function Bookings() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status, guestName }: { id: string; status: Booking["status"]; guestName?: string }) => {
+    mutationFn: async ({
+      id,
+      status,
+      guestName,
+      booking,
+    }: {
+      id: string;
+      status: Booking["status"];
+      guestName?: string;
+      booking?: Booking;
+    }) => {
       const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
       if (error) throw error;
+      // Revenue sync: upsert booking_balance when booking is marked completed
+      let balanceError: Error | null = null;
+      if (status === "completed" && booking) {
+        const balanceAmount = (booking.total_amount ?? 0) - (booking.deposit_amount ?? 0);
+        if (balanceAmount > 0) {
+          await supabase
+            .from("revenues")
+            .delete()
+            .eq("booking_id", id)
+            .eq("category", "booking_balance");
+          const { error: balErr } = await supabase.from("revenues").insert({
+            listing_id: booking.listing_id,
+            booking_id: id,
+            amount: balanceAmount,
+            category: "booking_balance",
+            description: `Balance - ${guestName ?? booking.guest_name}`,
+            received_at: booking.check_out || format(new Date(), "yyyy-MM-dd"),
+          });
+          if (balErr) balanceError = balErr;
+        }
+      }
+      return { balanceError };
     },
-    onSuccess: (_, { id, status, guestName }) => {
+    onSuccess: ({ balanceError }, { id, status, guestName, booking }) => {
+      if (balanceError) {
+        toast({
+          variant: "destructive",
+          title: "Cảnh báo: Không thể tạo doanh thu",
+          description: balanceError.message,
+        });
+      }
       log({
         action: "booking_status_updated",
         entityType: "bookings",
@@ -450,11 +522,22 @@ export default function Bookings() {
         metadata: {
           module: "bookings",
           label: guestName ?? id,
-          new_data: { status },
+          new_data: {
+            status,
+            listing_id: booking?.listing_id,
+            listing_title:
+              listingsQuery.data?.find((l) => l.id === booking?.listing_id)?.title ?? null,
+            check_in: booking?.check_in,
+            check_out: booking?.check_out,
+            total_amount: booking?.total_amount,
+          },
         },
       });
       toast({ title: t.bookings.updated });
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["revenues"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_logs"] });
     },
     onError: (err: Error) =>
       toast({
@@ -614,6 +697,7 @@ export default function Bookings() {
                                 id: b.id,
                                 status: v as Booking["status"],
                                 guestName: b.guest_name,
+                                booking: b,
                               })
                             }
                           >
