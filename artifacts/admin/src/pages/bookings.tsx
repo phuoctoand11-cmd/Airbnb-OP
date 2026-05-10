@@ -366,9 +366,13 @@ export default function Bookings() {
       // 3. Insert tasks — non-blocking: a task failure doesn't roll back the booking
       const { error: tasksError } = await supabase.from("tasks").insert(autoTaskRows);
 
-      // 4. Upsert deposit revenue row when deposit_amount > 0
+      // 4. Upsert deposit revenue: only when status is confirmed or completed
+      //    (pending = no revenue row at all)
       let depositError: Error | null = null;
-      if ((values.deposit_amount ?? 0) > 0) {
+      const shouldUpsertDeposit =
+        (values.status === "confirmed" || values.status === "completed") &&
+        (values.deposit_amount ?? 0) > 0;
+      if (shouldUpsertDeposit) {
         const depositDate =
           values.deposit_paid_at || format(new Date(), "yyyy-MM-dd");
         await supabase
@@ -488,15 +492,30 @@ export default function Bookings() {
       // ── Revenue lifecycle sync ────────────────────────────────────────────
       let revenueError: Error | null = null;
 
-      if (status === "cancelled") {
-        // Delete ALL revenue rows linked to this booking (deposit + balance)
-        const { error: delErr } = await supabase
-          .from("revenues")
-          .delete()
-          .eq("booking_id", id);
-        if (delErr) revenueError = delErr;
+      if (status === "pending") {
+        // pending → no revenue rows
+
+      } else if (status === "confirmed") {
+        // confirmed → upsert deposit only (never the full total)
+        if (booking && (booking.deposit_amount ?? 0) > 0) {
+          await supabase
+            .from("revenues")
+            .delete()
+            .eq("booking_id", id)
+            .eq("category", "deposit");
+          const { error: depErr } = await supabase.from("revenues").insert({
+            listing_id: booking.listing_id,
+            booking_id: id,
+            amount: booking.deposit_amount,
+            category: "deposit",
+            description: `Deposit - ${booking.guest_name}`,
+            received_at: booking.deposit_paid_at || format(new Date(), "yyyy-MM-dd"),
+          });
+          if (depErr) revenueError = depErr;
+        }
+
       } else if (status === "completed" && booking) {
-        // Upsert booking_balance = total - deposit
+        // completed → keep deposit row, upsert booking_balance = total − deposit
         const balanceAmount = (booking.total_amount ?? 0) - (booking.deposit_amount ?? 0);
         if (balanceAmount > 0) {
           await supabase
@@ -514,8 +533,15 @@ export default function Bookings() {
           });
           if (balErr) revenueError = balErr;
         }
+
+      } else if (status === "cancelled") {
+        // cancelled → delete ALL revenues for this booking
+        const { error: delErr } = await supabase
+          .from("revenues")
+          .delete()
+          .eq("booking_id", id);
+        if (delErr) revenueError = delErr;
       }
-      // pending / confirmed transitions: no revenue change needed
 
       return { revenueError };
     },
