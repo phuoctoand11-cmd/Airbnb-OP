@@ -3,7 +3,7 @@ import type { AppRole } from "./supabase";
 export const ROLE_PERMISSIONS = {
   manageListings: ["admin", "manager"] as AppRole[],
   manageAmenities: ["admin", "manager"] as AppRole[],
-  manageCalendar: ["admin", "manager"] as AppRole[],
+  manageCalendar: ["admin", "manager", "sales"] as AppRole[],
   managePricing: ["admin", "manager"] as AppRole[],
   manageBookings: ["admin", "manager", "sales", "accountant"] as AppRole[],
   manageTasks: ["admin", "manager", "maintenance", "cleaner", "cleaningstaff", "staff"] as AppRole[],

@@ -161,7 +161,7 @@ export default function Bookings() {
   const { fmt } = useCurrency();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageBookings");
-  const canEditDeposit = role === "admin" || role === "manager";
+  const canEditDeposit = role === "admin" || role === "manager" || role === "sales";
 
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
