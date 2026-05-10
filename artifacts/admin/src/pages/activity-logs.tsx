@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 
@@ -33,20 +33,36 @@ import {
 import { supabase, type ActivityLog } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface ProfileRow {
+  id: string;
+  email: string | null;
+  role: unknown; // may be string or { name: string } depending on Supabase setup
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Module buckets used by the filter dropdown
 const MODULE_OPTIONS = ["tasks", "bookings", "calendar", "hr"] as const;
 type AppModule = (typeof MODULE_OPTIONS)[number];
 
+/** Normalise whatever module string is stored in metadata into a filter bucket */
+function toModuleBucket(raw: string | null): string | null {
+  if (!raw) return null;
+  if (raw === "availability_calendar" || raw === "calendar") return "calendar";
+  return raw; // "bookings", "tasks", "hr" pass through as-is
+}
+
 const MODULE_CLS: Record<AppModule, string> = {
-  tasks: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  tasks:    "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   bookings: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   calendar: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-  hr: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  hr:       "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
 };
 
 const ROLE_CLS: Record<string, string> = {
-  admin: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  admin:   "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
   manager: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
 };
 
@@ -56,6 +72,8 @@ const STATUS_CLS: Record<string, string> = {
   completed: "bg-emerald-100 text-emerald-800 border-emerald-200",
   cancelled: "bg-red-100 text-red-800 border-red-200",
 };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function StatusPill({ status }: { status: string }) {
   return (
@@ -71,32 +89,49 @@ function StatusPill({ status }: { status: string }) {
 
 function actionVariant(action: string): "default" | "secondary" | "outline" | "destructive" {
   if (action.includes("created")) return "default";
-  if (action.includes("deleted") || action.includes("removed") || action.includes("cancel")) return "destructive";
-  if (action.includes("updated") || action.includes("changed") || action.includes("uploaded")) return "secondary";
+  if (
+    action.includes("deleted") ||
+    action.includes("removed") ||
+    action.includes("cancel")
+  )
+    return "destructive";
+  if (
+    action.includes("updated") ||
+    action.includes("changed") ||
+    action.includes("uploaded")
+  )
+    return "secondary";
   return "outline";
 }
 
-// ── Metadata helpers ──────────────────────────────────────────────────────────
+/** Extract a plain role string from whatever Supabase returns */
+function normaliseRole(raw: unknown): string | null {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object" && raw !== null && "name" in raw)
+    return (raw as { name: string }).name;
+  return null;
+}
 
+/** Pull structured fields out of JSONB metadata (null-safe) */
 function getMeta(log: ActivityLog) {
   const m = (log.metadata ?? {}) as Record<string, unknown>;
   return {
-    actorName:    (m.actor_name   as string | null) ?? null,
-    actorRole:    (m.actor_role   as string | null) ?? null,
-    module:       (m.module       as string | null) ?? log.entity_type ?? null,
-    label:        (m.label        as string | null) ?? log.entity_id ?? null,
-    guestName:    (m.guest_name   as string | null) ?? null,
+    actorName:    (m.actor_name    as string | null) ?? null,
+    actorRole:    (m.actor_role    as string | null) ?? null,
+    module:       (m.module        as string | null) ?? log.entity_type ?? null,
+    label:        (m.label         as string | null) ?? log.entity_id  ?? null,
+    guestName:    (m.guest_name    as string | null) ?? null,
     listingTitle: (m.listing_title as string | null) ?? null,
-    oldStatus:    (m.old_status   as string | null) ?? null,
-    newStatus:    (m.new_status   as string | null) ?? null,
-    totalAmount:  (m.total_amount as number | null) ?? null,
-    changedAt:    (m.changed_at   as string | null) ?? null,
-    newData:  (m.new_data  as Record<string, unknown> | null) ?? null,
-    oldData:  (m.old_data  as Record<string, unknown> | null) ?? null,
+    oldStatus:    (m.old_status    as string | null) ?? null,
+    newStatus:    (m.new_status    as string | null) ?? null,
+    totalAmount:  (m.total_amount  as number | null) ?? null,
+    changedBy:    (m.changed_by    as string | null) ?? null,
+    changedAt:    (m.changed_at    as string | null) ?? null,
+    newData:      (m.new_data      as Record<string, unknown> | null) ?? null,
+    oldData:      (m.old_data      as Record<string, unknown> | null) ?? null,
   };
 }
-
-// ── JSON display helper ───────────────────────────────────────────────────────
 
 function JsonBlock({ label, data }: { label: string; data: Record<string, unknown> | null }) {
   if (!data || Object.keys(data).length === 0) return null;
@@ -117,53 +152,109 @@ export default function ActivityLogs() {
   const al = t.activityLogs;
 
   const [moduleFilter, setModuleFilter] = useState("all");
-  const [search, setSearch] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [selected, setSelected] = useState<ActivityLog | null>(null);
+  const [search, setSearch]             = useState("");
+  const [from, setFrom]                 = useState("");
+  const [to, setTo]                     = useState("");
+  const [selected, setSelected]         = useState<ActivityLog | null>(null);
 
-  const query = useQuery({
+  // ── Query 1: activity_logs ──────────────────────────────────────────────────
+  const logsQuery = useQuery({
     queryKey: ["activity_logs", { from, to }],
     queryFn: async () => {
       let q = supabase
         .from("activity_logs")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(50);
 
-      // Use local-timezone boundaries so "today" in Vietnam (UTC+7) is correct
-      if (from) {
-        q = q.gte("created_at", new Date(`${from}T00:00:00`).toISOString());
-      }
-      if (to) {
-        q = q.lte("created_at", new Date(`${to}T23:59:59.999`).toISOString());
-      }
+      // Local-timezone boundaries (Vietnam = UTC+7, or wherever the browser is)
+      if (from) q = q.gte("created_at", new Date(`${from}T00:00:00`).toISOString());
+      if (to)   q = q.lte("created_at", new Date(`${to}T23:59:59.999`).toISOString());
 
       const { data, error } = await q;
-      if (error) throw error;
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.error("[ACTIVITY_LOGS_FETCH] error", { message: error.message, code: error.code });
+        throw error;
+      }
       const rows = (data ?? []) as ActivityLog[];
-      console.log("[ACTIVITY_LOGS_FETCH]", { rowCount: rows.length, from, to });
+      // eslint-disable-next-line no-console
+      console.log("[ACTIVITY_LOGS_FETCH]", {
+        rowCount: rows.length,
+        from,
+        to,
+        note: rows.length === 0 ? "DB returned 0 rows — check Supabase RLS SELECT policy on activity_logs" : "ok",
+      });
       return rows;
     },
   });
 
-  // ── Client-side filtering (module is inside JSONB metadata) ──────────────
-  const filtered = (query.data ?? []).filter((log) => {
-    const { module, actorName, label } = getMeta(log);
-    if (moduleFilter !== "all" && module !== moduleFilter) return false;
-    if (search.trim()) {
-      const s = search.trim().toLowerCase();
-      const haystack = [actorName, log.action, label, module]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      if (!haystack.includes(s)) return false;
-    }
-    return true;
+  // ── Query 2: profiles (cached 5 min, used for email + role lookup) ──────────
+  const profilesQuery = useQuery({
+    queryKey: ["profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, email, role");
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.warn("[PROFILES_FETCH] error", error.message);
+        return [] as ProfileRow[];
+      }
+      return (data ?? []) as ProfileRow[];
+    },
+    staleTime: 5 * 60_000,
   });
+
+  // ── Merge: build a fast id → profile map ───────────────────────────────────
+  const profileMap = useMemo(() => {
+    const map = new Map<string, { email: string | null; role: string | null }>();
+    for (const p of profilesQuery.data ?? []) {
+      map.set(p.id, { email: p.email, role: normaliseRole(p.role) });
+    }
+    return map;
+  }, [profilesQuery.data]);
+
+  // ── Client-side filter ─────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const logs = logsQuery.data ?? [];
+    return logs.filter((log) => {
+      const meta = getMeta(log);
+      const bucket = toModuleBucket(meta.module);
+
+      // Module filter
+      if (moduleFilter !== "all" && bucket !== moduleFilter) return false;
+
+      // Text search across email, action, entity_type, metadata fields
+      if (search.trim()) {
+        const s = search.trim().toLowerCase();
+        const profile = log.user_id ? profileMap.get(log.user_id) : null;
+        const haystack = [
+          profile?.email,
+          meta.actorName,
+          log.action,
+          log.entity_type,
+          meta.label,
+          meta.guestName,
+          meta.listingTitle,
+          meta.oldStatus,
+          meta.newStatus,
+          meta.changedBy,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(s)) return false;
+      }
+      return true;
+    });
+  }, [logsQuery.data, moduleFilter, search, profileMap]);
 
   const moduleLabel = (mod: string) =>
     (al.modules as Record<string, string>)[mod] ?? mod;
+
+  const isLoading = logsQuery.isLoading;
+  const queryError = logsQuery.error as Error | null;
 
   return (
     <AppLayout title={al.title}>
@@ -230,22 +321,30 @@ export default function ActivityLogs() {
       </div>
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
-      {query.isLoading ? (
+      {isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
-      ) : query.error ? (
+      ) : queryError ? (
         <Alert variant="destructive">
           <AlertTitle>{t.common.error}</AlertTitle>
-          <AlertDescription>{(query.error as Error).message}</AlertDescription>
+          <AlertDescription>{queryError.message}</AlertDescription>
         </Alert>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-16 text-center">
           <p className="font-medium text-muted-foreground">{al.noLogs}</p>
-          {query.data && query.data.length > 0 && search && (
-            <p className="mt-1 text-sm text-muted-foreground">No results for "{search}"</p>
+          {logsQuery.data?.length === 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              The database returned 0 rows. Check the Supabase RLS SELECT policy on{" "}
+              <code className="font-mono">activity_logs</code>.
+            </p>
+          )}
+          {(logsQuery.data?.length ?? 0) > 0 && search && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              No results for "{search}"
+            </p>
           )}
         </div>
       ) : (
@@ -253,30 +352,48 @@ export default function ActivityLogs() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40">
-                <TableHead className="w-40">{al.time}</TableHead>
-                <TableHead>{al.actor}</TableHead>
-                <TableHead className="w-28">{al.module}</TableHead>
+                <TableHead className="w-36">{al.time}</TableHead>
+                <TableHead className="w-52">{al.actor}</TableHead>
                 <TableHead>{al.action}</TableHead>
-                <TableHead>{al.target}</TableHead>
-                <TableHead className="w-20" />
+                <TableHead className="w-28">Entity</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-16" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((log) => {
-                const { actorName, actorRole, module, label, oldStatus, newStatus } = getMeta(log);
+                const meta = getMeta(log);
+                const profile = log.user_id ? profileMap.get(log.user_id) : null;
+
+                // Email: prefer profile join, fall back to metadata actor_name or changed_by
+                const actorEmail =
+                  profile?.email ??
+                  meta.changedBy ??
+                  meta.actorName ??
+                  null;
+
+                // Role: prefer profile join, fall back to metadata actor_role
+                const actorRole =
+                  profile?.role ??
+                  meta.actorRole ??
+                  null;
+
                 return (
                   <TableRow
                     key={log.id}
                     className="cursor-pointer hover:bg-muted/30"
                     onClick={() => setSelected(log)}
                   >
+                    {/* Time */}
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                      {format(parseISO(log.created_at), "dd/MM/yyyy HH:mm")}
+                      {format(parseISO(log.created_at), "dd/MM HH:mm")}
                     </TableCell>
+
+                    {/* Email + Role */}
                     <TableCell>
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-medium leading-none">
-                          {actorName ?? "—"}
+                        <span className="truncate text-xs font-medium leading-none">
+                          {actorEmail ?? "—"}
                         </span>
                         {actorRole && (
                           <span
@@ -289,37 +406,38 @@ export default function ActivityLogs() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      {module && (
-                        <span
-                          className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
-                            MODULE_CLS[module as AppModule] ?? "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {moduleLabel(module)}
-                        </span>
-                      )}
-                    </TableCell>
+
+                    {/* Action */}
                     <TableCell>
                       <Badge
                         variant={actionVariant(log.action)}
-                        className="text-xs font-mono"
+                        className="font-mono text-xs"
                       >
                         {log.action}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-xs text-sm text-muted-foreground">
-                      <div className="flex flex-col gap-1">
-                        <span className="truncate">{label ?? "—"}</span>
-                        {oldStatus && newStatus && (
-                          <div className="flex items-center gap-1">
-                            <StatusPill status={oldStatus} />
-                            <span className="text-[11px] text-muted-foreground">→</span>
-                            <StatusPill status={newStatus} />
-                          </div>
-                        )}
-                      </div>
+
+                    {/* Entity type */}
+                    <TableCell className="text-xs text-muted-foreground">
+                      {log.entity_type ?? "—"}
                     </TableCell>
+
+                    {/* Status change */}
+                    <TableCell>
+                      {meta.oldStatus && meta.newStatus ? (
+                        <div className="flex items-center gap-1">
+                          <StatusPill status={meta.oldStatus} />
+                          <span className="text-[11px] text-muted-foreground">→</span>
+                          <StatusPill status={meta.newStatus} />
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {meta.label ?? meta.guestName ?? "—"}
+                        </span>
+                      )}
+                    </TableCell>
+
+                    {/* Details button */}
                     <TableCell>
                       <Button
                         size="sm"
@@ -348,14 +466,14 @@ export default function ActivityLogs() {
             <DialogTitle className="flex items-center gap-2 text-base">
               {al.logDetail}
               {selected && (() => {
-                const { module } = getMeta(selected);
-                return module ? (
+                const bucket = toModuleBucket(getMeta(selected).module);
+                return bucket ? (
                   <span
                     className={`rounded px-2 py-0.5 text-xs font-medium ${
-                      MODULE_CLS[module as AppModule] ?? "bg-muted text-muted-foreground"
+                      MODULE_CLS[bucket as AppModule] ?? "bg-muted text-muted-foreground"
                     }`}
                   >
-                    {moduleLabel(module)}
+                    {moduleLabel(bucket)}
                   </span>
                 ) : null;
               })()}
@@ -363,19 +481,20 @@ export default function ActivityLogs() {
           </DialogHeader>
 
           {selected && (() => {
-            const {
-              actorName, actorRole, label, newData, oldData,
-              guestName, listingTitle, oldStatus, newStatus, totalAmount, changedAt,
-            } = getMeta(selected);
-            const isStatusChange = Boolean(oldStatus && newStatus);
+            const meta = getMeta(selected);
+            const profile = selected.user_id ? profileMap.get(selected.user_id) : null;
+            const actorEmail = profile?.email ?? meta.changedBy ?? meta.actorName ?? null;
+            const actorRole  = profile?.role  ?? meta.actorRole ?? null;
+            const isStatusChange = Boolean(meta.oldStatus && meta.newStatus);
+
             return (
               <div className="space-y-4 text-sm">
-                {/* ── Status change banner ────────────────────────────── */}
+                {/* Status change banner */}
                 {isStatusChange && (
-                  <div className="flex items-center justify-center gap-3 rounded-lg border bg-muted/30 py-3 px-4">
-                    <StatusPill status={oldStatus!} />
+                  <div className="flex items-center justify-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+                    <StatusPill status={meta.oldStatus!} />
                     <span className="text-base text-muted-foreground">→</span>
-                    <StatusPill status={newStatus!} />
+                    <StatusPill status={meta.newStatus!} />
                   </div>
                 )}
 
@@ -388,7 +507,7 @@ export default function ActivityLogs() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">{al.actor}</p>
-                    <p className="font-medium">{actorName ?? "—"}</p>
+                    <p className="font-medium">{actorEmail ?? "—"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">{al.role}</p>
@@ -400,34 +519,6 @@ export default function ActivityLogs() {
                       {selected.action}
                     </Badge>
                   </div>
-                  {(guestName ?? label) && (
-                    <div className="col-span-2">
-                      <p className="text-xs text-muted-foreground">{al.target}</p>
-                      <p className="font-medium">{guestName ?? label}</p>
-                    </div>
-                  )}
-                  {listingTitle && (
-                    <div className="col-span-2">
-                      <p className="text-xs text-muted-foreground">Căn hộ</p>
-                      <p className="font-medium">{listingTitle}</p>
-                    </div>
-                  )}
-                  {totalAmount != null && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Tổng tiền</p>
-                      <p className="font-medium tabular-nums">
-                        {totalAmount.toLocaleString("vi-VN")} ₫
-                      </p>
-                    </div>
-                  )}
-                  {changedAt && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Thời điểm đổi</p>
-                      <p className="font-medium">
-                        {format(new Date(changedAt), "dd/MM/yyyy HH:mm:ss")}
-                      </p>
-                    </div>
-                  )}
                   {selected.entity_type && (
                     <div>
                       <p className="text-xs text-muted-foreground">Entity type</p>
@@ -440,12 +531,40 @@ export default function ActivityLogs() {
                       <p className="truncate font-mono text-xs">{selected.entity_id}</p>
                     </div>
                   )}
+                  {(meta.guestName ?? meta.label) && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">{al.target}</p>
+                      <p className="font-medium">{meta.guestName ?? meta.label}</p>
+                    </div>
+                  )}
+                  {meta.listingTitle && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Căn hộ</p>
+                      <p className="font-medium">{meta.listingTitle}</p>
+                    </div>
+                  )}
+                  {meta.totalAmount != null && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Tổng tiền</p>
+                      <p className="font-medium tabular-nums">
+                        {meta.totalAmount.toLocaleString("vi-VN")} ₫
+                      </p>
+                    </div>
+                  )}
+                  {meta.changedAt && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Thời điểm đổi</p>
+                      <p className="font-medium">
+                        {format(new Date(meta.changedAt), "dd/MM/yyyy HH:mm:ss")}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {(oldData || newData) ? (
+                {(meta.oldData || meta.newData) ? (
                   <div className="space-y-3">
-                    <JsonBlock label={al.oldData} data={oldData} />
-                    <JsonBlock label={al.newData} data={newData} />
+                    <JsonBlock label={al.oldData} data={meta.oldData} />
+                    <JsonBlock label={al.newData} data={meta.newData} />
                   </div>
                 ) : !isStatusChange ? (
                   <p className="text-xs italic text-muted-foreground">{al.noChange}</p>
