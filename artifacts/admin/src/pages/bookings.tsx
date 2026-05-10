@@ -516,21 +516,19 @@ export default function Bookings() {
         });
       }
       log({
-        action: "booking_status_updated",
+        action: "booking_status_changed",
         entityType: "bookings",
         entityId: id,
         metadata: {
           module: "bookings",
-          label: guestName ?? id,
-          new_data: {
-            status,
-            listing_id: booking?.listing_id,
-            listing_title:
-              listingsQuery.data?.find((l) => l.id === booking?.listing_id)?.title ?? null,
-            check_in: booking?.check_in,
-            check_out: booking?.check_out,
-            total_amount: booking?.total_amount,
-          },
+          label: guestName ?? booking?.guest_name ?? id,
+          guest_name: booking?.guest_name ?? guestName ?? null,
+          listing_title:
+            listingsQuery.data?.find((l) => l.id === booking?.listing_id)?.title ?? null,
+          old_status: booking?.status ?? null,
+          new_status: status,
+          total_amount: booking?.total_amount ?? null,
+          changed_at: new Date().toISOString(),
         },
       });
       toast({ title: t.bookings.updated });

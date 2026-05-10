@@ -50,6 +50,25 @@ const ROLE_CLS: Record<string, string> = {
   manager: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
 };
 
+const STATUS_CLS: Record<string, string> = {
+  pending:   "bg-amber-100 text-amber-800 border-amber-200",
+  confirmed: "bg-blue-100 text-blue-800 border-blue-200",
+  completed: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  cancelled: "bg-red-100 text-red-800 border-red-200",
+};
+
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span
+      className={`inline-block rounded border px-1.5 py-0.5 text-[11px] font-semibold leading-none ${
+        STATUS_CLS[status] ?? "bg-muted text-muted-foreground border-border"
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
 function actionVariant(action: string): "default" | "secondary" | "outline" | "destructive" {
   if (action.includes("created")) return "default";
   if (action.includes("deleted") || action.includes("removed") || action.includes("cancel")) return "destructive";
@@ -62,12 +81,18 @@ function actionVariant(action: string): "default" | "secondary" | "outline" | "d
 function getMeta(log: ActivityLog) {
   const m = (log.metadata ?? {}) as Record<string, unknown>;
   return {
-    actorName: (m.actor_name as string | null) ?? null,
-    actorRole: (m.actor_role as string | null) ?? null,
-    module: (m.module as string | null) ?? log.entity_type ?? null,
-    label: (m.label as string | null) ?? log.entity_id ?? null,
-    newData: (m.new_data as Record<string, unknown> | null) ?? null,
-    oldData: (m.old_data as Record<string, unknown> | null) ?? null,
+    actorName:    (m.actor_name   as string | null) ?? null,
+    actorRole:    (m.actor_role   as string | null) ?? null,
+    module:       (m.module       as string | null) ?? log.entity_type ?? null,
+    label:        (m.label        as string | null) ?? log.entity_id ?? null,
+    guestName:    (m.guest_name   as string | null) ?? null,
+    listingTitle: (m.listing_title as string | null) ?? null,
+    oldStatus:    (m.old_status   as string | null) ?? null,
+    newStatus:    (m.new_status   as string | null) ?? null,
+    totalAmount:  (m.total_amount as number | null) ?? null,
+    changedAt:    (m.changed_at   as string | null) ?? null,
+    newData:  (m.new_data  as Record<string, unknown> | null) ?? null,
+    oldData:  (m.old_data  as Record<string, unknown> | null) ?? null,
   };
 }
 
@@ -238,7 +263,7 @@ export default function ActivityLogs() {
             </TableHeader>
             <TableBody>
               {filtered.map((log) => {
-                const { actorName, actorRole, module, label } = getMeta(log);
+                const { actorName, actorRole, module, label, oldStatus, newStatus } = getMeta(log);
                 return (
                   <TableRow
                     key={log.id}
@@ -283,8 +308,17 @@ export default function ActivityLogs() {
                         {log.action}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
-                      {label ?? "—"}
+                    <TableCell className="max-w-xs text-sm text-muted-foreground">
+                      <div className="flex flex-col gap-1">
+                        <span className="truncate">{label ?? "—"}</span>
+                        {oldStatus && newStatus && (
+                          <div className="flex items-center gap-1">
+                            <StatusPill status={oldStatus} />
+                            <span className="text-[11px] text-muted-foreground">→</span>
+                            <StatusPill status={newStatus} />
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -329,9 +363,22 @@ export default function ActivityLogs() {
           </DialogHeader>
 
           {selected && (() => {
-            const { actorName, actorRole, label, newData, oldData } = getMeta(selected);
+            const {
+              actorName, actorRole, label, newData, oldData,
+              guestName, listingTitle, oldStatus, newStatus, totalAmount, changedAt,
+            } = getMeta(selected);
+            const isStatusChange = Boolean(oldStatus && newStatus);
             return (
               <div className="space-y-4 text-sm">
+                {/* ── Status change banner ────────────────────────────── */}
+                {isStatusChange && (
+                  <div className="flex items-center justify-center gap-3 rounded-lg border bg-muted/30 py-3 px-4">
+                    <StatusPill status={oldStatus!} />
+                    <span className="text-base text-muted-foreground">→</span>
+                    <StatusPill status={newStatus!} />
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border bg-muted/20 p-3">
                   <div>
                     <p className="text-xs text-muted-foreground">{al.time}</p>
@@ -353,10 +400,32 @@ export default function ActivityLogs() {
                       {selected.action}
                     </Badge>
                   </div>
-                  {label && (
+                  {(guestName ?? label) && (
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">{al.target}</p>
-                      <p className="font-medium">{label}</p>
+                      <p className="font-medium">{guestName ?? label}</p>
+                    </div>
+                  )}
+                  {listingTitle && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Căn hộ</p>
+                      <p className="font-medium">{listingTitle}</p>
+                    </div>
+                  )}
+                  {totalAmount != null && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Tổng tiền</p>
+                      <p className="font-medium tabular-nums">
+                        {totalAmount.toLocaleString("vi-VN")} ₫
+                      </p>
+                    </div>
+                  )}
+                  {changedAt && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Thời điểm đổi</p>
+                      <p className="font-medium">
+                        {format(new Date(changedAt), "dd/MM/yyyy HH:mm:ss")}
+                      </p>
                     </div>
                   )}
                   {selected.entity_type && (
@@ -378,9 +447,9 @@ export default function ActivityLogs() {
                     <JsonBlock label={al.oldData} data={oldData} />
                     <JsonBlock label={al.newData} data={newData} />
                   </div>
-                ) : (
+                ) : !isStatusChange ? (
                   <p className="text-xs italic text-muted-foreground">{al.noChange}</p>
-                )}
+                ) : null}
 
                 {selected.metadata && Object.keys(selected.metadata).length > 0 && (
                   <JsonBlock label={al.metadata} data={selected.metadata} />

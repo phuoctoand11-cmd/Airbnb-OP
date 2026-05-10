@@ -1375,19 +1375,19 @@ export default function AvailabilityCalendar() {
         });
       }
       log({
-        action: "booking_status_updated",
+        action: "booking_status_changed",
         entityType: "bookings",
         entityId: id,
         metadata: {
           module: "availability_calendar",
           label: booking?.guest_name ?? id,
-          new_data: {
-            status,
-            listing_id: booking?.listing_id,
-            check_in: booking?.check_in,
-            check_out: booking?.check_out,
-            total_amount: booking?.total_amount,
-          },
+          guest_name: booking?.guest_name ?? null,
+          listing_title:
+            listingsQuery.data?.find((l) => l.id === booking?.listing_id)?.title ?? null,
+          old_status: booking?.status ?? null,
+          new_status: status,
+          total_amount: booking?.total_amount ?? null,
+          changed_at: new Date().toISOString(),
         },
       });
       toast({ title: "Cập nhật thành công" });
