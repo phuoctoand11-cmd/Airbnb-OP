@@ -216,39 +216,47 @@ export default function ActivityLogs() {
   }, [profilesQuery.data]);
 
   // ── Client-side filter ─────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
+  const afterModuleFilter = useMemo(() => {
     const logs = logsQuery.data ?? [];
     return logs.filter((log) => {
       const meta = getMeta(log);
       const bucket = toModuleBucket(meta.module);
-
-      // Module filter
       if (moduleFilter !== "all" && bucket !== moduleFilter) return false;
-
-      // Text search across email, action, entity_type, metadata fields
-      if (search.trim()) {
-        const s = search.trim().toLowerCase();
-        const profile = log.user_id ? profileMap.get(log.user_id) : null;
-        const haystack = [
-          profile?.email,
-          meta.actorName,
-          log.action,
-          log.entity_type,
-          meta.label,
-          meta.guestName,
-          meta.listingTitle,
-          meta.oldStatus,
-          meta.newStatus,
-          meta.changedBy,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(s)) return false;
-      }
       return true;
     });
-  }, [logsQuery.data, moduleFilter, search, profileMap]);
+  }, [logsQuery.data, moduleFilter]);
+
+  const filtered = useMemo(() => {
+    return afterModuleFilter.filter((log) => {
+      if (!search.trim()) return true;
+      const s = search.trim().toLowerCase();
+      const meta = getMeta(log);
+      const profile = log.user_id ? profileMap.get(log.user_id) : null;
+      const haystack = [
+        profile?.email,
+        meta.actorName,
+        log.action,
+        log.entity_type,
+        meta.label,
+        meta.guestName,
+        meta.listingTitle,
+        meta.oldStatus,
+        meta.newStatus,
+        meta.changedBy,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(s);
+    });
+  }, [afterModuleFilter, search, profileMap]);
+
+  // ── Debug values ───────────────────────────────────────────────────────────
+  const rawLogsCount          = logsQuery.data?.length ?? 0;
+  const afterDateFilterCount  = rawLogsCount; // date filter is server-side
+  const afterSearchFilterCount = filtered.length;
+  const selectedStart = from ? new Date(`${from}T00:00:00`).toISOString() : "(none)";
+  const selectedEnd   = to   ? new Date(`${to}T23:59:59.999`).toISOString() : "(none)";
 
   const moduleLabel = (mod: string) =>
     (al.modules as Record<string, string>)[mod] ?? mod;
@@ -319,6 +327,31 @@ export default function ActivityLogs() {
           </Button>
         )}
       </div>
+
+      {/* ── Debug panel ─────────────────────────────────────────────────── */}
+      {!isLoading && (
+        <div className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-mono dark:border-amber-700 dark:bg-amber-950">
+          <p className="mb-1 font-semibold text-amber-800 dark:text-amber-300">[DEBUG] Activity Logs</p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-amber-900 dark:text-amber-200">
+            <span>rawLogsCount: <strong>{rawLogsCount}</strong></span>
+            <span>afterDateFilterCount: <strong>{afterDateFilterCount}</strong></span>
+            <span>afterSearchFilterCount: <strong>{afterSearchFilterCount}</strong></span>
+            <span>moduleFilter: <strong>{moduleFilter}</strong></span>
+            <span className="col-span-2">selectedStart: <strong>{selectedStart}</strong></span>
+            <span className="col-span-2">selectedEnd: <strong>{selectedEnd}</strong></span>
+            {logsQuery.error && (
+              <span className="col-span-2 text-red-600">
+                queryError: {(logsQuery.error as Error).message}
+              </span>
+            )}
+            {rawLogsCount === 0 && !logsQuery.error && (
+              <span className="col-span-2 text-red-700 dark:text-red-400">
+                ⚠ DB returned 0 rows — RLS SELECT policy may be blocking the anon key
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
       {isLoading ? (
