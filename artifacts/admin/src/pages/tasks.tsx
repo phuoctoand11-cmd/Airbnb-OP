@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, canViewAllTasks, useAuth } from "@/lib/auth-context";
+import { useLogActivity } from "@/lib/activity-log";
 import {
   supabase,
   type Booking,
@@ -353,6 +354,8 @@ export default function Tasks() {
     );
   };
 
+  const log = useLogActivity();
+
   // ── Mutations ────────────────────────────────────────────────────────────
 
   const createMutation = useMutation({
@@ -379,10 +382,25 @@ export default function Tasks() {
       // eslint-disable-next-line no-console
       console.log("[task create] full payload:", payload);
 
-      const { error } = await supabase.from("tasks").insert(payload);
+      const { data, error } = await supabase.from("tasks").insert(payload).select("id").single();
       if (error) throw error;
+      return { id: data?.id as string | undefined, v };
     },
-    onSuccess: () => {
+    onSuccess: ({ id, v }) => {
+      log({
+        action: "task_created",
+        module: "tasks",
+        target_table: "tasks",
+        target_id: id ?? null,
+        target_label: v.title,
+        new_data: {
+          title: v.title,
+          task_type: v.task_type ?? null,
+          status: v.status,
+          priority: v.priority,
+          due_date: v.due_date || null,
+        },
+      });
       toast({ title: t.tasks.created });
       setOpen(false);
       setSelectedTemplate("__none__");
@@ -394,21 +412,44 @@ export default function Tasks() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: Task["status"] }) => {
+    mutationFn: async ({ id, status, title }: { id: string; status: Task["status"]; title?: string }) => {
       const { error } = await supabase.from("tasks").update({ status }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+    onSuccess: (_, { id, status, title }) => {
+      log({
+        action: "task_status_updated",
+        module: "tasks",
+        target_table: "tasks",
+        target_id: id,
+        target_label: title ?? id,
+        new_data: { status },
+      });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
     onError: (err: Error) =>
       toast({ variant: "destructive", title: t.tasks.couldNotSave, description: err.message }),
   });
 
   const updateChecklistMutation = useMutation({
-    mutationFn: async ({ id, checklist }: { id: string; checklist: ChecklistItem[] }) => {
+    mutationFn: async ({ id, checklist, title }: { id: string; checklist: ChecklistItem[]; title?: string }) => {
       const { error } = await supabase.from("tasks").update({ checklist }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+    onSuccess: (_, { id, checklist, title }) => {
+      log({
+        action: "task_checklist_updated",
+        module: "tasks",
+        target_table: "tasks",
+        target_id: id,
+        target_label: title ?? id,
+        new_data: {
+          total: checklist.length,
+          checked: checklist.filter((c) => c.checked).length,
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 
   const updatePhotosMutation = useMutation({
@@ -545,16 +586,16 @@ export default function Tasks() {
                         checklistLabel={t.tasks.checklist}
                         onStatusChange={(v) => {
                           if (v === "done" && !checkPhotoBeforeDone(tk)) return;
-                          updateStatusMutation.mutate({ id: tk.id, status: v });
+                          updateStatusMutation.mutate({ id: tk.id, status: v, title: tk.title });
                         }}
                         onChecklistToggle={(idx) => {
                           const updated = (tk.checklist ?? []).map((c, i) =>
                             i === idx ? { ...c, checked: !c.checked } : c
                           );
-                          updateChecklistMutation.mutate({ id: tk.id, checklist: updated });
+                          updateChecklistMutation.mutate({ id: tk.id, checklist: updated, title: tk.title });
                           const allDone = updated.length > 0 && updated.every((c) => c.checked);
                           if (allDone && tk.status !== "done" && checkPhotoBeforeDone(tk)) {
-                            updateStatusMutation.mutate({ id: tk.id, status: "done" });
+                            updateStatusMutation.mutate({ id: tk.id, status: "done", title: tk.title });
                           }
                         }}
                         onPhotosUpdate={(photos) =>

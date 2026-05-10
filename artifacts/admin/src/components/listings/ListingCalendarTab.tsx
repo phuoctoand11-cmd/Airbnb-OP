@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useLogActivity } from "@/lib/activity-log";
 import { cn } from "@/lib/utils";
 import {
   supabase,
@@ -234,6 +235,8 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
     clearSelection();
   }, [cursor, clearSelection]);
 
+  const log = useLogActivity();
+
   // ── Bulk upsert mutation ──────────────────────────────────────────────
   const bulkMutation = useMutation({
     mutationFn: async (rows: {
@@ -249,6 +252,19 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
       if (error) throw error;
     },
     onSuccess: (_, rows) => {
+      log({
+        action: "calendar_status_updated",
+        module: "calendar",
+        target_table: "listing_calendar",
+        target_id: listing.id,
+        target_label: `${listing.title} — ${rows.length} ngày`,
+        new_data: {
+          listing_id: listing.id,
+          dates: rows.map((r) => r.date),
+          status: rows[0]?.status ?? null,
+          count: rows.length,
+        },
+      });
       toast({ title: `Đã cập nhật ${rows.length} ngày.` });
       qc.invalidateQueries({ queryKey: ["listing_calendar", listing.id] });
       clearSelection();

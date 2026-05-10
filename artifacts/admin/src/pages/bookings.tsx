@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, useAuth } from "@/lib/auth-context";
+import { useLogActivity } from "@/lib/activity-log";
 import { supabase, type Booking, type Employee, type Listing } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
 import { useCurrency } from "@/lib/currency";
@@ -291,6 +292,8 @@ export default function Bookings() {
     }
   };
 
+  const log = useLogActivity();
+
   // ── Mutation ─────────────────────────────────────────────────────────────
 
   const createMutation = useMutation({
@@ -386,9 +389,23 @@ export default function Bookings() {
         if (depErr) depositError = depErr;
       }
 
-      return { tasksError, depositError };
+      return { newBookingId: newBooking.id, values, tasksError, depositError };
     },
-    onSuccess: ({ tasksError, depositError }) => {
+    onSuccess: ({ newBookingId, values, tasksError, depositError }) => {
+      log({
+        action: "booking_created",
+        module: "bookings",
+        target_table: "bookings",
+        target_id: newBookingId,
+        target_label: values.guest_name,
+        new_data: {
+          guest_name: values.guest_name,
+          check_in: values.check_in,
+          check_out: values.check_out,
+          status: values.status,
+          total_amount: values.total_amount,
+        },
+      });
       if (tasksError) {
         toast({
           variant: "destructive",
@@ -419,11 +436,19 @@ export default function Bookings() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: Booking["status"] }) => {
+    mutationFn: async ({ id, status, guestName }: { id: string; status: Booking["status"]; guestName?: string }) => {
       const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, { id, status, guestName }) => {
+      log({
+        action: "booking_status_updated",
+        module: "bookings",
+        target_table: "bookings",
+        target_id: id,
+        target_label: guestName ?? id,
+        new_data: { status },
+      });
       toast({ title: t.bookings.updated });
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
     },
@@ -584,6 +609,7 @@ export default function Bookings() {
                               updateStatusMutation.mutate({
                                 id: b.id,
                                 status: v as Booking["status"],
+                                guestName: b.guest_name,
                               })
                             }
                           >

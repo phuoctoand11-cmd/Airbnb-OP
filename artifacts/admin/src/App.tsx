@@ -22,6 +22,7 @@ import UsersPage from "@/pages/users";
 import ChatPage from "@/pages/chat";
 import AvailabilityCalendar from "@/pages/availability-calendar";
 import HRRecruitment from "@/pages/hr";
+import ActivityLogs from "@/pages/activity-logs";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -133,6 +134,12 @@ function Router() {
       <Route path="/hr">
         <ProtectedRoute permission="viewHR">
           <HRRecruitment />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/activity-logs">
+        <ProtectedRoute permission="viewActivityLogs">
+          <ActivityLogs />
         </ProtectedRoute>
       </Route>
 

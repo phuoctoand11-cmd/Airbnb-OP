@@ -383,3 +383,22 @@ export interface ChatMessageRead {
   user_id: string;
   read_at: string;
 }
+
+// ---- Activity Log types ----
+
+export interface ActivityLog {
+  id: string;
+  actor_profile_id: string | null;
+  actor_employee_id: string | null;
+  actor_name: string | null;
+  actor_role: string | null;
+  action: string;
+  module: string;
+  target_table: string | null;
+  target_id: string | null;
+  target_label: string | null;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}

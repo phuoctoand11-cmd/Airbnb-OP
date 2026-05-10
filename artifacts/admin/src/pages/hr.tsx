@@ -51,6 +51,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { canManageHR, canViewSalary, useAuth } from "@/lib/auth-context";
+import { useLogActivity } from "@/lib/activity-log";
 import {
   supabase,
   type Department,
@@ -287,12 +288,22 @@ function EmployeesTab({
   const deptName = (id: string) => deptsQuery.data?.find((d) => d.id === id)?.name ?? "—";
   const posName = (id: string) => positionsQuery.data?.find((p) => p.id === id)?.name ?? "—";
 
+  const log = useLogActivity();
+
   const statusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: EmployeeStatus }) => {
+    mutationFn: async ({ id, status, name }: { id: string; status: EmployeeStatus; name?: string }) => {
       const { error } = await supabase.from("employees").update({ status }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, { id, status, name }) => {
+      log({
+        action: "employee_status_changed",
+        module: "hr",
+        target_table: "employees",
+        target_id: id,
+        target_label: name ?? id,
+        new_data: { status },
+      });
       toast({ title: t.hr.statusChanged });
       setStatusChangeTarget(null);
       queryClient.invalidateQueries({ queryKey: ["employees"] });
@@ -307,7 +318,7 @@ function EmployeesTab({
     if (TERMINAL_STATUSES.includes(newStatus)) {
       setStatusChangeTarget({ emp, status: newStatus });
     } else {
-      statusMutation.mutate({ id: emp.id, status: newStatus });
+      statusMutation.mutate({ id: emp.id, status: newStatus, name: emp.full_name });
     }
   };
 
@@ -509,7 +520,7 @@ function EmployeesTab({
             <Button
               variant="destructive"
               disabled={statusMutation.isPending}
-              onClick={() => statusChangeTarget && statusMutation.mutate({ id: statusChangeTarget.emp.id, status: statusChangeTarget.status })}
+              onClick={() => statusChangeTarget && statusMutation.mutate({ id: statusChangeTarget.emp.id, status: statusChangeTarget.status, name: statusChangeTarget.emp.full_name })}
             >
               {statusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t.common.yes}
@@ -542,6 +553,7 @@ function EmployeeFormDialog({
 }) {
   const { t } = useI18n();
   const { toast } = useToast();
+  const log = useLogActivity();
   const isEdit = !!employee;
 
   const form = useForm<EmployeeFormValues>({
@@ -617,7 +629,22 @@ function EmployeeFormDialog({
         if (error) throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, v) => {
+      log({
+        action: isEdit ? "employee_updated" : "employee_created",
+        module: "hr",
+        target_table: "employees",
+        target_id: isEdit ? employee?.id : undefined,
+        target_label: v.full_name,
+        new_data: {
+          full_name: v.full_name,
+          email: v.email,
+          status: v.status,
+          employment_type: v.employment_type,
+          department_id: v.department_id,
+          position_id: v.position_id,
+        },
+      });
       toast({ title: isEdit ? t.hr.employeeUpdated : t.hr.employeeCreated });
       onOpenChange(false);
       onSaved();
