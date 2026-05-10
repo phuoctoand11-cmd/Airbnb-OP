@@ -99,7 +99,6 @@ export default function ActivityLogs() {
 
   const query = useQuery({
     queryKey: ["activity_logs", { from, to }],
-    staleTime: 15_000,
     queryFn: async () => {
       let q = supabase
         .from("activity_logs")
@@ -107,12 +106,19 @@ export default function ActivityLogs() {
         .order("created_at", { ascending: false })
         .limit(500);
 
-      if (from) q = q.gte("created_at", `${from}T00:00:00.000Z`);
-      if (to) q = q.lte("created_at", `${to}T23:59:59.999Z`);
+      // Use local-timezone boundaries so "today" in Vietnam (UTC+7) is correct
+      if (from) {
+        q = q.gte("created_at", new Date(`${from}T00:00:00`).toISOString());
+      }
+      if (to) {
+        q = q.lte("created_at", new Date(`${to}T23:59:59.999`).toISOString());
+      }
 
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []) as ActivityLog[];
+      const rows = (data ?? []) as ActivityLog[];
+      console.log("[ACTIVITY_LOGS_FETCH]", { rowCount: rows.length, from, to });
+      return rows;
     },
   });
 
