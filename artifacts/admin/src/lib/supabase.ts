@@ -257,11 +257,26 @@ export interface Task {
   updated_at: string;
 }
 
+export interface Payment {
+  id: string;
+  booking_id: string | null;
+  listing_id: string | null;
+  payment_type: "deposit" | "balance" | "refund" | "cancellation_fee";
+  amount: number;
+  paid_at: string;
+  status: "paid" | "refunded";
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Revenue {
   id: string;
   listing_id: string | null;
   booking_id: string | null;
   amount: number;
+  /** "booking_revenue" | "cancellation_revenue" — deposits now live in payments table */
   category: string;
   description: string | null;
   received_at: string;

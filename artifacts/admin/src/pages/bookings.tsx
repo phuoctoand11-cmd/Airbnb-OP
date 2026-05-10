@@ -167,6 +167,7 @@ export default function Bookings() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ id: string; booking: Booking } | null>(null);
 
   // ── Queries ─────────────────────────────────────────────────────────────
 
@@ -366,52 +367,81 @@ export default function Bookings() {
       // 3. Insert tasks — non-blocking: a task failure doesn't roll back the booking
       const { error: tasksError } = await supabase.from("tasks").insert(autoTaskRows);
 
-      // 4. Upsert deposit revenue: only when status is confirmed or completed
-      //    (pending = no revenue row at all)
+      // 4. Finance sync at booking creation
+      const _now = new Date();
+      const _todayISO = _now.toISOString();
+      const _todayDate = format(_now, "yyyy-MM-dd");
       let depositError: Error | null = null;
-      const shouldUpsertDeposit =
-        (values.status === "confirmed" || values.status === "completed") &&
-        (values.deposit_amount ?? 0) > 0;
-      if (shouldUpsertDeposit) {
-        const depositDate =
-          values.deposit_paid_at || format(new Date(), "yyyy-MM-dd");
-        await supabase
-          .from("revenues")
-          .delete()
-          .eq("booking_id", newBooking.id)
-          .eq("category", "deposit");
-        const { error: depErr } = await supabase.from("revenues").insert({
-          listing_id: values.listing_id,
-          booking_id: newBooking.id,
-          amount: values.deposit_amount,
-          category: "deposit",
-          description: `Deposit - ${values.guest_name}`,
-          received_at: depositDate,
-        });
-        if (depErr) depositError = depErr;
-      }
-
-      // 5. If booking is created as completed, upsert booking_balance revenue
       let balanceError: Error | null = null;
-      if (values.status === "completed" && values.total_amount > 0) {
+
+      if (values.status === "confirmed") {
+        // Confirmed: record deposit payment (no revenue recognised yet)
+        if ((values.deposit_amount ?? 0) > 0) {
+          await supabase.from("payments").delete()
+            .eq("booking_id", newBooking.id).eq("payment_type", "deposit");
+          const { error: depErr } = await supabase.from("payments").insert({
+            booking_id: newBooking.id,
+            listing_id: values.listing_id,
+            payment_type: "deposit",
+            amount: values.deposit_amount,
+            paid_at: values.deposit_paid_at
+              ? new Date(`${values.deposit_paid_at}T00:00:00`).toISOString()
+              : _todayISO,
+            status: "paid",
+            note: `Deposit - ${values.guest_name}`,
+          });
+          if (depErr) depositError = depErr;
+        }
+
+      } else if (values.status === "completed") {
+        // Completed: deposit payment + balance payment + booking_revenue
+        if ((values.deposit_amount ?? 0) > 0) {
+          await supabase.from("payments").delete()
+            .eq("booking_id", newBooking.id).eq("payment_type", "deposit");
+          await supabase.from("payments").insert({
+            booking_id: newBooking.id,
+            listing_id: values.listing_id,
+            payment_type: "deposit",
+            amount: values.deposit_amount,
+            paid_at: values.deposit_paid_at
+              ? new Date(`${values.deposit_paid_at}T00:00:00`).toISOString()
+              : _todayISO,
+            status: "paid",
+            note: `Deposit - ${values.guest_name}`,
+          });
+        }
         const balanceAmount = values.total_amount - (values.deposit_amount ?? 0);
         if (balanceAmount > 0) {
-          await supabase
-            .from("revenues")
-            .delete()
-            .eq("booking_id", newBooking.id)
-            .eq("category", "booking_balance");
-          const { error: balErr } = await supabase.from("revenues").insert({
-            listing_id: values.listing_id,
+          await supabase.from("payments").delete()
+            .eq("booking_id", newBooking.id).eq("payment_type", "balance");
+          const { error: balErr } = await supabase.from("payments").insert({
             booking_id: newBooking.id,
+            listing_id: values.listing_id,
+            payment_type: "balance",
             amount: balanceAmount,
-            category: "booking_balance",
-            description: `Balance - ${values.guest_name}`,
-            received_at: values.check_out || format(new Date(), "yyyy-MM-dd"),
+            paid_at: values.check_out
+              ? new Date(`${values.check_out}T00:00:00`).toISOString()
+              : _todayISO,
+            status: "paid",
+            note: `Balance - ${values.guest_name}`,
           });
           if (balErr) balanceError = balErr;
         }
+        if (values.total_amount > 0) {
+          await supabase.from("revenues").delete()
+            .eq("booking_id", newBooking.id).eq("category", "booking_revenue");
+          const { error: revErr } = await supabase.from("revenues").insert({
+            booking_id: newBooking.id,
+            listing_id: values.listing_id,
+            amount: values.total_amount,
+            category: "booking_revenue",
+            description: `Revenue - ${values.guest_name}`,
+            received_at: values.check_out || _todayDate,
+          });
+          if (revErr) balanceError = revErr;
+        }
       }
+      // pending / cancelled at creation: no payments or revenues
 
       return { newBookingId: newBooking.id, values, tasksError, depositError, balanceError };
     },
@@ -462,6 +492,7 @@ export default function Bookings() {
       setOverlapWarning(null);
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["revenues"] });
       queryClient.invalidateQueries({ queryKey: ["reports"] });
       queryClient.invalidateQueries({ queryKey: ["activity_logs"] });
@@ -480,77 +511,122 @@ export default function Bookings() {
       status,
       guestName,
       booking,
+      refundDeposit,
     }: {
       id: string;
       status: Booking["status"];
       guestName?: string;
       booking?: Booking;
+      refundDeposit?: boolean;
     }) => {
       const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
       if (error) throw error;
 
-      // ── Revenue lifecycle sync ────────────────────────────────────────────
+      // ── Finance lifecycle sync ────────────────────────────────────────────
+      let paymentError: Error | null = null;
       let revenueError: Error | null = null;
+      const _now = new Date();
+      const _todayISO = _now.toISOString();
+      const _todayDate = format(_now, "yyyy-MM-dd");
 
       if (status === "pending") {
-        // pending → no revenue rows
+        // pending → no finance changes
 
       } else if (status === "confirmed") {
-        // confirmed → upsert deposit only (never the full total)
+        // confirmed → record deposit payment only (no revenue recognised yet)
         if (booking && (booking.deposit_amount ?? 0) > 0) {
-          await supabase
-            .from("revenues")
-            .delete()
-            .eq("booking_id", id)
-            .eq("category", "deposit");
-          const { error: depErr } = await supabase.from("revenues").insert({
-            listing_id: booking.listing_id,
+          await supabase.from("payments").delete()
+            .eq("booking_id", id).eq("payment_type", "deposit");
+          const { error: depErr } = await supabase.from("payments").insert({
             booking_id: id,
+            listing_id: booking.listing_id,
+            payment_type: "deposit",
             amount: booking.deposit_amount,
-            category: "deposit",
-            description: `Deposit - ${booking.guest_name}`,
-            received_at: booking.deposit_paid_at || format(new Date(), "yyyy-MM-dd"),
+            paid_at: booking.deposit_paid_at
+              ? new Date(`${booking.deposit_paid_at}T00:00:00`).toISOString()
+              : _todayISO,
+            status: "paid",
+            note: `Deposit - ${booking.guest_name}`,
           });
-          if (depErr) revenueError = depErr;
+          if (depErr) paymentError = depErr;
         }
 
       } else if (status === "completed" && booking) {
-        // completed → keep deposit row, upsert booking_balance = total − deposit
+        // completed → balance payment + recognise full booking_revenue
         const balanceAmount = (booking.total_amount ?? 0) - (booking.deposit_amount ?? 0);
         if (balanceAmount > 0) {
-          await supabase
-            .from("revenues")
-            .delete()
-            .eq("booking_id", id)
-            .eq("category", "booking_balance");
-          const { error: balErr } = await supabase.from("revenues").insert({
-            listing_id: booking.listing_id,
+          await supabase.from("payments").delete()
+            .eq("booking_id", id).eq("payment_type", "balance");
+          const { error: balErr } = await supabase.from("payments").insert({
             booking_id: id,
+            listing_id: booking.listing_id,
+            payment_type: "balance",
             amount: balanceAmount,
-            category: "booking_balance",
-            description: `Balance - ${guestName ?? booking.guest_name}`,
-            received_at: booking.check_out || format(new Date(), "yyyy-MM-dd"),
+            paid_at: booking.check_out
+              ? new Date(`${booking.check_out}T00:00:00`).toISOString()
+              : _todayISO,
+            status: "paid",
+            note: `Balance - ${guestName ?? booking.guest_name}`,
           });
-          if (balErr) revenueError = balErr;
+          if (balErr) paymentError = balErr;
         }
+        await supabase.from("revenues").delete()
+          .eq("booking_id", id).eq("category", "booking_revenue");
+        const { error: revErr } = await supabase.from("revenues").insert({
+          booking_id: id,
+          listing_id: booking.listing_id,
+          amount: booking.total_amount,
+          category: "booking_revenue",
+          description: `Revenue - ${guestName ?? booking.guest_name}`,
+          received_at: booking.check_out || _todayDate,
+        });
+        if (revErr) revenueError = revErr;
 
-      } else if (status === "cancelled") {
-        // cancelled → delete ALL revenues for this booking
-        const { error: delErr } = await supabase
-          .from("revenues")
-          .delete()
-          .eq("booking_id", id);
-        if (delErr) revenueError = delErr;
+      } else if (status === "cancelled" && booking) {
+        // Delete any recognised booking_revenue
+        await supabase.from("revenues").delete()
+          .eq("booking_id", id).eq("category", "booking_revenue");
+
+        if ((booking.deposit_amount ?? 0) > 0) {
+          if (refundDeposit) {
+            // Case A: refund deposit — mark deposit payment refunded + insert refund record
+            await supabase.from("payments").update({ status: "refunded" })
+              .eq("booking_id", id).eq("payment_type", "deposit");
+            const { error: refErr } = await supabase.from("payments").insert({
+              booking_id: id,
+              listing_id: booking.listing_id,
+              payment_type: "refund",
+              amount: booking.deposit_amount,
+              paid_at: _todayISO,
+              status: "paid",
+              note: `Refund - ${booking.guest_name}`,
+            });
+            if (refErr) paymentError = refErr;
+          } else {
+            // Case B: keep deposit → record as cancellation_revenue
+            await supabase.from("revenues").delete()
+              .eq("booking_id", id).eq("category", "cancellation_revenue");
+            const { error: canRevErr } = await supabase.from("revenues").insert({
+              booking_id: id,
+              listing_id: booking.listing_id,
+              amount: booking.deposit_amount,
+              category: "cancellation_revenue",
+              description: `Cancellation Fee - ${booking.guest_name}`,
+              received_at: _todayDate,
+            });
+            if (canRevErr) revenueError = canRevErr;
+          }
+        }
       }
 
-      return { revenueError };
+      return { paymentError, revenueError };
     },
-    onSuccess: ({ revenueError }, { id, status, guestName, booking }) => {
-      if (revenueError) {
+    onSuccess: ({ paymentError, revenueError }, { id, status, guestName, booking, refundDeposit }) => {
+      if (paymentError || revenueError) {
         toast({
           variant: "destructive",
-          title: "Cảnh báo: Lỗi đồng bộ doanh thu",
-          description: revenueError.message,
+          title: "Cảnh báo: Lỗi đồng bộ tài chính",
+          description: (paymentError ?? revenueError)!.message,
         });
       }
       log({
@@ -565,6 +641,7 @@ export default function Bookings() {
             listingsQuery.data?.find((l) => l.id === booking?.listing_id)?.title ?? null,
           old_status: booking?.status ?? null,
           new_status: status,
+          refund_deposit: refundDeposit ?? null,
           total_amount: booking?.total_amount ?? null,
           changed_by: profile?.email ?? null,
           changed_at: new Date().toISOString(),
@@ -572,6 +649,7 @@ export default function Bookings() {
       });
       toast({ title: t.bookings.updated });
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["revenues"] });
       queryClient.invalidateQueries({ queryKey: ["reports"] });
       queryClient.invalidateQueries({ queryKey: ["activity_logs"] });
@@ -729,14 +807,18 @@ export default function Bookings() {
                         {canManage ? (
                           <Select
                             value={b.status}
-                            onValueChange={(v) =>
-                              updateStatusMutation.mutate({
-                                id: b.id,
-                                status: v as Booking["status"],
-                                guestName: b.guest_name,
-                                booking: b,
-                              })
-                            }
+                            onValueChange={(v) => {
+                              if (v === "cancelled") {
+                                setCancelTarget({ id: b.id, booking: b });
+                              } else {
+                                updateStatusMutation.mutate({
+                                  id: b.id,
+                                  status: v as Booking["status"],
+                                  guestName: b.guest_name,
+                                  booking: b,
+                                });
+                              }
+                            }}
                           >
                             <SelectTrigger className="ml-auto h-8 w-[140px]">
                               <SelectValue />
@@ -1136,6 +1218,60 @@ export default function Bookings() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+      {/* ── Cancellation modal ───────────────────────────────────────────── */}
+      <Dialog open={!!cancelTarget} onOpenChange={(open) => !open && setCancelTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Hủy booking</DialogTitle>
+            <DialogDescription>
+              {(cancelTarget?.booking.deposit_amount ?? 0) > 0
+                ? `Booking có tiền cọc ${fmt(cancelTarget!.booking.deposit_amount)}. Hoàn trả cho khách?`
+                : "Xác nhận hủy booking này?"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button
+              variant="ghost"
+              className="order-last sm:order-first"
+              onClick={() => setCancelTarget(null)}
+            >
+              Quay lại
+            </Button>
+            {(cancelTarget?.booking.deposit_amount ?? 0) > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  updateStatusMutation.mutate({
+                    id: cancelTarget!.id,
+                    status: "cancelled",
+                    booking: cancelTarget!.booking,
+                    refundDeposit: false,
+                  });
+                  setCancelTarget(null);
+                }}
+                disabled={updateStatusMutation.isPending}
+              >
+                Giữ cọc (không hoàn)
+              </Button>
+            )}
+            <Button
+              variant="destructive"
+              onClick={() => {
+                updateStatusMutation.mutate({
+                  id: cancelTarget!.id,
+                  status: "cancelled",
+                  booking: cancelTarget!.booking,
+                  refundDeposit: (cancelTarget!.booking.deposit_amount ?? 0) > 0 ? true : undefined,
+                });
+                setCancelTarget(null);
+              }}
+              disabled={updateStatusMutation.isPending}
+            >
+              {(cancelTarget?.booking.deposit_amount ?? 0) > 0 ? "Hoàn tiền cọc" : "Xác nhận hủy"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppLayout>

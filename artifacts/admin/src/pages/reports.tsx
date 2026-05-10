@@ -53,6 +53,7 @@ import {
   type Booking,
   type Expense,
   type Listing,
+  type Payment,
   type Revenue,
 } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
@@ -127,7 +128,7 @@ export default function Reports() {
   const dataQuery = useQuery({
     queryKey: ["reports", startStr, endStr],
     queryFn: async () => {
-      const [listings, bookings, revenues, expenses] = await Promise.all([
+      const [listings, bookings, revenues, expenses, payments] = await Promise.all([
         supabase.from("listings").select("*"),
         supabase.from("bookings").select("*"),
         supabase
@@ -140,6 +141,11 @@ export default function Reports() {
           .select("*")
           .gte("spent_at", startStr)
           .lte("spent_at", endStr),
+        supabase
+          .from("payments")
+          .select("*")
+          .gte("paid_at", `${startStr}T00:00:00`)
+          .lte("paid_at", `${endStr}T23:59:59`),
       ]);
       if (listings.error) throw listings.error;
       if (bookings.error) throw bookings.error;
@@ -150,6 +156,7 @@ export default function Reports() {
         bookings: (bookings.data ?? []) as Booking[],
         revenues: (revenues.data ?? []) as Revenue[],
         expenses: (expenses.data ?? []) as Expense[],
+        payments: (payments.data ?? []) as Payment[],
       };
     },
   });
@@ -171,6 +178,52 @@ export default function Reports() {
         (expCategoryFilter === "all" || e.category === expCategoryFilter)
     );
   }, [dataQuery.data, listingFilter, expCategoryFilter]);
+
+  const filteredPayments = useMemo(() => {
+    if (!dataQuery.data) return [];
+    return (dataQuery.data.payments ?? []).filter(
+      (p) => listingFilter === "all" || p.listing_id === listingFilter
+    );
+  }, [dataQuery.data, listingFilter]);
+
+  // ── Monthly cashflow trend (actual cash in/out from payments table) ────────
+  const cashflow = useMemo(() => {
+    const months: Date[] = [];
+    let m = startOfMonth(startDate);
+    const endMonth = startOfMonth(endDate);
+    while (m <= endMonth && months.length < 12) {
+      months.push(m);
+      m = addMonths(m, 1);
+    }
+    if (months.length === 0) months.push(startOfMonth(startDate));
+
+    return months.map((mo) => {
+      const sameMonth = (d: string) => {
+        const date = new Date(d);
+        return (
+          date.getFullYear() === mo.getFullYear() &&
+          date.getMonth() === mo.getMonth()
+        );
+      };
+      const cash_in = filteredPayments
+        .filter(
+          (p) =>
+            p.status === "paid" &&
+            (p.payment_type === "deposit" || p.payment_type === "balance") &&
+            sameMonth(p.paid_at)
+        )
+        .reduce((s, p) => s + Number(p.amount), 0);
+      const refunds = filteredPayments
+        .filter((p) => p.payment_type === "refund" && sameMonth(p.paid_at))
+        .reduce((s, p) => s + Number(p.amount), 0);
+      return {
+        label: format(mo, months.length > 6 ? "MMM yy" : "MMM"),
+        cash_in,
+        refunds,
+        net: cash_in - refunds,
+      };
+    });
+  }, [filteredPayments, startDate, endDate]);
 
   // ── Step 1: Aggregate revenues by listing (Map — no cross-product) ─────────
   const revByListing = useMemo(() => {
@@ -315,6 +368,9 @@ export default function Reports() {
     if (!dataQuery.data) return null;
     const revenue = filteredRevenues.reduce((s, r) => s + Number(r.amount), 0);
     const expense = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
+    const cashIn = filteredPayments
+      .filter((p) => p.status === "paid" && (p.payment_type === "deposit" || p.payment_type === "balance"))
+      .reduce((s, p) => s + Number(p.amount), 0);
     const inRange = (d: string) =>
       isWithinInterval(parseISO(d), { start: startDate, end: endDate });
     const completed = dataQuery.data.bookings.filter(
@@ -323,8 +379,8 @@ export default function Reports() {
         inRange(b.check_out) &&
         (listingFilter === "all" || b.listing_id === listingFilter)
     ).length;
-    return { revenue, expense, profit: revenue - expense, completedBookings: completed };
-  }, [dataQuery.data, filteredRevenues, filteredExpenses, listingFilter, startDate, endDate]);
+    return { revenue, expense, profit: revenue - expense, completedBookings: completed, cashIn };
+  }, [dataQuery.data, filteredRevenues, filteredExpenses, filteredPayments, listingFilter, startDate, endDate]);
 
   // ── Drilldown data ─────────────────────────────────────────────────────────
   const drillData = useMemo((): DrillData | null => {
@@ -451,7 +507,7 @@ export default function Reports() {
       ) : (
         <>
           {/* ── KPI cards ───────────────────────────────────────────────── */}
-          <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <KpiCard label={t.reports.totalRevenue} value={fmt(summary.revenue)} />
             <KpiCard label={t.reports.totalExpenses} value={fmt(summary.expense)} />
             <KpiCard
@@ -459,6 +515,7 @@ export default function Reports() {
               value={fmt(summary.profit)}
               accent={summary.profit >= 0 ? "positive" : "negative"}
             />
+            <KpiCard label="Tiền thực thu" value={fmt(summary.cashIn)} accent="positive" />
             <KpiCard
               label={t.bookings.title}
               value={summary.completedBookings.toString()}
@@ -562,6 +619,57 @@ export default function Reports() {
               </CardContent>
             </Card>
           </div>
+
+          {/* ── Cashflow chart ───────────────────────────────────────────── */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-base">Dòng tiền thực tế (Cashflow)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={cashflow}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="label"
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={12}
+                    />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                      }}
+                    />
+                    <Legend />
+                    <Bar
+                      dataKey="cash_in"
+                      fill={CHART_COLORS[1]}
+                      name="Tiền vào (cọc + thanh toán)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="refunds"
+                      fill={CHART_COLORS[5]}
+                      name="Hoàn tiền"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="net"
+                      fill={CHART_COLORS[3]}
+                      name="Net cashflow"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* ── Listing financial report table ───────────────────────────── */}
           <Card className="mb-6">
