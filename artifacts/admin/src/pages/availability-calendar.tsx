@@ -1378,7 +1378,25 @@ export default function AvailabilityCalendar() {
         }
 
       } else if (status === "completed" && booking) {
-        // completed → balance payment + recognise full booking_revenue
+        // completed → upsert deposit + balance payment + recognise full booking_revenue
+        if ((booking.deposit_amount ?? 0) > 0) {
+          await supabase.from("payments").delete()
+            .eq("booking_id", id).eq("payment_type", "deposit");
+          const { error: depErr } = await supabase.from("payments").insert({
+            booking_id: id,
+            listing_id: booking.listing_id,
+            payment_type: "deposit",
+            amount: booking.deposit_amount,
+            paid_at: booking.deposit_paid_at
+              ? new Date(`${booking.deposit_paid_at}T00:00:00`).toISOString()
+              : _todayISO,
+            status: "paid",
+            note: booking.deposit_note
+              ? `Deposit - ${booking.guest_name}: ${booking.deposit_note}`
+              : `Deposit - ${booking.guest_name}`,
+          });
+          if (depErr) paymentError = depErr;
+        }
         const balanceAmount = (booking.total_amount ?? 0) - (booking.deposit_amount ?? 0);
         if (balanceAmount > 0) {
           await supabase.from("payments").delete()
