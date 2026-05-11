@@ -374,29 +374,36 @@ export interface Employee {
 export interface ChatGroup {
   id: string;
   name: string;
+  description: string | null;
   created_by: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ChatGroupMember {
+  id: string;
   group_id: string;
   user_id: string;
   joined_at: string;
 }
 
-export interface ChatMessage {
+export interface ChatTopic {
   id: string;
   group_id: string;
+  title: string;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  topic_id: string;
   sender_id: string;
   content: string;
   created_at: string;
-  sender?: Pick<UserProfile, "id" | "full_name" | "email">;
-}
-
-export interface ChatMessageRead {
-  message_id: string;
-  user_id: string;
-  read_at: string;
+  updated_at: string;
 }
 
 // ---- Activity Log types ----

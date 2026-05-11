@@ -1,0 +1,93 @@
+Build company chat system with groups and topics.
+
+Goal:
+Develop the Chat module into an internal company communication system.
+
+Core requirements:
+
+1. Company members list
+- On Chat page, show all active company users/employees who have login accounts.
+- Source should join profiles + employees.
+- Show name, role, email, status.
+- Anyone with an active account can see members.
+
+2. Chat groups
+Any active logged-in user can create a chat group.
+
+Group fields:
+- group name
+- description
+- created_by
+- members
+
+Group behavior:
+- creator can add members from company member list
+- admin/manager can manage all groups
+- normal users can manage groups they created
+- group members can see only groups they belong to
+
+3. Topics inside group
+Inside each chat group, user can create multiple topics/channels.
+
+Example:
+Group: Housekeeping Team
+Topics:
+- General
+- Urgent Cleaning
+- Supplies
+- Guest Issues
+
+Topic fields:
+- topic title
+- topic description
+- created_by
+- group_id
+
+4. Messages
+Inside each topic:
+- send text messages
+- show sender name/avatar
+- timestamp
+- realtime updates if possible
+- message list ordered by created_at
+
+5. Permissions
+- authenticated active users can create groups
+- group creator can add/remove members
+- admin/manager can add/remove members in any group
+- only group members can read group topics/messages
+- only topic/group members can send messages
+
+6. Database
+Show SQL migration before applying.
+
+Suggested tables:
+chat_groups
+chat_group_members
+chat_topics
+chat_messages
+
+7. UI
+Chat page layout:
+- left sidebar: groups list
+- middle: topics list for selected group
+- main: messages thread
+- right panel: members list
+
+8. Features
+- create group modal
+- add members modal
+- create topic modal
+- search members
+- search groups
+- unread count if easy
+- empty states
+
+9. Activity log
+Log:
+- chat_group_created
+- chat_member_added
+- chat_topic_created
+- chat_message_sent
+
+10. Do not break existing app navigation.
