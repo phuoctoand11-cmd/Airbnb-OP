@@ -14,6 +14,8 @@ export const ROLE_PERMISSIONS = {
   manageHR: ["admin", "manager"] as AppRole[],
   viewDashboard: ["admin", "manager"] as AppRole[],
   viewActivityLogs: ["admin", "manager"] as AppRole[],
+  viewPerformance: ["admin", "manager", "cleaner", "cleaningstaff"] as AppRole[],
+  managePerformance: ["admin", "manager"] as AppRole[],
 } as const;
 
 export type Permission = keyof typeof ROLE_PERMISSIONS;

@@ -406,6 +406,48 @@ export interface ChatMessage {
   updated_at: string;
 }
 
+// ---- Performance types ----
+
+export interface PerformanceLog {
+  id: string;
+  employee_id: string;
+  task_id: string | null;
+  booking_id: string | null;
+  score_change: number;
+  reason: string;
+  category: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface PerformanceScore {
+  id: string;
+  employee_id: string;
+  month: number;
+  year: number;
+  total_score: number;
+  bonus_amount: number;
+  penalty_amount: number;
+  rank: number | null;
+  warning_level: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MonthlyReview {
+  id: string;
+  employee_id: string;
+  month: number;
+  year: number;
+  strengths: string | null;
+  weaknesses: string | null;
+  improvement_plan: string | null;
+  manager_comment: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 // ---- Activity Log types ----
 
 export interface ActivityLog {

@@ -1,0 +1,357 @@
+Implement employee performance scoring system focused on cleaning staff.
+
+Goal:
+Build a soft KPI / scoring / bonus-warning system.
+This is NOT a hard punishment system.
+Main purpose:
+- motivate staff
+- improve service quality
+- track reliability
+- create fair bonus system
+
+====================================================
+1. CREATE PERFORMANCE MODULE
+====================================================
+
+Create new sidebar page:
+
+"Hiệu suất nhân viên"
+(Employee Performance)
+
+Visible for:
+- admin
+- manager
+
+Cleaning staff can only view their own scores.
+
+====================================================
+2. DATABASE DESIGN
+====================================================
+
+Create tables:
+
+employee_performance_scores
+employee_performance_logs
+employee_monthly_reviews
+
+----------------------------------------------------
+employee_performance_scores
+----------------------------------------------------
+
+Fields:
+- id
+- employee_id
+- month
+- year
+- total_score (default 100)
+- bonus_amount
+- penalty_amount
+- rank
+- warning_level
+- notes
+- created_at
+- updated_at
+
+----------------------------------------------------
+employee_performance_logs
+----------------------------------------------------
+
+Stores every point change.
+
+Fields:
+- id
+- employee_id
+- task_id nullable
+- booking_id nullable
+- score_change
+- reason
+- category
+- created_by
+- created_at
+
+Categories examples:
+- checklist
+- lateness
+- cleanliness
+- customer_feedback
+- teamwork
+- emergency_support
+- violation
+- bonus
+
+----------------------------------------------------
+employee_monthly_reviews
+----------------------------------------------------
+
+Fields:
+- id
+- employee_id
+- month
+- year
+- strengths
+- weaknesses
+- improvement_plan
+- manager_comment
+- created_by
+- created_at
+
+====================================================
+3. DEFAULT SCORING SYSTEM
+====================================================
+
+Each employee starts every month with:
+
+100 points
+
+----------------------------------------------------
+Positive points
+----------------------------------------------------
+
++2
+- completed checklist perfectly
+
++3
+- uploaded before/after photos properly
+
++5
+- helped urgent task
+
++5
+- no complaints for 7 days
+
++5
+- customer compliment
+
++10
+- excellent VIP room quality
+
+----------------------------------------------------
+Negative points
+----------------------------------------------------
+
+-2
+- forgot photo
+
+-2
+- minor lateness
+
+-5
+- incomplete checklist
+
+-5
+- forgot completion confirmation
+
+-10
+- room quality issue
+
+-15
+- guest complaint
+
+-20
+- absent without notice
+
+-30
+- serious violation
+
+====================================================
+4. WARNING / PENALTY LOGIC
+====================================================
+
+IMPORTANT:
+Do NOT punish immediately for every mistake.
+
+Only apply soft penalty when score falls below thresholds.
+
+----------------------------------------------------
+Thresholds
+----------------------------------------------------
+
+90-100:
+- Excellent
+
+80-89:
+- Good
+
+70-79:
+- Normal
+
+60-69:
+- Light warning
+
+50-59:
+- Strong warning
+
+40-49:
+- Performance deduction
+
+Below 40:
+- Review required
+
+----------------------------------------------------
+Penalty suggestion
+----------------------------------------------------
+
+Below 50:
+- small KPI deduction
+
+Below 40:
+- manager review
+
+Below 30:
+- suspension consideration
+
+IMPORTANT:
+This should be configurable from settings.
+
+====================================================
+5. BONUS SYSTEM
+====================================================
+
+Create monthly bonus calculation.
+
+Suggested default:
+
+90-100:
++500k
+
+80-89:
++300k
+
+70-79:
++100k
+
+Below 70:
+0
+
+Bonus values configurable in settings.
+
+====================================================
+6. AUTO SCORE INTEGRATION
+====================================================
+
+Integrate with task system.
+
+When cleaner completes task:
+- can add positive score automatically
+
+When manager marks task failed/problem:
+- can deduct points
+
+When booking receives complaint:
+- deduct score
+
+When cleaner supports emergency cleaning:
+- bonus score
+
+====================================================
+7. PERFORMANCE DASHBOARD
+====================================================
+
+Create dashboard cards:
+
+- Average employee score
+- Best cleaner of month
+- Employees under warning
+- Total bonuses
+- Total deductions
+
+Charts:
+- score trend by month
+- top employees
+- score distribution
+
+====================================================
+8. EMPLOYEE PROFILE SECTION
+====================================================
+
+Each employee profile should show:
+
+- current score
+- monthly trend
+- strengths
+- weaknesses
+- recent logs
+- warnings
+- bonus history
+
+====================================================
+9. MANUAL ADJUSTMENT
+====================================================
+
+Admin/manager can:
+- add score
+- deduct score
+- add reason
+- attach related task/booking
+
+Every adjustment must create audit log.
+
+====================================================
+10. UI STYLE
+====================================================
+
+Use positive wording.
+
+Do NOT display:
+"Punishment"
+
+Use:
+- Performance score
+- Improvement needed
+- Warning level
+- Quality review
+
+Color logic:
+Green = excellent
+Yellow = warning
+Red = serious issue
+
+====================================================
+11. MONTHLY RESET
+====================================================
+
+At start of each month:
+- create new score row
+- reset to 100
+- keep historical data
+
+====================================================
+12. SETTINGS PAGE
+====================================================
+
+Create settings section for:
+- score rules
+- bonus rules
+- warning thresholds
+- deduction values
+
+====================================================
+13. PERMISSIONS
+====================================================
+
+Admin:
+full access
+
+Manager:
+manage team scores
+
+Cleaner:
+view own scores only
+
+Sales:
+no access
+
+====================================================
+14. IMPORTANT
+====================================================
+
+Do not break existing:
+- tasks
+- bookings
+- reports
+- auth
+- HR pages
+
+Use Supabase RLS correctly.
+Generate all SQL migrations automatically.
+After coding, provide SQL migration clearly.

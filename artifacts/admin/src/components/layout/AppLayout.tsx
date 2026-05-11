@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   AlertTriangle,
+  BarChart2,
   Building2,
   CalendarDays,
   CalendarRange,
@@ -71,6 +72,7 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
     { href: "/hr", label: t.nav.hr, icon: Users, permission: "viewHR" },
     { href: "/revenues", label: t.nav.revenues, icon: CreditCard, permission: "manageFinance" },
     { href: "/expenses", label: t.nav.expenses, icon: Receipt, permission: "manageFinance" },
+    { href: "/performance", label: t.nav.performance, icon: BarChart2, permission: "viewPerformance" },
     { href: "/chat", label: t.nav.chat, icon: MessageSquare },
     { href: "/activity-logs", label: t.nav.activityLogs, icon: History, permission: "viewActivityLogs" },
     { href: "/settings/users", label: t.nav.team, icon: Settings, permission: "manageUsers" },
