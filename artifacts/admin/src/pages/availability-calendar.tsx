@@ -1361,9 +1361,8 @@ export default function AvailabilityCalendar() {
       } else if (status === "confirmed") {
         // confirmed → record deposit payment only (no revenue recognised yet)
         if (booking && (booking.deposit_amount ?? 0) > 0) {
-          await supabase.from("payments").delete()
-            .eq("booking_id", id).eq("payment_type", "deposit");
-          const { error: depErr } = await supabase.from("payments").insert({
+          console.log("[PAYMENT_SYNC_ATTEMPT]", { booking_id: id, payment_type: "deposit", amount: booking.deposit_amount });
+          const { error: depErr } = await supabase.from("payments").upsert({
             booking_id: id,
             listing_id: booking.listing_id,
             payment_type: "deposit",
@@ -1372,17 +1371,21 @@ export default function AvailabilityCalendar() {
               ? new Date(`${booking.deposit_paid_at}T00:00:00`).toISOString()
               : _todayISO,
             status: "paid",
-            note: `Deposit - ${booking.guest_name}`,
-          });
-          if (depErr) paymentError = depErr;
+            note: booking.deposit_note ?? null,
+          }, { onConflict: "booking_id,payment_type" });
+          if (depErr) {
+            console.error("[PAYMENT_SYNC_ERROR]", depErr);
+            paymentError = depErr;
+          } else {
+            console.log("[PAYMENT_SYNC_SUCCESS]", { booking_id: id, payment_type: "deposit" });
+          }
         }
 
       } else if (status === "completed" && booking) {
         // completed → upsert deposit + balance payment + recognise full booking_revenue
         if ((booking.deposit_amount ?? 0) > 0) {
-          await supabase.from("payments").delete()
-            .eq("booking_id", id).eq("payment_type", "deposit");
-          const { error: depErr } = await supabase.from("payments").insert({
+          console.log("[PAYMENT_SYNC_ATTEMPT]", { booking_id: id, payment_type: "deposit", amount: booking.deposit_amount });
+          const { error: depErr } = await supabase.from("payments").upsert({
             booking_id: id,
             listing_id: booking.listing_id,
             payment_type: "deposit",
@@ -1391,11 +1394,14 @@ export default function AvailabilityCalendar() {
               ? new Date(`${booking.deposit_paid_at}T00:00:00`).toISOString()
               : _todayISO,
             status: "paid",
-            note: booking.deposit_note
-              ? `Deposit - ${booking.guest_name}: ${booking.deposit_note}`
-              : `Deposit - ${booking.guest_name}`,
-          });
-          if (depErr) paymentError = depErr;
+            note: booking.deposit_note ?? null,
+          }, { onConflict: "booking_id,payment_type" });
+          if (depErr) {
+            console.error("[PAYMENT_SYNC_ERROR]", depErr);
+            paymentError = depErr;
+          } else {
+            console.log("[PAYMENT_SYNC_SUCCESS]", { booking_id: id, payment_type: "deposit" });
+          }
         }
         const balanceAmount = (booking.total_amount ?? 0) - (booking.deposit_amount ?? 0);
         if (balanceAmount > 0) {
