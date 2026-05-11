@@ -583,13 +583,12 @@ export default function Bookings() {
         if (revErr) revenueError = revErr;
 
       } else if (status === "cancelled" && booking) {
-        // Delete any recognised booking_revenue
-        await supabase.from("revenues").delete()
-          .eq("booking_id", id).eq("category", "booking_revenue");
+        // Delete ALL revenues for this booking (booking_revenue + any stale cancellation_revenue)
+        await supabase.from("revenues").delete().eq("booking_id", id);
 
         if ((booking.deposit_amount ?? 0) > 0) {
           if (refundDeposit) {
-            // Case A: refund deposit — mark deposit payment refunded + insert refund record
+            // Case A: full refund — cashflow only, NO revenue recognised
             await supabase.from("payments").update({ status: "refunded" })
               .eq("booking_id", id).eq("payment_type", "deposit");
             const { error: refErr } = await supabase.from("payments").insert({
@@ -603,9 +602,7 @@ export default function Bookings() {
             });
             if (refErr) paymentError = refErr;
           } else {
-            // Case B: keep deposit → record as cancellation_revenue
-            await supabase.from("revenues").delete()
-              .eq("booking_id", id).eq("category", "cancellation_revenue");
+            // Case B: deposit kept → recognise deposit_amount as cancellation_revenue
             const { error: canRevErr } = await supabase.from("revenues").insert({
               booking_id: id,
               listing_id: booking.listing_id,
@@ -642,6 +639,8 @@ export default function Bookings() {
           old_status: booking?.status ?? null,
           new_status: status,
           refund_deposit: refundDeposit ?? null,
+          refund_amount: status === "cancelled" && refundDeposit ? (booking?.deposit_amount ?? 0) : null,
+          kept_amount: status === "cancelled" && refundDeposit === false && (booking?.deposit_amount ?? 0) > 0 ? (booking?.deposit_amount ?? 0) : null,
           total_amount: booking?.total_amount ?? null,
           changed_by: profile?.email ?? null,
           changed_at: new Date().toISOString(),
