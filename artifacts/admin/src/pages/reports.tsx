@@ -25,11 +25,20 @@ import {
   startOfMonth,
   subDays,
 } from "date-fns";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, FileSpreadsheet, FileText } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -56,8 +65,17 @@ import {
   type Payment,
   type Revenue,
 } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/i18n";
 import { useCurrency } from "@/lib/currency";
+import {
+  exportExcel,
+  exportCSVMain,
+  exportCSVRevenue,
+  exportCSVExpense,
+  exportCSVCashflow,
+  type ExportData,
+} from "@/lib/export-reports";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -115,6 +133,10 @@ interface DrillData {
 export default function Reports() {
   const { t } = useI18n();
   const { fmt } = useCurrency();
+  const { role } = useAuth();
+
+  const canExport =
+    role === "admin" || role === "manager" || role === "accountant";
 
   // ── Filter state ───────────────────────────────────────────────────────────
   const [startDate, setStartDate] = useState<Date>(() => subDays(new Date(), 90));
@@ -434,6 +456,31 @@ export default function Reports() {
     };
   }, [drillListingId, dataQuery.data, startDate, endDate]);
 
+  // ── Export payload (respects all active filters) ───────────────────────────
+  const exportPayload = useMemo((): ExportData | null => {
+    if (!dataQuery.data || !summary) return null;
+    return {
+      startDate,
+      endDate,
+      listings: dataQuery.data.listings,
+      bookings: dataQuery.data.bookings,
+      revenues: filteredRevenues,
+      expenses: filteredExpenses,
+      payments: filteredPayments,
+      listingPnL,
+      summary,
+    };
+  }, [
+    dataQuery.data,
+    summary,
+    startDate,
+    endDate,
+    filteredRevenues,
+    filteredExpenses,
+    filteredPayments,
+    listingPnL,
+  ]);
+
   // ── Helpers ────────────────────────────────────────────────────────────────
   const listings = dataQuery.data?.listings ?? [];
   const hasContentFilters = listingFilter !== "all" || expCategoryFilter !== "all";
@@ -502,6 +549,63 @@ export default function Reports() {
           >
             {t.reports.clearFilters}
           </button>
+        )}
+
+        {/* ── Export buttons (admin / manager / accountant only) ── */}
+        {canExport && (
+          <div className="ml-auto flex items-center gap-2">
+            {/* Excel export */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!exportPayload}
+              onClick={() => exportPayload && exportExcel(exportPayload)}
+              className="gap-1.5"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-green-600" />
+              Excel
+            </Button>
+
+            {/* CSV export dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!exportPayload}
+                  className="gap-1.5"
+                >
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  CSV
+                  <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel>Xuất file CSV</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => exportPayload && exportCSVMain(exportPayload)}
+                >
+                  Báo cáo theo căn hộ
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => exportPayload && exportCSVRevenue(exportPayload)}
+                >
+                  Chi tiết doanh thu
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => exportPayload && exportCSVExpense(exportPayload)}
+                >
+                  Chi tiết chi phí
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => exportPayload && exportCSVCashflow(exportPayload)}
+                >
+                  Dòng tiền
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
       </div>
 
