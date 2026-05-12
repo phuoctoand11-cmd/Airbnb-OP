@@ -75,16 +75,28 @@ function isCleaningEmployee(emp: Employee): boolean {
   return CLEANING_ROLES.some(cr => r === cr || r.includes(cr));
 }
 
+const SCORE_MAX = 110;
+const SCORE_MIN = 0;
+
 function computeScore(logs: PerformanceLog[]): number {
-  return Math.max(0, 100 + logs.reduce((s, l) => s + l.score_change, 0));
+  const raw = 100 + logs.reduce((s, l) => s + l.score_change, 0);
+  return Math.min(SCORE_MAX, Math.max(SCORE_MIN, raw));
 }
 
 function getBonusAmount(score: number, tiers: BonusTier[]): number {
+  if (score < 70) return 0;
   const sorted = [...tiers].sort((a, b) => b.minScore - a.minScore);
   for (const tier of sorted) {
     if (score >= tier.minScore) return tier.amount;
   }
   return 0;
+}
+
+function getPenaltyAmount(score: number): number {
+  if (score >= 60) return 0;
+  if (score >= 50) return 100000;
+  if (score >= 40) return 200000;
+  return 300000;
 }
 
 const SETTINGS_KEY = "airbnb-ops-perf-bonus-tiers";
@@ -167,11 +179,24 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployee
   const handleSubmit = async () => {
     if (!valid) return;
     setSaving(true);
-    try {
-      const change = Number(scoreChange);
-      const logStart = new Date(year, month - 1, 1).toISOString();
-      const logEnd = new Date(year, month, 0, 23, 59, 59).toISOString();
 
+    const change = Number(scoreChange);
+    const logStart = new Date(year, month - 1, 1).toISOString();
+    const logEnd = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
+
+    // eslint-disable-next-line no-console
+    console.info("[PERFORMANCE_SAVE_ATTEMPT]", {
+      employeeId,
+      category,
+      change,
+      reason: reason.trim(),
+      month,
+      year,
+      userId: session?.user?.id ?? null,
+    });
+
+    try {
+      // 1. Insert log row
       const { error: logErr } = await supabase
         .from("employee_performance_logs")
         .insert({
@@ -181,31 +206,97 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployee
           category,
           created_by: session?.user?.id ?? null,
         });
-      if (logErr) throw logErr;
 
-      const { data: allLogs } = await supabase
+      if (logErr) {
+        // eslint-disable-next-line no-console
+        console.error("[PERFORMANCE_SAVE_ERROR] log insert failed", {
+          code: logErr.code,
+          message: logErr.message,
+          details: logErr.details,
+          hint: logErr.hint,
+        });
+        throw logErr;
+      }
+
+      // 2. Re-fetch all logs for this employee in this month to recompute total
+      const { data: allLogs, error: fetchErr } = await supabase
         .from("employee_performance_logs")
         .select("score_change")
         .eq("employee_id", employeeId)
         .gte("created_at", logStart)
         .lte("created_at", logEnd);
 
-      const total = Math.max(0, 100 + (allLogs ?? []).reduce((s: number, l: { score_change: number }) => s + l.score_change, 0));
-      const info = getWarningInfo(total);
+      if (fetchErr) {
+        // eslint-disable-next-line no-console
+        console.error("[PERFORMANCE_SAVE_ERROR] log refetch failed", {
+          code: fetchErr.code,
+          message: fetchErr.message,
+        });
+        throw fetchErr;
+      }
 
-      await supabase
+      // 3. Compute capped total, bonus, penalty, warning level
+      const rawTotal = 100 + (allLogs ?? []).reduce((s: number, l: { score_change: number }) => s + l.score_change, 0);
+      const total = Math.min(SCORE_MAX, Math.max(SCORE_MIN, rawTotal));
+      const info = getWarningInfo(total);
+      const bonusAmt = getBonusAmount(total, DEFAULT_BONUS_TIERS);
+      const penaltyAmt = getPenaltyAmount(total);
+
+      // 4. Upsert score row
+      const { error: upsertErr } = await supabase
         .from("employee_performance_scores")
         .upsert(
-          { employee_id: employeeId, month, year, total_score: total, warning_level: info.level },
+          {
+            employee_id: employeeId,
+            month,
+            year,
+            total_score: total,
+            warning_level: info.level,
+            bonus_amount: bonusAmt,
+            penalty_amount: penaltyAmt,
+          },
           { onConflict: "employee_id,month,year" }
         );
+
+      if (upsertErr) {
+        // eslint-disable-next-line no-console
+        console.error("[PERFORMANCE_SAVE_ERROR] score upsert failed", {
+          code: upsertErr.code,
+          message: upsertErr.message,
+          details: upsertErr.details,
+          hint: upsertErr.hint,
+        });
+        // Non-fatal: log row already saved, just warn
+        console.warn("[PERFORMANCE_SAVE_ERROR] score row not updated but log was saved");
+      }
+
+      // eslint-disable-next-line no-console
+      console.info("[PERFORMANCE_SAVE_SUCCESS]", {
+        employeeId,
+        month,
+        year,
+        total,
+        warningLevel: info.level,
+        bonusAmt,
+        penaltyAmt,
+      });
 
       toast({ title: t.performance.scoreAdded });
       qc.invalidateQueries({ queryKey: ["perf_logs"] });
       qc.invalidateQueries({ queryKey: ["perf_scores"] });
       handleOpen(false);
-    } catch {
-      toast({ title: t.performance.couldNotSave, variant: "destructive" });
+    } catch (err: unknown) {
+      const e = err as { message?: string; code?: string };
+      // eslint-disable-next-line no-console
+      console.error("[PERFORMANCE_SAVE_ERROR]", {
+        message: e?.message,
+        code: e?.code,
+        raw: err,
+      });
+      const detail = e?.code === "42P01"
+        ? " (Bảng chưa tồn tại — hãy chạy migration SQL)"
+        : e?.message ? `: ${e.message}` : "";
+      toast({ title: `${t.performance.couldNotSave}${detail}`, variant: "destructive" });
     } finally {
       setSaving(false);
     }
