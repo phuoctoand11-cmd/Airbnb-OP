@@ -1,0 +1,98 @@
+Add admin correction controls for employee performance evaluations.
+
+Goal:
+Manager can create performance score adjustments.
+Admin can review, edit, delete/void, or add correction adjustments.
+
+Important:
+Do NOT hard-delete history silently.
+Performance scoring affects bonus/penalty, so all admin changes must be auditable.
+
+Requirements:
+
+1. Permissions
+- manager can create score logs
+- admin can create, edit, void/delete score logs
+- admin can add positive or negative correction
+- manager cannot edit/delete admin corrections
+- cleaner can only view own score
+
+2. Update employee_performance_logs
+Support:
+- edited_by
+- edited_at
+- voided_by
+- voided_at
+- is_voided boolean default false
+- admin_note text
+
+If columns do not exist, show SQL migration.
+
+3. Editing behavior
+When admin edits a log:
+- update score_change
+- update reason/category if needed
+- set edited_by = current user
+- set edited_at = now()
+- recalculate monthly employee score
+
+4. Delete behavior
+Use soft delete:
+- set is_voided = true
+- set voided_by = current user
+- set voided_at = now()
+- do not count voided logs in total score
+- show voided logs in audit/history with label "Đã hủy hiệu lực"
+
+5. Correction behavior
+Admin can add adjustment:
+- + points
+- - points
+- reason required
+- category = admin_correction or selected category
+- recalculate score after save
+
+6. Recalculation logic
+Monthly score = 100 + sum(score_change of non-voided logs)
+Cap maximum at 110.
+Minimum display 0.
+Then recalculate:
+- rank
+- warning_level
+- bonus_amount
+- penalty_amount
+- final_payout
+
+7. UI
+In "Nhật ký điểm" tab:
+For each log show:
+- employee
+- score_change
+- category
+- reason
+- created_by
+- created_at
+- edited_by/edited_at if edited
+- voided status if voided
+
+For admin only show action buttons:
+- Sửa
+- Hủy hiệu lực
+- Điều chỉnh bù
+
+8. Activity log
+Write activity_logs for:
+- performance_log_created
+- performance_log_edited
+- performance_log_voided
+- performance_admin_correction
+
+Metadata should include:
+- employee name
+- old score_change
+- new score_change
+- reason
+- admin_note
+
+9. Do not break existing performance page.
+10. Only apply performance scoring to cleaning employees.

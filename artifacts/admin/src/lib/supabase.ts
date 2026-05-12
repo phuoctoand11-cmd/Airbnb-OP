@@ -416,6 +416,12 @@ export interface PerformanceLog {
   score_change: number;
   reason: string;
   category: string;
+  admin_note: string | null;
+  is_voided: boolean;
+  voided_by: string | null;
+  voided_at: string | null;
+  edited_by: string | null;
+  edited_at: string | null;
   created_by: string | null;
   created_at: string;
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -7,7 +7,7 @@ import {
 } from "recharts";
 import {
   Award, TrendingUp, AlertTriangle, Users, Plus, ChevronLeft, ChevronRight,
-  Copy, Check, RotateCcw, Star, Minus,
+  Copy, Check, RotateCcw, Star, Minus, Pencil, Ban,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -18,6 +18,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -79,7 +83,7 @@ const SCORE_MAX = 110;
 const SCORE_MIN = 0;
 
 function computeScore(logs: PerformanceLog[]): number {
-  const raw = 100 + logs.reduce((s, l) => s + l.score_change, 0);
+  const raw = 100 + logs.filter(l => !l.is_voided).reduce((s, l) => s + l.score_change, 0);
   return Math.min(SCORE_MAX, Math.max(SCORE_MIN, raw));
 }
 
@@ -121,6 +125,54 @@ function useBonusTiers() {
   return { tiers, setTiers, reset };
 }
 
+// ── Shared async helpers ─────────────────────────────────────────────────────
+
+async function recomputeMonthlyScore(
+  employeeId: string, month: number, year: number, tiers: BonusTier[],
+) {
+  const monthStart = new Date(year, month - 1, 1).toISOString();
+  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
+
+  const { data: allLogs } = await supabase
+    .from("employee_performance_logs")
+    .select("score_change, is_voided")
+    .eq("employee_id", employeeId)
+    .gte("created_at", monthStart)
+    .lte("created_at", monthEnd);
+
+  const rawTotal = 100 + (allLogs ?? [])
+    .filter((l: { is_voided: boolean }) => !l.is_voided)
+    .reduce((s: number, l: { score_change: number }) => s + l.score_change, 0);
+  const total = Math.min(SCORE_MAX, Math.max(SCORE_MIN, rawTotal));
+  const info = getWarningInfo(total);
+  const bonusAmt = getBonusAmount(total, tiers);
+  const penaltyAmt = getPenaltyAmount(total);
+
+  await supabase.from("employee_performance_scores").upsert(
+    { employee_id: employeeId, month, year, total_score: total, warning_level: info.level, bonus_amount: bonusAmt, penalty_amount: penaltyAmt },
+    { onConflict: "employee_id,month,year" },
+  );
+
+  return { total, info, bonusAmt, penaltyAmt };
+}
+
+async function writeActivityLog(
+  userId: string | null | undefined,
+  action: string,
+  entityId: string,
+  metadata: Record<string, unknown>,
+) {
+  try {
+    await supabase.from("activity_logs").insert({
+      user_id: userId ?? null,
+      action,
+      entity_type: "performance_log",
+      entity_id: entityId,
+      metadata,
+    });
+  } catch { /* non-fatal */ }
+}
+
 // ── Score pill ───────────────────────────────────────────────────────────────
 
 function ScorePill({ score, large = false }: { score: number; large?: boolean }) {
@@ -150,10 +202,11 @@ interface AddScoreModalProps {
   employees: Employee[];
   month: number;
   year: number;
+  tiers: BonusTier[];
   preEmployeeId?: string;
 }
 
-function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployeeId }: AddScoreModalProps) {
+function AddScoreModal({ open, onOpenChange, employees, month, year, tiers, preEmployeeId }: AddScoreModalProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const { session } = useAuth();
@@ -182,22 +235,14 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployee
     setSaving(true);
 
     const change = Number(scoreChange);
-    const logStart = new Date(year, month - 1, 1).toISOString();
-    const logEnd = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
 
     // eslint-disable-next-line no-console
     console.info("[PERFORMANCE_SAVE_ATTEMPT]", {
-      employeeId,
-      category,
-      change,
-      reason: reason.trim(),
-      month,
-      year,
+      employeeId, category, change, reason: reason.trim(), month, year,
       userId: session?.user?.id ?? null,
     });
 
     try {
-      // 1. Insert log row
       const { error: logErr } = await supabase
         .from("employee_performance_logs")
         .insert({
@@ -206,81 +251,23 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployee
           reason: reason.trim(),
           category,
           created_by: session?.user?.id ?? null,
+          is_voided: false,
         });
 
       if (logErr) {
         // eslint-disable-next-line no-console
-        console.error("[PERFORMANCE_SAVE_ERROR] log insert failed", {
-          code: logErr.code,
-          message: logErr.message,
-          details: logErr.details,
-          hint: logErr.hint,
-        });
+        console.error("[PERFORMANCE_SAVE_ERROR] log insert failed", logErr);
         throw logErr;
       }
 
-      // 2. Re-fetch all logs for this employee in this month to recompute total
-      const { data: allLogs, error: fetchErr } = await supabase
-        .from("employee_performance_logs")
-        .select("score_change")
-        .eq("employee_id", employeeId)
-        .gte("created_at", logStart)
-        .lte("created_at", logEnd);
+      const { total, info, bonusAmt, penaltyAmt } = await recomputeMonthlyScore(employeeId, month, year, tiers);
 
-      if (fetchErr) {
-        // eslint-disable-next-line no-console
-        console.error("[PERFORMANCE_SAVE_ERROR] log refetch failed", {
-          code: fetchErr.code,
-          message: fetchErr.message,
-        });
-        throw fetchErr;
-      }
-
-      // 3. Compute capped total, bonus, penalty, warning level
-      const rawTotal = 100 + (allLogs ?? []).reduce((s: number, l: { score_change: number }) => s + l.score_change, 0);
-      const total = Math.min(SCORE_MAX, Math.max(SCORE_MIN, rawTotal));
-      const info = getWarningInfo(total);
-      const bonusAmt = getBonusAmount(total, DEFAULT_BONUS_TIERS);
-      const penaltyAmt = getPenaltyAmount(total);
-
-      // 4. Upsert score row
-      const { error: upsertErr } = await supabase
-        .from("employee_performance_scores")
-        .upsert(
-          {
-            employee_id: employeeId,
-            month,
-            year,
-            total_score: total,
-            warning_level: info.level,
-            bonus_amount: bonusAmt,
-            penalty_amount: penaltyAmt,
-          },
-          { onConflict: "employee_id,month,year" }
-        );
-
-      if (upsertErr) {
-        // eslint-disable-next-line no-console
-        console.error("[PERFORMANCE_SAVE_ERROR] score upsert failed", {
-          code: upsertErr.code,
-          message: upsertErr.message,
-          details: upsertErr.details,
-          hint: upsertErr.hint,
-        });
-        // Non-fatal: log row already saved, just warn
-        console.warn("[PERFORMANCE_SAVE_ERROR] score row not updated but log was saved");
-      }
+      await writeActivityLog(session?.user?.id, "performance_log_added", employeeId, {
+        category, change, reason: reason.trim(), month, year,
+      });
 
       // eslint-disable-next-line no-console
-      console.info("[PERFORMANCE_SAVE_SUCCESS]", {
-        employeeId,
-        month,
-        year,
-        total,
-        warningLevel: info.level,
-        bonusAmt,
-        penaltyAmt,
-      });
+      console.info("[PERFORMANCE_SAVE_SUCCESS]", { employeeId, month, year, total, warningLevel: info.level, bonusAmt, penaltyAmt });
 
       toast({ title: t.performance.scoreAdded });
       qc.invalidateQueries({ queryKey: ["perf_logs"] });
@@ -289,11 +276,7 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployee
     } catch (err: unknown) {
       const e = err as { message?: string; code?: string };
       // eslint-disable-next-line no-console
-      console.error("[PERFORMANCE_SAVE_ERROR]", {
-        message: e?.message,
-        code: e?.code,
-        raw: err,
-      });
+      console.error("[PERFORMANCE_SAVE_ERROR]", { message: e?.message, code: e?.code, raw: err });
       const detail = (e?.code === "42P01" || e?.code === "PGRST205")
         ? " (Bảng chưa tồn tại — hãy chạy migration SQL trong Supabase)"
         : e?.message ? `: ${e.message}` : "";
@@ -389,6 +372,156 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployee
   );
 }
 
+// ── Edit Log Modal (admin only) ───────────────────────────────────────────────
+
+interface EditLogModalProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  log: PerformanceLog | null;
+  month: number;
+  year: number;
+  tiers: BonusTier[];
+}
+
+function EditLogModal({ open, onOpenChange, log, month, year, tiers }: EditLogModalProps) {
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const { session } = useAuth();
+  const qc = useQueryClient();
+
+  const [scoreChange, setScoreChange] = useState<string>("");
+  const [category, setCategory] = useState<Category | "">("");
+  const [reason, setReason] = useState("");
+  const [adminNote, setAdminNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (log) {
+      setScoreChange(String(log.score_change));
+      setCategory(log.category as Category);
+      setReason(log.reason);
+      setAdminNote(log.admin_note ?? "");
+    }
+  }, [log]);
+
+  const valid = category && scoreChange !== "" && !isNaN(Number(scoreChange)) && Number(scoreChange) !== 0 && reason.trim();
+
+  const handleSubmit = async () => {
+    if (!log || !valid) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("employee_performance_logs")
+        .update({
+          score_change: Number(scoreChange),
+          category,
+          reason: reason.trim(),
+          admin_note: adminNote.trim() || null,
+          edited_by: session?.user?.id ?? null,
+          edited_at: new Date().toISOString(),
+        })
+        .eq("id", log.id);
+
+      if (error) throw error;
+
+      await recomputeMonthlyScore(log.employee_id, month, year, tiers);
+
+      await writeActivityLog(session?.user?.id, "performance_log_edited", log.id, {
+        employee_id: log.employee_id,
+        old_score_change: log.score_change,
+        new_score_change: Number(scoreChange),
+        old_category: log.category,
+        new_category: category,
+        reason: reason.trim(),
+        month,
+        year,
+      });
+
+      toast({ title: t.performance.logEdited });
+      qc.invalidateQueries({ queryKey: ["perf_logs"] });
+      qc.invalidateQueries({ queryKey: ["perf_scores"] });
+      onOpenChange(false);
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      toast({ title: `${t.common.error}: ${e?.message ?? ""}`, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const catLabel = (c: string) => t.performance[`cat_${c}` as keyof typeof t.performance] as string || c;
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onOpenChange(false); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t.performance.editLog}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>{t.performance.category}</Label>
+            <Select value={category} onValueChange={v => setCategory(v as Category)}>
+              <SelectTrigger><SelectValue placeholder={t.performance.selectCategory} /></SelectTrigger>
+              <SelectContent>
+                {CATEGORIES.map(c => <SelectItem key={c} value={c}>{catLabel(c)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>{t.performance.scoreChange}</Label>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline"
+                className={Number(scoreChange) > 0 ? "border-emerald-500 text-emerald-700" : ""}
+                onClick={() => setScoreChange(v => v.startsWith("-") ? v.slice(1) : v)}>
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+              <Input
+                type="number"
+                value={scoreChange}
+                onChange={e => setScoreChange(e.target.value)}
+                className="text-center font-mono"
+              />
+              <Button type="button" size="sm" variant="outline"
+                className={Number(scoreChange) < 0 ? "border-red-500 text-red-700" : ""}
+                onClick={() => setScoreChange(v => !v.startsWith("-") ? `-${v || ""}` : v)}>
+                <Minus className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {scoreChange && !isNaN(Number(scoreChange)) && Number(scoreChange) !== 0 && (
+              <p className={`text-xs font-medium ${Number(scoreChange) > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                {Number(scoreChange) > 0 ? `+${scoreChange} ${t.performance.pointsLabel}` : `${scoreChange} ${t.performance.pointsLabel}`}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>{t.performance.reason}</Label>
+            <Textarea rows={2} value={reason} onChange={e => setReason(e.target.value)} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground">{t.performance.adminNote}</Label>
+            <Textarea
+              rows={2}
+              value={adminNote}
+              onChange={e => setAdminNote(e.target.value)}
+              placeholder="Ghi chú nội bộ, không hiển thị với nhân viên…"
+              className="text-sm"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t.common.cancel}</Button>
+          <Button onClick={handleSubmit} disabled={!valid || saving}>
+            {saving ? t.common.loading : t.common.save}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Employee Detail Dialog ────────────────────────────────────────────────────
 
 interface DetailDialogProps {
@@ -397,12 +530,15 @@ interface DetailDialogProps {
   month: number;
   year: number;
   canManage: boolean;
+  isAdmin: boolean;
   tiers: BonusTier[];
   onClose: () => void;
   onAddScore: (empId: string) => void;
+  onEditLog: (log: PerformanceLog) => void;
+  onVoidLog: (log: PerformanceLog) => void;
 }
 
-function EmployeeDetailDialog({ employee, logs, month, year, canManage, tiers, onClose, onAddScore }: DetailDialogProps) {
+function EmployeeDetailDialog({ employee, logs, month, year, canManage, isAdmin, tiers, onClose, onAddScore, onEditLog, onVoidLog }: DetailDialogProps) {
   const { t } = useI18n();
   const { fmt } = useCurrency();
   const { toast } = useToast();
@@ -415,7 +551,6 @@ function EmployeeDetailDialog({ employee, logs, month, year, canManage, tiers, o
   const bonus = getBonusAmount(score, tiers);
   const penalty = getPenaltyAmount(score);
   const netPayout = bonus - penalty;
-  const info = getWarningInfo(score);
 
   const catLabel = (c: string) => t.performance[`cat_${c}` as keyof typeof t.performance] as string || c;
 
@@ -497,24 +632,61 @@ function EmployeeDetailDialog({ employee, logs, month, year, canManage, tiers, o
           {empLogs.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t.performance.noLogs}</p>
           ) : (
-            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {empLogs.slice(0, 20).map(log => (
-                <div key={log.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-                  <span className={`w-12 shrink-0 text-right font-mono font-semibold ${log.score_change > 0 ? "text-emerald-600" : "text-red-600"}`}>
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              {empLogs.slice(0, 30).map(log => (
+                <div
+                  key={log.id}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    log.is_voided ? "border-border/50 bg-muted/30" : "border-border"
+                  }`}
+                >
+                  <span className={`w-12 shrink-0 text-right font-mono font-semibold ${
+                    log.is_voided ? "line-through text-muted-foreground" :
+                    log.score_change > 0 ? "text-emerald-600" : "text-red-600"
+                  }`}>
                     {log.score_change > 0 ? `+${log.score_change}` : log.score_change}
                   </span>
-                  <span className="flex-1 truncate text-foreground">{log.reason}</span>
-                  <Badge variant="outline" className="shrink-0 text-[10px]">{catLabel(log.category)}</Badge>
+                  <span className={`flex-1 truncate ${log.is_voided ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                    {log.reason}
+                  </span>
+                  {log.is_voided ? (
+                    <Badge variant="outline" className="shrink-0 text-[10px] border-red-300 text-red-500">
+                      {t.performance.voided}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="shrink-0 text-[10px]">{catLabel(log.category)}</Badge>
+                  )}
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {format(new Date(log.created_at), "dd/MM")}
                   </span>
+                  {log.edited_at && !log.is_voided && (
+                    <span className="shrink-0 text-[10px] text-muted-foreground italic">edited</span>
+                  )}
+                  {isAdmin && !log.is_voided && (
+                    <div className="shrink-0 flex gap-0.5">
+                      <Button
+                        size="icon" variant="ghost" className="h-6 w-6"
+                        title={t.performance.editLog}
+                        onClick={() => onEditLog(log)}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        title={t.performance.voidLog}
+                        onClick={() => onVoidLog(log)}
+                      >
+                        <Ban className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Monthly review (manager can edit) */}
+        {/* Monthly review (manager/admin can edit) */}
         {canManage && (
           <div className="space-y-3 border-t border-border pt-4">
             <p className="text-sm font-semibold text-foreground">{t.performance.monthlyReview}</p>
@@ -542,9 +714,7 @@ function EmployeeDetailDialog({ employee, logs, month, year, canManage, tiers, o
 
 // ── Migration SQL card ────────────────────────────────────────────────────────
 
-const MIGRATION_SQL = `-- Run this in your Supabase SQL Editor
--- (full SQL at .local/performance_migration.sql)
-
+const MIGRATION_SQL = `-- ① Create tables (skipped if already exist)
 CREATE TABLE IF NOT EXISTS employee_performance_scores (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id uuid NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -566,6 +736,12 @@ CREATE TABLE IF NOT EXISTS employee_performance_logs (
   score_change integer NOT NULL,
   reason text NOT NULL,
   category text NOT NULL,
+  admin_note text,
+  is_voided boolean NOT NULL DEFAULT false,
+  voided_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  voided_at timestamptz,
+  edited_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  edited_at timestamptz,
   created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -578,10 +754,43 @@ CREATE TABLE IF NOT EXISTS employee_monthly_reviews (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (employee_id, month, year)
 );
+
+-- ② Add new columns if tables already existed
+ALTER TABLE employee_performance_logs
+  ADD COLUMN IF NOT EXISTS admin_note text,
+  ADD COLUMN IF NOT EXISTS is_voided boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS voided_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS voided_at timestamptz,
+  ADD COLUMN IF NOT EXISTS edited_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS edited_at timestamptz;
+
+-- ③ Enable RLS
 ALTER TABLE employee_performance_scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employee_performance_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employee_monthly_reviews ENABLE ROW LEVEL SECURITY;
--- (see .local/performance_migration.sql for full RLS policies)`;
+
+-- ④ RLS policies for employee_performance_logs
+DROP POLICY IF EXISTS "perf_logs_select" ON employee_performance_logs;
+CREATE POLICY "perf_logs_select" ON employee_performance_logs FOR SELECT TO authenticated
+  USING (
+    EXISTS (SELECT 1 FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = auth.uid() AND r.name IN ('admin','manager'))
+    OR employee_id IN (SELECT id FROM employees WHERE profile_id = auth.uid())
+  );
+DROP POLICY IF EXISTS "perf_logs_insert" ON employee_performance_logs;
+CREATE POLICY "perf_logs_insert" ON employee_performance_logs FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = auth.uid() AND r.name IN ('admin','manager'))
+  );
+DROP POLICY IF EXISTS "perf_logs_update" ON employee_performance_logs;
+CREATE POLICY "perf_logs_update" ON employee_performance_logs FOR UPDATE TO authenticated
+  USING (EXISTS (SELECT 1 FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = auth.uid() AND r.name = 'admin'))
+  WITH CHECK (EXISTS (SELECT 1 FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = auth.uid() AND r.name = 'admin'));
+
+-- ⑤ Permissive RLS for scores and reviews (admin+manager full access)
+DROP POLICY IF EXISTS "perf_scores_all" ON employee_performance_scores;
+CREATE POLICY "perf_scores_all" ON employee_performance_scores FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "perf_reviews_all" ON employee_monthly_reviews;
+CREATE POLICY "perf_reviews_all" ON employee_monthly_reviews FOR ALL TO authenticated USING (true) WITH CHECK (true);`;
 
 function MigrationCard({ t }: { t: { performance: Record<string, string> } }) {
   const [show, setShow] = useState(false);
@@ -629,6 +838,7 @@ export default function Performance() {
   const { fmt } = useCurrency();
   const { role, employee, session } = useAuth();
   const { toast } = useToast();
+  const qc = useQueryClient();
 
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
@@ -639,10 +849,52 @@ export default function Performance() {
   const [filterEmployeeId, setFilterEmployeeId] = useState<string>("all");
 
   const isManager = role === "admin" || role === "manager";
+  const isAdmin = role === "admin";
   const isCleaner = role === "cleaner" || role === "cleaningstaff";
 
   const monthStart = new Date(selectedYear, selectedMonth - 1, 1).toISOString();
   const monthEnd = new Date(selectedYear, selectedMonth, 0, 23, 59, 59).toISOString();
+
+  // ── Edit / Void state (admin only) ────────────────────────────────────────
+  const [editTargetLog, setEditTargetLog] = useState<PerformanceLog | null>(null);
+  const [voidTargetLog, setVoidTargetLog] = useState<PerformanceLog | null>(null);
+  const [voiding, setVoiding] = useState(false);
+
+  const handleVoidConfirm = async () => {
+    if (!voidTargetLog) return;
+    setVoiding(true);
+    try {
+      const { error } = await supabase
+        .from("employee_performance_logs")
+        .update({
+          is_voided: true,
+          voided_by: session?.user?.id ?? null,
+          voided_at: new Date().toISOString(),
+        })
+        .eq("id", voidTargetLog.id);
+      if (error) throw error;
+
+      await recomputeMonthlyScore(voidTargetLog.employee_id, selectedMonth, selectedYear, tiers);
+
+      await writeActivityLog(session?.user?.id, "performance_log_voided", voidTargetLog.id, {
+        employee_id: voidTargetLog.employee_id,
+        score_change: voidTargetLog.score_change,
+        reason: voidTargetLog.reason,
+        month: selectedMonth,
+        year: selectedYear,
+      });
+
+      toast({ title: t.performance.logVoided });
+      qc.invalidateQueries({ queryKey: ["perf_logs"] });
+      qc.invalidateQueries({ queryKey: ["perf_scores"] });
+      setVoidTargetLog(null);
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      toast({ title: `${t.common.error}: ${e?.message ?? ""}`, variant: "destructive" });
+    } finally {
+      setVoiding(false);
+    }
+  };
 
   // ── Navigate months ────────────────────────────────────────────────────────
   const prevMonth = () => {
@@ -842,7 +1094,7 @@ export default function Performance() {
                     <p className="text-sm text-muted-foreground">{t.performance.noLogs}</p>
                   ) : (
                     <div className="space-y-2">
-                      {myEntry.empLogs.slice(0, 15).map(log => (
+                      {myEntry.empLogs.filter(l => !l.is_voided).slice(0, 15).map(log => (
                         <div key={log.id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm">
                           <span className={`w-10 shrink-0 text-right font-mono font-semibold ${log.score_change > 0 ? "text-emerald-600" : "text-red-600"}`}>
                             {log.score_change > 0 ? `+${log.score_change}` : log.score_change}
@@ -937,7 +1189,7 @@ export default function Performance() {
               <TabsTrigger value="overview">{t.performance.overview}</TabsTrigger>
               <TabsTrigger value="employees">{t.performance.employees}</TabsTrigger>
               <TabsTrigger value="logs">{t.performance.logs}</TabsTrigger>
-              <TabsTrigger value="settings">{t.performance.settings}</TabsTrigger>
+              {isAdmin && <TabsTrigger value="settings">{t.performance.settings}</TabsTrigger>}
             </TabsList>
 
             {/* ── Overview ──────────────────────────────────────────────── */}
@@ -1038,10 +1290,12 @@ export default function Performance() {
                             <TableCell className="text-right font-medium text-red-600">{empPenalty > 0 ? `−${fmt(empPenalty)}` : "—"}</TableCell>
                             <TableCell className={`text-right font-semibold ${empNet >= 0 ? "text-foreground" : "text-red-700"}`}>{fmt(Math.max(0, empNet))}</TableCell>
                             <TableCell className="text-center">
-                              <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
-                                onClick={e => { e.stopPropagation(); openAddScore(emp.id); }}>
-                                <Plus className="h-3 w-3 mr-1" />{t.common.add}
-                              </Button>
+                              {isManager && (
+                                <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+                                  onClick={e => { e.stopPropagation(); openAddScore(emp.id); }}>
+                                  <Plus className="h-3 w-3 mr-1" />{t.common.add}
+                                </Button>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1086,26 +1340,59 @@ export default function Performance() {
                           <TableHead>{t.performance.category}</TableHead>
                           <TableHead className="text-center">{t.performance.scoreChange}</TableHead>
                           <TableHead>{t.performance.reason}</TableHead>
+                          {isAdmin && <TableHead className="w-20 text-center">{t.performance.adminActions}</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredLogs.map(log => {
                           const emp = employees.find(e => e.id === log.employee_id);
                           return (
-                            <TableRow key={log.id}>
+                            <TableRow key={log.id} className={log.is_voided ? "opacity-50" : ""}>
                               <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                                 {format(new Date(log.created_at), "dd/MM HH:mm")}
+                                {log.edited_at && <span className="ml-1 text-[10px] italic text-muted-foreground">edited</span>}
                               </TableCell>
                               <TableCell className="font-medium">{emp?.full_name ?? "—"}</TableCell>
                               <TableCell>
-                                <Badge variant="outline" className="text-xs">{catLabel(log.category)}</Badge>
+                                {log.is_voided ? (
+                                  <Badge variant="outline" className="text-xs border-red-300 text-red-500">{t.performance.voided}</Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs">{catLabel(log.category)}</Badge>
+                                )}
                               </TableCell>
                               <TableCell className="text-center">
-                                <span className={`font-mono font-semibold ${log.score_change > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                                <span className={`font-mono font-semibold ${
+                                  log.is_voided ? "line-through text-muted-foreground" :
+                                  log.score_change > 0 ? "text-emerald-600" : "text-red-600"
+                                }`}>
                                   {log.score_change > 0 ? `+${log.score_change}` : log.score_change}
                                 </span>
                               </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">{log.reason}</TableCell>
+                              <TableCell className={`text-sm ${log.is_voided ? "line-through text-muted-foreground" : "text-muted-foreground"}`}>
+                                {log.reason}
+                              </TableCell>
+                              {isAdmin && (
+                                <TableCell className="text-center">
+                                  {!log.is_voided && (
+                                    <div className="flex justify-center gap-1">
+                                      <Button
+                                        size="icon" variant="ghost" className="h-7 w-7"
+                                        title={t.performance.editLog}
+                                        onClick={() => setEditTargetLog(log)}
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                        title={t.performance.voidLog}
+                                        onClick={() => setVoidTargetLog(log)}
+                                      >
+                                        <Ban className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </TableCell>
+                              )}
                             </TableRow>
                           );
                         })}
@@ -1116,133 +1403,135 @@ export default function Performance() {
               </Card>
             </TabsContent>
 
-            {/* ── Settings ──────────────────────────────────────────────── */}
-            <TabsContent value="settings" className="space-y-6">
-              {/* Bonus tiers */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">{t.performance.bonusRules}</CardTitle>
-                  <CardDescription>{t.performance.bonusTier1} / {t.performance.bonusTier2} / {t.performance.bonusTier3}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {editTiers.map((tier, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <div className="flex items-center gap-2 flex-1">
-                        <Label className="w-28 shrink-0 text-xs">
-                          {i === 0 ? t.performance.bonusTier1 : i === 1 ? t.performance.bonusTier2 : t.performance.bonusTier3}
-                        </Label>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground">{t.performance.minScore} ≥</span>
-                          <Input
-                            type="number"
-                            value={tier.minScore}
-                            onChange={e => {
-                              const next = [...editTiers];
-                              next[i] = { ...next[i], minScore: Number(e.target.value) };
-                              setEditTiers(next);
-                            }}
-                            className="w-16 h-8 text-sm text-center"
-                          />
+            {/* ── Settings (admin only) ──────────────────────────────────── */}
+            {isAdmin && (
+              <TabsContent value="settings" className="space-y-6">
+                {/* Bonus tiers */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">{t.performance.bonusRules}</CardTitle>
+                    <CardDescription>{t.performance.bonusTier1} / {t.performance.bonusTier2} / {t.performance.bonusTier3}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {editTiers.map((tier, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 flex-1">
+                          <Label className="w-28 shrink-0 text-xs">
+                            {i === 0 ? t.performance.bonusTier1 : i === 1 ? t.performance.bonusTier2 : t.performance.bonusTier3}
+                          </Label>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground">{t.performance.minScore} ≥</span>
+                            <Input
+                              type="number"
+                              value={tier.minScore}
+                              onChange={e => {
+                                const next = [...editTiers];
+                                next[i] = { ...next[i], minScore: Number(e.target.value) };
+                                setEditTiers(next);
+                              }}
+                              className="w-16 h-8 text-sm text-center"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground">{t.performance.amount}:</span>
+                            <Input
+                              type="number"
+                              value={tier.amount}
+                              onChange={e => {
+                                const next = [...editTiers];
+                                next[i] = { ...next[i], amount: Number(e.target.value) };
+                                setEditTiers(next);
+                              }}
+                              className="w-28 h-8 text-sm"
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground">{fmt(tier.amount)}</span>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground">{t.performance.amount}:</span>
-                          <Input
-                            type="number"
-                            value={tier.amount}
-                            onChange={e => {
-                              const next = [...editTiers];
-                              next[i] = { ...next[i], amount: Number(e.target.value) };
-                              setEditTiers(next);
-                            }}
-                            className="w-28 h-8 text-sm"
-                          />
-                        </div>
-                        <span className="text-xs text-muted-foreground">{fmt(tier.amount)}</span>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex gap-2 pt-2">
-                    <Button size="sm" onClick={saveTiers} disabled={tiersSaved}>
-                      {tiersSaved ? <><Check className="h-3.5 w-3.5 mr-1" />{t.performance.settingsSaved}</> : t.common.save}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => { resetTiers(); setEditTiers([...DEFAULT_BONUS_TIERS]); }}>
-                      <RotateCcw className="h-3.5 w-3.5 mr-1" />{t.performance.resetDefaults}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Warning thresholds (read-only reference) */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">{t.performance.warningThresholds}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {[
-                      { range: "90 – 100", labelKey: "excellent" as const },
-                      { range: "80 – 89", labelKey: "good" as const },
-                      { range: "70 – 79", labelKey: "normal" as const },
-                      { range: "60 – 69", labelKey: "lightWarning" as const },
-                      { range: "50 – 59", labelKey: "strongWarning" as const },
-                      { range: "40 – 49", labelKey: "deduction" as const },
-                      { range: "< 40", labelKey: "reviewRequired" as const },
-                    ].map(row => {
-                      const info = getWarningInfo(
-                        row.labelKey === "excellent" ? 95 :
-                        row.labelKey === "good" ? 85 :
-                        row.labelKey === "normal" ? 75 :
-                        row.labelKey === "lightWarning" ? 65 :
-                        row.labelKey === "strongWarning" ? 55 :
-                        row.labelKey === "deduction" ? 45 : 30
-                      );
-                      return (
-                        <div key={row.labelKey} className="flex items-center gap-3">
-                          <span className="w-16 shrink-0 text-center font-mono text-xs text-muted-foreground">{row.range}</span>
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${info.bg} ${info.color}`}>
-                            {t.performance[row.labelKey]}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Score rules reference */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">{t.performance.scoreRules}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
-                    {[
-                      { label: "Hoàn thành checklist xuất sắc", change: +2 },
-                      { label: "Tải ảnh trước/sau đúng cách", change: +3 },
-                      { label: "Hỗ trợ công việc khẩn cấp", change: +5 },
-                      { label: "Không có khiếu nại 7 ngày", change: +5 },
-                      { label: "Khách khen ngợi", change: +5 },
-                      { label: "Chất lượng phòng VIP xuất sắc", change: +10 },
-                      { label: "Quên tải ảnh", change: -2 },
-                      { label: "Đi muộn nhẹ", change: -2 },
-                      { label: "Checklist chưa hoàn thành", change: -5 },
-                      { label: "Quên xác nhận hoàn thành", change: -5 },
-                      { label: "Vấn đề chất lượng phòng", change: -10 },
-                      { label: "Khách khiếu nại", change: -15 },
-                      { label: "Vắng mặt không thông báo", change: -20 },
-                      { label: "Vi phạm nghiêm trọng", change: -30 },
-                    ].map((rule, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
-                        <span className={`w-8 shrink-0 text-right font-mono font-semibold ${rule.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                          {rule.change > 0 ? `+${rule.change}` : rule.change}
-                        </span>
-                        <span className="text-foreground">{rule.label}</span>
                       </div>
                     ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                    <div className="flex gap-2 pt-2">
+                      <Button size="sm" onClick={saveTiers} disabled={tiersSaved}>
+                        {tiersSaved ? <><Check className="h-3.5 w-3.5 mr-1" />{t.performance.settingsSaved}</> : t.common.save}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => { resetTiers(); setEditTiers([...DEFAULT_BONUS_TIERS]); }}>
+                        <RotateCcw className="h-3.5 w-3.5 mr-1" />{t.performance.resetDefaults}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Warning thresholds (read-only reference) */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">{t.performance.warningThresholds}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {[
+                        { range: "90 – 100", labelKey: "excellent" as const },
+                        { range: "80 – 89", labelKey: "good" as const },
+                        { range: "70 – 79", labelKey: "normal" as const },
+                        { range: "60 – 69", labelKey: "lightWarning" as const },
+                        { range: "50 – 59", labelKey: "strongWarning" as const },
+                        { range: "40 – 49", labelKey: "deduction" as const },
+                        { range: "< 40", labelKey: "reviewRequired" as const },
+                      ].map(row => {
+                        const info = getWarningInfo(
+                          row.labelKey === "excellent" ? 95 :
+                          row.labelKey === "good" ? 85 :
+                          row.labelKey === "normal" ? 75 :
+                          row.labelKey === "lightWarning" ? 65 :
+                          row.labelKey === "strongWarning" ? 55 :
+                          row.labelKey === "deduction" ? 45 : 30
+                        );
+                        return (
+                          <div key={row.labelKey} className="flex items-center gap-3">
+                            <span className="w-16 shrink-0 text-center font-mono text-xs text-muted-foreground">{row.range}</span>
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${info.bg} ${info.color}`}>
+                              {t.performance[row.labelKey]}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Score rules reference */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">{t.performance.scoreRules}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+                      {[
+                        { label: "Hoàn thành checklist xuất sắc", change: +2 },
+                        { label: "Tải ảnh trước/sau đúng cách", change: +3 },
+                        { label: "Hỗ trợ công việc khẩn cấp", change: +5 },
+                        { label: "Không có khiếu nại 7 ngày", change: +5 },
+                        { label: "Khách khen ngợi", change: +5 },
+                        { label: "Chất lượng phòng VIP xuất sắc", change: +10 },
+                        { label: "Quên tải ảnh", change: -2 },
+                        { label: "Đi muộn nhẹ", change: -2 },
+                        { label: "Checklist chưa hoàn thành", change: -5 },
+                        { label: "Quên xác nhận hoàn thành", change: -5 },
+                        { label: "Vấn đề chất lượng phòng", change: -10 },
+                        { label: "Khách khiếu nại", change: -15 },
+                        { label: "Vắng mặt không thông báo", change: -20 },
+                        { label: "Vi phạm nghiêm trọng", change: -30 },
+                      ].map((rule, i) => (
+                        <div key={i} className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
+                          <span className={`w-8 shrink-0 text-right font-mono font-semibold ${rule.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                            {rule.change > 0 ? `+${rule.change}` : rule.change}
+                          </span>
+                          <span className="text-foreground">{rule.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
           </Tabs>
         </>
       )}
@@ -1255,6 +1544,7 @@ export default function Performance() {
           employees={employees}
           month={selectedMonth}
           year={selectedYear}
+          tiers={tiers}
           preEmployeeId={preEmployeeId}
         />
       )}
@@ -1265,10 +1555,54 @@ export default function Performance() {
         month={selectedMonth}
         year={selectedYear}
         canManage={isManager}
+        isAdmin={isAdmin}
         tiers={tiers}
         onClose={() => setDetailEmployee(null)}
         onAddScore={(empId) => { setDetailEmployee(null); openAddScore(empId); }}
+        onEditLog={log => setEditTargetLog(log)}
+        onVoidLog={log => setVoidTargetLog(log)}
       />
+
+      {/* Edit Log Modal (admin only) */}
+      {isAdmin && (
+        <EditLogModal
+          open={!!editTargetLog}
+          onOpenChange={v => { if (!v) setEditTargetLog(null); }}
+          log={editTargetLog}
+          month={selectedMonth}
+          year={selectedYear}
+          tiers={tiers}
+        />
+      )}
+
+      {/* Void Confirmation Dialog (admin only) */}
+      {isAdmin && (
+        <AlertDialog open={!!voidTargetLog} onOpenChange={v => { if (!v && !voiding) setVoidTargetLog(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t.performance.voidConfirmTitle}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t.performance.voidConfirmDesc}
+                {voidTargetLog && (
+                  <span className="mt-2 block rounded-lg bg-muted p-2 text-sm font-medium text-foreground">
+                    {voidTargetLog.score_change > 0 ? `+${voidTargetLog.score_change}` : voidTargetLog.score_change} pts — {voidTargetLog.reason}
+                  </span>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={voiding}>{t.common.cancel}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleVoidConfirm}
+                disabled={voiding}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              >
+                {voiding ? t.common.loading : t.performance.voidLog}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </AppLayout>
   );
 }
