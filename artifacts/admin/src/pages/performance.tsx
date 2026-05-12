@@ -45,9 +45,9 @@ type Category = (typeof CATEGORIES)[number];
 interface BonusTier { minScore: number; amount: number; }
 
 const DEFAULT_BONUS_TIERS: BonusTier[] = [
-  { minScore: 90, amount: 500000 },
-  { minScore: 80, amount: 300000 },
-  { minScore: 70, amount: 100000 },
+  { minScore: 90, amount: 1000000 },
+  { minScore: 80, amount: 500000 },
+  { minScore: 70, amount: 200000 },
 ];
 
 interface WarningInfo {
@@ -93,10 +93,11 @@ function getBonusAmount(score: number, tiers: BonusTier[]): number {
 }
 
 function getPenaltyAmount(score: number): number {
-  if (score >= 60) return 0;
-  if (score >= 50) return 100000;
-  if (score >= 40) return 200000;
-  return 300000;
+  if (score >= 70) return 0;
+  if (score >= 60) return 100000;
+  if (score >= 50) return 300000;
+  if (score >= 40) return 700000;
+  return 1000000;
 }
 
 const SETTINGS_KEY = "airbnb-ops-perf-bonus-tiers";
@@ -293,8 +294,8 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployee
         code: e?.code,
         raw: err,
       });
-      const detail = e?.code === "42P01"
-        ? " (Bảng chưa tồn tại — hãy chạy migration SQL)"
+      const detail = (e?.code === "42P01" || e?.code === "PGRST205")
+        ? " (Bảng chưa tồn tại — hãy chạy migration SQL trong Supabase)"
         : e?.message ? `: ${e.message}` : "";
       toast({ title: `${t.performance.couldNotSave}${detail}`, variant: "destructive" });
     } finally {
@@ -412,6 +413,8 @@ function EmployeeDetailDialog({ employee, logs, month, year, canManage, tiers, o
   const empLogs = useMemo(() => logs.filter(l => l.employee_id === employee?.id), [logs, employee?.id]);
   const score = computeScore(empLogs);
   const bonus = getBonusAmount(score, tiers);
+  const penalty = getPenaltyAmount(score);
+  const netPayout = bonus - penalty;
   const info = getWarningInfo(score);
 
   const catLabel = (c: string) => t.performance[`cat_${c}` as keyof typeof t.performance] as string || c;
@@ -468,7 +471,15 @@ function EmployeeDetailDialog({ employee, logs, month, year, canManage, tiers, o
           <div className="flex-1 space-y-1">
             <WarningBadge score={score} />
             <p className="text-sm text-muted-foreground">
-              {t.performance.bonus}: <span className="font-semibold text-foreground">{fmt(bonus)}</span>
+              {t.performance.bonus}: <span className="font-semibold text-emerald-700">{bonus > 0 ? fmt(bonus) : "—"}</span>
+            </p>
+            {penalty > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t.performance.penalty}: <span className="font-semibold text-red-600">−{fmt(penalty)}</span>
+              </p>
+            )}
+            <p className="text-sm font-semibold text-foreground border-t border-border pt-1">
+              {t.performance.netPayout}: <span className={netPayout >= 0 ? "text-emerald-700" : "text-red-600"}>{fmt(Math.max(0, netPayout))}</span>
             </p>
             <p className="text-xs text-muted-foreground">{t.performance.startingScore}</p>
           </div>
@@ -684,7 +695,7 @@ export default function Performance() {
       if (isCleaner && employee?.id) q = q.eq("employee_id", employee.id);
       const { data, error } = await q;
       if (error) {
-        if (error.code === "42P01") { setNeedsMigration(true); return []; }
+        if (error.code === "42P01" || error.code === "PGRST205") { setNeedsMigration(true); return []; }
         throw error;
       }
       setNeedsMigration(false);
@@ -705,7 +716,10 @@ export default function Performance() {
       .map(emp => {
         const empLogs = logs.filter(l => l.employee_id === emp.id);
         const score = computeScore(empLogs);
-        return { emp, score, empLogs, bonus: getBonusAmount(score, tiers), info: getWarningInfo(score) };
+        const bonus = getBonusAmount(score, tiers);
+        const penalty = getPenaltyAmount(score);
+        const netPayout = bonus - penalty;
+        return { emp, score, empLogs, bonus, penalty, netPayout, info: getWarningInfo(score) };
       })
       .sort((a, b) => b.score - a.score)
       .map((item, idx) => ({ ...item, rank: idx + 1 }));
@@ -718,6 +732,8 @@ export default function Performance() {
   const best = employeeScores[0] ?? null;
   const underWarning = employeeScores.filter(e => e.score < 70).length;
   const totalBonus = employeeScores.reduce((s, e) => s + e.bonus, 0);
+  const totalPenalty = employeeScores.reduce((s, e) => s + e.penalty, 0);
+  const totalNetPayout = totalBonus - totalPenalty;
 
   // ── Chart data ─────────────────────────────────────────────────────────────
   const chartData = employeeScores.map(e => ({
@@ -794,11 +810,21 @@ export default function Performance() {
                       <ScorePill score={myEntry.score} large />
                       <p className="mt-1 text-xs text-muted-foreground">{t.performance.scoreThisMonth}</p>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <WarningBadge score={myEntry.score} />
                       <p className="text-sm">
                         <span className="text-muted-foreground">{t.performance.bonus}: </span>
-                        <span className="font-semibold text-foreground">{fmt(myEntry.bonus)}</span>
+                        <span className="font-semibold text-emerald-700">{myEntry.bonus > 0 ? fmt(myEntry.bonus) : "—"}</span>
+                      </p>
+                      {myEntry.penalty > 0 && (
+                        <p className="text-sm">
+                          <span className="text-muted-foreground">{t.performance.penalty}: </span>
+                          <span className="font-semibold text-red-600">−{fmt(myEntry.penalty)}</span>
+                        </p>
+                      )}
+                      <p className="text-sm font-semibold border-t border-border pt-1">
+                        <span className="text-muted-foreground">{t.performance.netPayout}: </span>
+                        <span className={myEntry.netPayout >= 0 ? "text-emerald-700" : "text-red-600"}>{fmt(Math.max(0, myEntry.netPayout))}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">{t.performance.startingScore}</p>
                     </div>
@@ -897,7 +923,8 @@ export default function Performance() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">{t.performance.totalBonus}</p>
-                    <p className="text-base font-bold text-foreground">{fmt(totalBonus)}</p>
+                    <p className="text-sm font-bold text-emerald-700">{fmt(totalNetPayout)}</p>
+                    <p className="text-[10px] text-muted-foreground">{fmt(totalBonus)} − {fmt(totalPenalty)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -988,11 +1015,13 @@ export default function Performance() {
                           <TableHead className="text-center">{t.performance.score}</TableHead>
                           <TableHead>{t.performance.warningLevel}</TableHead>
                           <TableHead className="text-right">{t.performance.bonus}</TableHead>
+                          <TableHead className="text-right text-red-600">{t.performance.penalty}</TableHead>
+                          <TableHead className="text-right font-semibold">{t.performance.netPayout}</TableHead>
                           <TableHead className="w-24 text-center">{t.common.actions}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {employeeScores.map(({ emp, score, bonus: empBonus, rank }) => (
+                        {employeeScores.map(({ emp, score, bonus: empBonus, penalty: empPenalty, netPayout: empNet, rank }) => (
                           <TableRow key={emp.id} className="cursor-pointer hover:bg-accent/40" onClick={() => setDetailEmployee(emp)}>
                             <TableCell className="text-center font-mono font-semibold text-muted-foreground">
                               {rank === 1 ? <span className="text-amber-500">①</span> : rank}
@@ -1005,7 +1034,9 @@ export default function Performance() {
                               <ScorePill score={score} />
                             </TableCell>
                             <TableCell><WarningBadge score={score} /></TableCell>
-                            <TableCell className="text-right font-medium">{empBonus > 0 ? fmt(empBonus) : "—"}</TableCell>
+                            <TableCell className="text-right font-medium text-emerald-700">{empBonus > 0 ? fmt(empBonus) : "—"}</TableCell>
+                            <TableCell className="text-right font-medium text-red-600">{empPenalty > 0 ? `−${fmt(empPenalty)}` : "—"}</TableCell>
+                            <TableCell className={`text-right font-semibold ${empNet >= 0 ? "text-foreground" : "text-red-700"}`}>{fmt(Math.max(0, empNet))}</TableCell>
                             <TableCell className="text-center">
                               <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
                                 onClick={e => { e.stopPropagation(); openAddScore(emp.id); }}>
