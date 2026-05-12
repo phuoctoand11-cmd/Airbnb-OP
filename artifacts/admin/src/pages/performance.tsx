@@ -559,12 +559,13 @@ export default function Performance() {
 
   // ── Fetch employees ────────────────────────────────────────────────────────
   const employeesQuery = useQuery({
-    queryKey: ["hr_employees_perf", role, employee?.id],
+    queryKey: ["hr_employees_perf", role],
+    enabled: role !== null,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_hr_employees", {
-        p_role: role ?? "admin",
-        p_employee_id: employee?.id ?? null,
-      });
+      const { data, error } = await supabase.rpc("get_hr_employees");
       if (error) throw error;
       return (data ?? []) as Employee[];
     },
@@ -574,6 +575,7 @@ export default function Performance() {
   const [needsMigration, setNeedsMigration] = useState(false);
   const logsQuery = useQuery({
     queryKey: ["perf_logs", selectedYear, selectedMonth],
+    enabled: role !== null,
     queryFn: async () => {
       let q = supabase
         .from("employee_performance_logs")
@@ -873,10 +875,12 @@ export default function Performance() {
             <TabsContent value="employees">
               <Card>
                 <CardContent className="p-0">
-                  {employeeScores.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground">
-                      {employees.length === 0 ? t.common.loading : t.performance.noEmployees}
-                    </p>
+                  {employeesQuery.isLoading ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground animate-pulse">{t.common.loading}</p>
+                  ) : employeesQuery.isError ? (
+                    <p className="py-8 text-center text-sm text-red-500">{t.common.error}</p>
+                  ) : employeeScores.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">{t.performance.noEmployees}</p>
                   ) : (
                     <Table>
                       <TableHeader>
