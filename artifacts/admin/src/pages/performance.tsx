@@ -68,6 +68,13 @@ function getWarningInfo(score: number): WarningInfo {
   return { level: "review_required", labelKey: "reviewRequired", color: "text-red-900", bg: "bg-red-200", barColor: "#b91c1c" };
 }
 
+const CLEANING_ROLES = ["vệ sinh", "cleaner", "cleaningstaff", "cleaning staff"];
+
+function isCleaningEmployee(emp: Employee): boolean {
+  const r = (emp.role ?? "").toLowerCase().trim();
+  return CLEANING_ROLES.some(cr => r === cr || r.includes(cr));
+}
+
 function computeScore(logs: PerformanceLog[]): number {
   return Math.max(0, 100 + logs.reduce((s, l) => s + l.score_change, 0));
 }
@@ -220,7 +227,7 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, preEmployee
                 <SelectValue placeholder={t.performance.selectEmployee} />
               </SelectTrigger>
               <SelectContent>
-                {employees.filter(e => e.status === "active").map(e => (
+                {employees.filter(e => e.status === "active" && isCleaningEmployee(e)).map(e => (
                   <SelectItem key={e.id} value={e.id}>{e.full_name}</SelectItem>
                 ))}
               </SelectContent>
@@ -601,7 +608,7 @@ export default function Performance() {
   const employeeScores = useMemo(() => {
     const activeEmployees = isCleaner && employee
       ? employees.filter(e => e.id === employee.id)
-      : employees.filter(e => e.status === "active");
+      : employees.filter(e => e.status === "active" && isCleaningEmployee(e));
 
     return activeEmployees
       .map(emp => {
