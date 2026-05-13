@@ -397,7 +397,9 @@ export interface ChatGroup {
 export interface ChatGroupMember {
   id: string;
   group_id: string;
+  profile_id: string | null;
   user_id: string;
+  role: "owner" | "admin" | "member" | null;
   joined_at: string;
 }
 

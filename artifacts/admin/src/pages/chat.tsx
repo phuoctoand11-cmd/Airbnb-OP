@@ -479,6 +479,7 @@ export default function ChatPage() {
         .from("employees")
         .select("id, profile_id, full_name, email, role, status, avatar_url")
         .not("profile_id", "is", null)
+        .eq("status", "active")
         .order("full_name");
       if (error) throw error;
       return (data ?? []) as CompanyMember[];
@@ -516,7 +517,7 @@ export default function ChatPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("chat_group_members")
-        .select("id, group_id, user_id, joined_at")
+        .select("id, group_id, profile_id, user_id, role, joined_at")
         .eq("group_id", selectedGroupId!);
       if (error) throw error;
       return (data ?? []) as ChatGroupMember[];
@@ -674,13 +675,24 @@ export default function ChatPage() {
         .select()
         .single();
       if (error) throw error;
-      const rows = [currentUserId, ...memberIds].map((uid) => ({
-        group_id: (group as ChatGroup).id,
+      const groupId = (group as ChatGroup).id;
+      // Creator row first — role = "owner"
+      const creatorRow = {
+        group_id: groupId,
+        profile_id: currentUserId,
+        user_id: currentUserId,
+        role: "owner",
+      };
+      // Additional member rows — role = "member"
+      const memberRows = memberIds.map((uid) => ({
+        group_id: groupId,
+        profile_id: uid,
         user_id: uid,
+        role: "member",
       }));
       const { error: memErr } = await supabase
         .from("chat_group_members")
-        .insert(rows);
+        .insert([creatorRow, ...memberRows]);
       if (memErr) throw memErr;
       return group as ChatGroup;
     },
@@ -754,7 +766,9 @@ export default function ChatPage() {
     mutationFn: async (profileIds: string[]) => {
       const rows = profileIds.map((uid) => ({
         group_id: selectedGroupId!,
+        profile_id: uid,
         user_id: uid,
+        role: "member",
       }));
       const { error } = await supabase
         .from("chat_group_members")
