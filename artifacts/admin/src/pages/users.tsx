@@ -115,7 +115,7 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">{p.email}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {format(parseISO(p.created_at), "MMM d, yyyy")}
+                        {p.created_at ? format(parseISO(p.created_at), "MMM d, yyyy") : "—"}
                       </TableCell>
                       <TableCell className="text-right">
                         <Select
