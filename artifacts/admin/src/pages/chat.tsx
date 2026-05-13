@@ -34,7 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useLogActivity } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
-import { supabase, ROLE_LABELS, type AppRole, type ChatAttachment } from "@/lib/supabase";
+import { supabase, ROLE_LABELS, SUPABASE_URL_FOR_DEBUG, type AppRole, type ChatAttachment } from "@/lib/supabase";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -831,10 +831,38 @@ export default function ChatPage() {
 
       if (file) {
         const path = `chat/${selectedGroupId}/${selectedTopicId}/${Date.now()}_${file.name}`;
+
+        // ── Debug: log every upload attempt ──────────────────────────────────
+        // eslint-disable-next-line no-console
+        console.info("[CHAT_UPLOAD] attempting upload", {
+          supabaseUrl: (supabase as unknown as { supabaseUrl?: string }).supabaseUrl
+            ?? import.meta.env.VITE_SUPABASE_URL,
+          bucketName: BUCKET,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          uploadPath: path,
+        });
+
         const { error: uploadErr } = await supabase.storage
-          .from(BUCKET)
+          .from("chat-attachments")          // ← literal string intentionally (rules out constant issues)
           .upload(path, file, { contentType: file.type, upsert: false });
-        if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
+
+        if (uploadErr) {
+          // eslint-disable-next-line no-console
+          console.error("[CHAT_UPLOAD_ERROR]", {
+            message: uploadErr.message,
+            name: uploadErr.name,
+            status: (uploadErr as unknown as { status?: number }).status,
+            bucketName: BUCKET,
+            uploadPath: path,
+            supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+          });
+          throw new Error(`Upload failed: ${uploadErr.message}`);
+        }
+
+        // eslint-disable-next-line no-console
+        console.info("[CHAT_UPLOAD] success", { uploadPath: path });
 
         const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
         attachmentPayload = {
@@ -898,12 +926,17 @@ export default function ChatPage() {
         });
       }
     },
-    onError: (err: Error) =>
+    onError: (err: Error) => {
+      const isStorageError = err.message.toLowerCase().includes("bucket") ||
+        err.message.toLowerCase().includes("upload");
       toast({
         variant: "destructive",
         title: "Failed to send",
-        description: err.message,
-      }),
+        description: isStorageError
+          ? `${err.message} — Check that bucket "chat-attachments" exists in Supabase project: ${SUPABASE_URL_FOR_DEBUG}`
+          : err.message,
+      });
+    },
   });
 
   // ── Image helpers ─────────────────────────────────────────────────────────────
