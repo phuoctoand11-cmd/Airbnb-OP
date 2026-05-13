@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import {
   Hash,
+  ImageIcon,
   Loader2,
+  Maximize2,
   MessageSquare,
   Plus,
   Search,
@@ -32,7 +34,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useLogActivity } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
-import { supabase, ROLE_LABELS, type AppRole } from "@/lib/supabase";
+import { supabase, ROLE_LABELS, type AppRole, type ChatAttachment } from "@/lib/supabase";
+
+// ── Constants ───────────────────────────────────────────────────────────────
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const BUCKET = "chat-attachments";
+
+/** Returns the public URL for a stored attachment.
+ *  Swap the body of this function to `createSignedUrl(path, 3600)`
+ *  if you switch the bucket to private. */
+function getAttachmentUrl(attachment: ChatAttachment): string {
+  return attachment.file_url;
+}
 
 // ── Local types ────────────────────────────────────────────────────────────────
 
@@ -450,7 +464,11 @@ export default function ChatPage() {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createTopicOpen, setCreateTopicOpen] = useState(false);
   const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -534,6 +552,24 @@ export default function ChatPage() {
     },
   });
 
+  const attachmentsQuery = useQuery({
+    queryKey: ["chat_attachments", selectedTopicId],
+    enabled: !!selectedTopicId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("chat_attachments")
+        .select("*")
+        .eq("topic_id", selectedTopicId!)
+        .order("created_at");
+      if (error) {
+        // Table may not exist yet — return empty gracefully
+        console.warn("[chat_attachments] query failed:", error.message);
+        return [] as ChatAttachment[];
+      }
+      return (data ?? []) as ChatAttachment[];
+    },
+  });
+
   // ── Realtime subscription ─────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -551,6 +587,9 @@ export default function ChatPage() {
         () => {
           queryClient.invalidateQueries({
             queryKey: ["chat_messages", selectedTopicId],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["chat_attachments", selectedTopicId],
           });
         }
       )
@@ -601,6 +640,11 @@ export default function ChatPage() {
   const groupMemberIds = useMemo(
     () => new Set((groupMembersQuery.data ?? []).map((m) => m.user_id)),
     [groupMembersQuery.data]
+  );
+
+  const attachmentMap = useMemo(
+    () => new Map((attachmentsQuery.data ?? []).map((a) => [a.message_id, a])),
+    [attachmentsQuery.data]
   );
 
   const canManageGroup =
@@ -771,40 +815,130 @@ export default function ChatPage() {
       }),
   });
 
-  const sendMessageMutation = useMutation({
-    mutationFn: async (content: string) => {
-      const { error } = await supabase.from("chat_messages").insert({
-        topic_id: selectedTopicId!,
-        sender_id: currentUserId,
-        content,
-      });
-      if (error) throw error;
+  const sendMutation = useMutation({
+    mutationFn: async ({
+      text,
+      file,
+    }: {
+      text: string;
+      file: File | null;
+    }) => {
+      // 1. Upload image first — abort everything if this fails
+      let attachmentPayload: Omit<
+        ChatAttachment,
+        "id" | "message_id" | "group_id" | "topic_id" | "uploaded_by" | "created_at"
+      > | null = null;
+
+      if (file) {
+        const path = `chat/${selectedGroupId}/${selectedTopicId}/${Date.now()}_${file.name}`;
+        const { error: uploadErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, file, { contentType: file.type, upsert: false });
+        if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
+
+        const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        attachmentPayload = {
+          file_path: path,
+          file_url: urlData.publicUrl,
+          file_name: file.name,
+          file_type: file.type,
+          file_size: file.size,
+        };
+      }
+
+      // 2. Insert the message (use single space as content when image-only)
+      const { data: message, error: msgErr } = await supabase
+        .from("chat_messages")
+        .insert({
+          topic_id: selectedTopicId!,
+          sender_id: currentUserId,
+          content: text || "",
+        })
+        .select()
+        .single();
+      if (msgErr) throw msgErr;
+
+      // 3. Insert the attachment record
+      if (attachmentPayload) {
+        const { error: attErr } = await supabase.from("chat_attachments").insert({
+          message_id: (message as ChatMessage).id,
+          group_id: selectedGroupId!,
+          topic_id: selectedTopicId!,
+          uploaded_by: currentUserId,
+          ...attachmentPayload,
+        });
+        if (attErr) throw attErr;
+      }
+
+      return { hasAttachment: !!attachmentPayload, attachmentPayload };
     },
-    onSuccess: () => {
+    onSuccess: ({ hasAttachment, attachmentPayload }) => {
       setMessageInput("");
-      queryClient.invalidateQueries({
-        queryKey: ["chat_messages", selectedTopicId],
-      });
-      log({
-        action: "chat_message_sent",
-        entityType: "chat_topics",
-        entityId: selectedTopicId,
-        metadata: { group_id: selectedGroupId },
-      });
+      clearImage();
+      queryClient.invalidateQueries({ queryKey: ["chat_messages", selectedTopicId] });
+      if (hasAttachment) {
+        queryClient.invalidateQueries({ queryKey: ["chat_attachments", selectedTopicId] });
+        log({
+          action: "chat_image_sent",
+          entityType: "chat_topics",
+          entityId: selectedTopicId,
+          metadata: {
+            group_id: selectedGroupId,
+            topic_id: selectedTopicId,
+            file_name: attachmentPayload?.file_name,
+            file_size: attachmentPayload?.file_size,
+          },
+        });
+      } else {
+        log({
+          action: "chat_message_sent",
+          entityType: "chat_topics",
+          entityId: selectedTopicId,
+          metadata: { group_id: selectedGroupId },
+        });
+      }
     },
     onError: (err: Error) =>
       toast({
         variant: "destructive",
-        title: "Failed to send message",
+        title: "Failed to send",
         description: err.message,
       }),
   });
 
+  // ── Image helpers ─────────────────────────────────────────────────────────────
+
+  function clearImage() {
+    setImageFile(null);
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    setImagePreviewUrl(null);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  }
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast({ variant: "destructive", title: "Only JPG, PNG, and WebP images are allowed" });
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      toast({ variant: "destructive", title: "Image must be under 5 MB" });
+      e.target.value = "";
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setImageFile(file);
+    setImagePreviewUrl(previewUrl);
+  }
+
   const handleSend = useCallback(() => {
     const text = messageInput.trim();
-    if (!text || !selectedTopicId) return;
-    sendMessageMutation.mutate(text);
-  }, [messageInput, selectedTopicId, sendMessageMutation]);
+    if (!text && !imageFile) return;
+    if (!selectedTopicId) return;
+    sendMutation.mutate({ text, file: imageFile });
+  }, [messageInput, imageFile, selectedTopicId, sendMutation]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -1079,15 +1213,41 @@ export default function ChatPage() {
                                 </span>
                               </div>
                             )}
-                            <div
-                              className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${
-                                isMe
-                                  ? "rounded-tr-sm bg-foreground text-background"
-                                  : "rounded-tl-sm bg-muted text-foreground"
-                              }`}
-                            >
-                              {msg.content}
-                            </div>
+                            {/* Text bubble — omit if content is empty (image-only) */}
+                            {msg.content.trim() !== "" && (
+                              <div
+                                className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                                  isMe
+                                    ? "rounded-tr-sm bg-foreground text-background"
+                                    : "rounded-tl-sm bg-muted text-foreground"
+                                }`}
+                              >
+                                {msg.content}
+                              </div>
+                            )}
+                            {/* Image attachment */}
+                            {(() => {
+                              const att = attachmentMap.get(msg.id);
+                              if (!att) return null;
+                              return (
+                                <div className="group relative mt-0.5">
+                                  <img
+                                    src={getAttachmentUrl(att)}
+                                    alt={att.file_name}
+                                    title="Click to view full size"
+                                    className="max-h-48 max-w-xs cursor-pointer rounded-xl object-cover shadow-sm transition-opacity hover:opacity-90"
+                                    onClick={() => setImageViewerUrl(getAttachmentUrl(att))}
+                                  />
+                                  <button
+                                    className="absolute bottom-1.5 right-1.5 hidden rounded-lg bg-black/50 p-1 text-white group-hover:flex"
+                                    onClick={() => setImageViewerUrl(getAttachmentUrl(att))}
+                                    title="View full size"
+                                  >
+                                    <Maximize2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       );
@@ -1099,7 +1259,54 @@ export default function ChatPage() {
 
               {/* Message input */}
               <div className="border-t border-border p-3">
+                {/* Image preview strip */}
+                {imagePreviewUrl && (
+                  <div className="mb-2 flex items-start gap-2">
+                    <div className="relative">
+                      <img
+                        src={imagePreviewUrl}
+                        alt="Preview"
+                        className="h-20 w-20 rounded-lg object-cover border border-border"
+                      />
+                      <button
+                        onClick={clearImage}
+                        className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-background shadow"
+                        title="Remove image"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                    <div className="min-w-0 pt-1">
+                      <p className="truncate text-xs font-medium text-foreground">
+                        {imageFile?.name}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {imageFile ? `${(imageFile.size / 1024).toFixed(0)} KB` : ""}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Input row */}
                 <div className="flex items-end gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2">
+                  {/* Hidden file input */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleImageSelect}
+                  />
+                  {/* Image attach button */}
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={sendMutation.isPending}
+                    className="mb-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+                    title="Attach image"
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                  </button>
                   <Textarea
                     className="max-h-28 min-h-[1.5rem] flex-1 resize-none border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
                     placeholder={`Message #${selectedTopic?.title ?? "…"}`}
@@ -1118,10 +1325,10 @@ export default function ChatPage() {
                     className="h-7 w-7 shrink-0 rounded-lg"
                     onClick={handleSend}
                     disabled={
-                      !messageInput.trim() || sendMessageMutation.isPending
+                      (!messageInput.trim() && !imageFile) || sendMutation.isPending
                     }
                   >
-                    {sendMessageMutation.isPending ? (
+                    {sendMutation.isPending ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <Send className="h-3.5 w-3.5" />
@@ -1129,7 +1336,7 @@ export default function ChatPage() {
                   </Button>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Enter to send · Shift+Enter for new line
+                  Enter to send · Shift+Enter for new line · 📎 images up to 5 MB
                 </p>
               </div>
             </>
@@ -1312,6 +1519,19 @@ export default function ChatPage() {
           loading={addMembersMutation.isPending}
         />
       )}
+
+      {/* ── Image viewer ────────────────────────────────────────────────────── */}
+      <Dialog open={!!imageViewerUrl} onOpenChange={(o) => !o && setImageViewerUrl(null)}>
+        <DialogContent className="max-w-3xl p-2">
+          {imageViewerUrl && (
+            <img
+              src={imageViewerUrl}
+              alt="Full size"
+              className="h-auto max-h-[80vh] w-full rounded-lg object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }

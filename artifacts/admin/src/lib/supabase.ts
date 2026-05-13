@@ -371,6 +371,20 @@ export interface Employee {
 
 // ---- Chat types ----
 
+export interface ChatAttachment {
+  id: string;
+  message_id: string;
+  group_id: string;
+  topic_id: string;
+  uploaded_by: string | null;
+  file_url: string;
+  file_path: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
+}
+
 export interface ChatGroup {
   id: string;
   name: string;
