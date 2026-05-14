@@ -772,7 +772,7 @@ export default function ChatPage() {
       }));
       const { error } = await supabase
         .from("chat_group_members")
-        .upsert(rows, { onConflict: "group_id,user_id" });
+        .upsert(rows, { onConflict: "group_id,profile_id" });
       if (error) throw error;
       return profileIds;
     },

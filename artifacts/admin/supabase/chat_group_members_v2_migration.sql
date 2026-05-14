@@ -22,8 +22,17 @@ ALTER TABLE public.chat_group_members
   ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'member'
     CHECK (role IN ('owner', 'admin', 'member'));
 
--- ── 3. Add index for profile_id lookups ───────────────────────────────────────
+-- ── 3. Add unique constraint on (group_id, profile_id) ───────────────────────
+-- Required for ON CONFLICT (group_id, profile_id) to work in upserts.
 
+ALTER TABLE public.chat_group_members
+  DROP CONSTRAINT IF EXISTS chat_group_members_group_id_profile_id_key;
+
+ALTER TABLE public.chat_group_members
+  ADD CONSTRAINT chat_group_members_group_id_profile_id_key
+  UNIQUE (group_id, profile_id);
+
+-- Also keep a plain index for fast profile_id lookups
 CREATE INDEX IF NOT EXISTS chat_group_members_profile_id_idx
   ON public.chat_group_members (profile_id);
 
