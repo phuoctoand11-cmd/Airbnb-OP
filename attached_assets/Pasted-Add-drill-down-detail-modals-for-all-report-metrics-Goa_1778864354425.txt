@@ -1,0 +1,102 @@
+Add drill-down detail modals for all report metrics.
+
+Goal:
+Every main metric/card/table row in Reports should be clickable so user can inspect underlying data.
+
+Apply current filters:
+- date range
+- selected listing
+- selected expense category where relevant
+
+Metrics to make clickable:
+
+1. Tổng doanh thu
+Open modal: "Chi tiết doanh thu"
+Show revenues table:
+- Date
+- Listing
+- Guest
+- Booking status
+- Revenue category
+- Amount
+- Description
+
+Only count:
+- booking_revenue
+- cancellation_revenue
+
+2. Tổng chi phí
+Open modal: "Chi tiết chi phí"
+Show expenses table:
+- Date
+- Listing
+- Category
+- Vendor
+- Amount
+- Description
+- Receipt URL if available
+
+3. Lợi nhuận ròng
+Open modal: "Chi tiết lợi nhuận"
+Show:
+- revenue detail
+- expense detail
+- net profit calculation
+- profit by listing
+
+4. Tiền thực thu
+Open modal: "Chi tiết tiền thực thu"
+Show payments table:
+- Date
+- Listing
+- Guest
+- Payment type
+- Booking status
+- Payment status
+- Amount
+- Note
+
+5. Đặt phòng
+Open modal: "Chi tiết đặt phòng"
+Show bookings table:
+- Guest
+- Listing
+- Check-in
+- Check-out
+- Nights
+- Status
+- Total amount
+- Deposit amount
+- Source
+
+6. Listing Financial Report row
+When clicking a listing row:
+- expand current detail as now
+- also add button "Xem chi tiết đầy đủ"
+- open modal with all data for that listing:
+  - bookings
+  - revenues
+  - expenses
+  - payments
+  - profit summary
+
+7. Charts
+Clicking chart bar/month should filter or open detail for that period if easy.
+
+8. Each modal should support:
+- search
+- filter by type/category
+- export CSV
+- total footer
+- date shown as DD/MM/YYYY
+- VND formatted with thousands separators
+
+9. Add warning audit checks:
+- completed booking without booking_revenue
+- confirmed booking with deposit_amount > 0 but no deposit payment
+- completed booking with missing balance payment
+- cancelled booking with refund but no refund payment
+- duplicate revenue rows for same booking/category
+
+10. Do not change accounting logic.
+Only add drill-down inspection UI.
