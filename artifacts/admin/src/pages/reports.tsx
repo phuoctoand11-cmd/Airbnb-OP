@@ -25,12 +25,20 @@ import {
   startOfMonth,
   subDays,
 } from "date-fns";
-import { ChevronDown, ChevronUp, Download, FileSpreadsheet, FileText } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Download, FileSpreadsheet, FileText } from "lucide-react";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -145,6 +153,7 @@ export default function Reports() {
   const [listingFilter, setListingFilter] = useState("all");
   const [expCategoryFilter, setExpCategoryFilter] = useState("all");
   const [drillListingId, setDrillListingId] = useState<string | null>(null);
+  const [cashflowModalOpen, setCashflowModalOpen] = useState(false);
 
   // ── Derived date strings ───────────────────────────────────────────────────
   const startStr = format(startDate, "yyyy-MM-dd");
@@ -400,7 +409,13 @@ export default function Reports() {
     const revenue = filteredRevenues.reduce((s, r) => s + Number(r.amount), 0);
     const expense = filteredExpenses.reduce((s, e) => s + Number(e.amount), 0);
     const cashIn = filteredPayments
-      .filter((p) => p.status === "paid" && (p.payment_type === "deposit" || p.payment_type === "balance"))
+      .filter(
+        (p) =>
+          p.status === "paid" &&
+          (p.payment_type === "deposit" ||
+            p.payment_type === "balance" ||
+            p.payment_type === "cancellation_fee")
+      )
       .reduce((s, p) => s + Number(p.amount), 0);
     const inRange = (d: string) =>
       isWithinInterval(parseISO(d), { start: startDate, end: endDate });
@@ -643,7 +658,12 @@ export default function Reports() {
               value={fmt(summary.profit)}
               accent={summary.profit >= 0 ? "positive" : "negative"}
             />
-            <KpiCard label="Tiền thực thu" value={fmt(summary.cashIn)} accent="positive" />
+            <KpiCard
+              label="Tiền thực thu"
+              value={fmt(summary.cashIn)}
+              accent="positive"
+              onClick={() => setCashflowModalOpen(true)}
+            />
             <KpiCard
               label={t.bookings.title}
               value={summary.completedBookings.toString()}
@@ -984,6 +1004,22 @@ export default function Reports() {
           </div>
         </>
       )}
+
+      {/* ── Cashflow drill-down modal ─────────────────────────────────────── */}
+      {dataQuery.data && (
+        <CashflowDrilldownModal
+          open={cashflowModalOpen}
+          onClose={() => setCashflowModalOpen(false)}
+          payments={filteredPayments}
+          bookings={dataQuery.data.bookings}
+          listings={dataQuery.data.listings}
+          fmt={fmt}
+          canExport={canExport}
+          startDate={startDate}
+          endDate={endDate}
+          listingFilter={listingFilter}
+        />
+      )}
     </AppLayout>
   );
 }
@@ -1207,19 +1243,400 @@ function DrilldownPanel({
   );
 }
 
+// ── Cashflow drill-down modal ──────────────────────────────────────────────────
+
+const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  deposit: "Cọc nhận được",
+  balance: "Thanh toán còn lại",
+  refund: "Hoàn tiền",
+  cancellation_fee: "Phí hủy / giữ cọc",
+};
+
+const BOOKING_STATUS_LABELS: Record<string, string> = {
+  pending: "Chờ xác nhận",
+  confirmed: "Đã xác nhận",
+  completed: "Hoàn thành",
+  cancelled: "Đã hủy",
+};
+
+function CashflowDrilldownModal({
+  open,
+  onClose,
+  payments,
+  bookings,
+  listings,
+  fmt,
+  canExport,
+  startDate,
+  endDate,
+  listingFilter,
+}: {
+  open: boolean;
+  onClose: () => void;
+  payments: Payment[];
+  bookings: Booking[];
+  listings: Listing[];
+  fmt: (v: number | null | undefined) => string;
+  canExport: boolean;
+  startDate: Date;
+  endDate: Date;
+  listingFilter: string;
+}) {
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [listingModalFilter, setListingModalFilter] = useState(listingFilter);
+  const [guestSearch, setGuestSearch] = useState("");
+
+  const bookingMap = useMemo(
+    () => new Map(bookings.map((b) => [b.id, b])),
+    [bookings]
+  );
+  const listingMap = useMemo(
+    () => new Map(listings.map((l) => [l.id, l])),
+    [listings]
+  );
+
+  const displayPayments = useMemo(() => {
+    return payments.filter((p) => {
+      if (typeFilter !== "all" && p.payment_type !== typeFilter) return false;
+      if (listingModalFilter !== "all" && p.listing_id !== listingModalFilter)
+        return false;
+      if (guestSearch.trim()) {
+        const booking = p.booking_id ? bookingMap.get(p.booking_id) : null;
+        const name = booking?.guest_name ?? "";
+        if (!name.toLowerCase().includes(guestSearch.toLowerCase()))
+          return false;
+      }
+      return true;
+    });
+  }, [payments, typeFilter, listingModalFilter, guestSearch, bookingMap]);
+
+  const totalIn = useMemo(
+    () =>
+      displayPayments
+        .filter((p) => p.status === "paid" && p.payment_type !== "refund")
+        .reduce((s, p) => s + Number(p.amount), 0),
+    [displayPayments]
+  );
+  const totalRefunds = useMemo(
+    () =>
+      displayPayments
+        .filter((p) => p.payment_type === "refund")
+        .reduce((s, p) => s + Number(p.amount), 0),
+    [displayPayments]
+  );
+  const netCashflow = totalIn - totalRefunds;
+
+  const warnings = useMemo(() => {
+    const warns: string[] = [];
+    const paymentsByBooking = new Map<string, Payment[]>();
+    payments.forEach((p) => {
+      if (p.booking_id) {
+        const arr = paymentsByBooking.get(p.booking_id) ?? [];
+        arr.push(p);
+        paymentsByBooking.set(p.booking_id, arr);
+      }
+    });
+    const relevant = bookings.filter(
+      (b) =>
+        isWithinInterval(parseISO(b.check_in), { start: startDate, end: endDate }) &&
+        (listingModalFilter === "all" || b.listing_id === listingModalFilter)
+    );
+    for (const b of relevant) {
+      const pmts = paymentsByBooking.get(b.id) ?? [];
+      if (b.status === "confirmed" && Number(b.deposit_amount ?? 0) > 0) {
+        const hasDeposit = pmts.some(
+          (p) => p.payment_type === "deposit" && p.status === "paid"
+        );
+        if (!hasDeposit)
+          warns.push(`${b.guest_name}: Thiếu dòng cọc trong payments`);
+      }
+      if (b.status === "completed") {
+        const balance =
+          Number(b.total_amount ?? 0) - Number(b.deposit_amount ?? 0);
+        const hasBalance = pmts.some(
+          (p) => p.payment_type === "balance" && p.status === "paid"
+        );
+        if (balance > 0 && !hasBalance)
+          warns.push(`${b.guest_name}: Thiếu dòng thanh toán còn lại`);
+      }
+      if (b.status === "cancelled") {
+        const hasRefund = pmts.some((p) => p.payment_type === "refund");
+        const hadDeposit = pmts.some(
+          (p) => p.payment_type === "deposit" && p.status === "paid"
+        );
+        if (hadDeposit && !hasRefund)
+          warns.push(`${b.guest_name}: Thiếu dòng hoàn tiền`);
+      }
+    }
+    return warns;
+  }, [bookings, payments, startDate, endDate, listingModalFilter]);
+
+  function handleExportCSV() {
+    const header = [
+      "Ngày",
+      "Listing",
+      "Khách",
+      "Loại tiền",
+      "Trạng thái booking",
+      "Trạng thái thanh toán",
+      "Số tiền",
+      "Ghi chú",
+    ];
+    const rows = displayPayments.map((p) => {
+      const booking = p.booking_id ? bookingMap.get(p.booking_id) : null;
+      const listing = p.listing_id ? listingMap.get(p.listing_id) : null;
+      const isOut = p.payment_type === "refund";
+      return [
+        format(new Date(p.paid_at), "dd/MM/yyyy"),
+        listing?.title ?? "",
+        booking?.guest_name ?? "",
+        PAYMENT_TYPE_LABELS[p.payment_type] ?? p.payment_type,
+        BOOKING_STATUS_LABELS[booking?.status ?? ""] ?? booking?.status ?? "",
+        p.status,
+        isOut ? -Number(p.amount) : Number(p.amount),
+        p.note ?? "",
+      ];
+    });
+    const csv = [header, ...rows]
+      .map((r) =>
+        r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")
+      )
+      .join("\n");
+    const blob = new Blob(["\uFEFF" + csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cashflow_${format(startDate, "yyyyMMdd")}_${format(endDate, "yyyyMMdd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[90vh] max-w-5xl flex-col gap-4">
+        <DialogHeader>
+          <DialogTitle>Chi tiết tiền thực thu</DialogTitle>
+        </DialogHeader>
+
+        {/* ── Summary cards ── */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Tổng tiền vào</div>
+            <div className="text-xl font-bold text-primary">{fmt(totalIn)}</div>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Tổng hoàn tiền</div>
+            <div className="text-xl font-bold text-destructive">
+              {fmt(totalRefunds)}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Net cashflow</div>
+            <div
+              className={`text-xl font-bold ${
+                netCashflow >= 0 ? "text-primary" : "text-destructive"
+              }`}
+            >
+              {fmt(netCashflow)}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Số giao dịch</div>
+            <div className="text-xl font-bold">{displayPayments.length}</div>
+          </div>
+        </div>
+
+        {/* ── Warnings ── */}
+        {warnings.length > 0 && (
+          <div className="space-y-1.5">
+            {warnings.map((w, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-300"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                {w}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Filters ── */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="h-8 w-[200px] text-sm">
+              <SelectValue placeholder="Loại giao dịch" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả loại</SelectItem>
+              <SelectItem value="deposit">Cọc nhận được</SelectItem>
+              <SelectItem value="balance">Thanh toán còn lại</SelectItem>
+              <SelectItem value="refund">Hoàn tiền</SelectItem>
+              <SelectItem value="cancellation_fee">Phí hủy / giữ cọc</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={listingModalFilter}
+            onValueChange={setListingModalFilter}
+          >
+            <SelectTrigger className="h-8 w-[200px] text-sm">
+              <SelectValue placeholder="Tất cả căn hộ" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả căn hộ</SelectItem>
+              {listings.map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Input
+            placeholder="Tìm theo tên khách..."
+            value={guestSearch}
+            onChange={(e) => setGuestSearch(e.target.value)}
+            className="h-8 w-[200px] text-sm"
+          />
+
+          {canExport && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto h-8 gap-1.5"
+              onClick={handleExportCSV}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Xuất CSV
+            </Button>
+          )}
+        </div>
+
+        {/* ── Detailed table ── */}
+        <ScrollArea className="flex-1 overflow-auto rounded border">
+          {displayPayments.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              Không có giao dịch nào.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-muted/80 backdrop-blur">
+                <tr>
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
+                    Ngày
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium">Listing</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
+                    Khách
+                  </th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
+                    Loại tiền
+                  </th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
+                    TT Booking
+                  </th>
+                  <th className="whitespace-nowrap px-3 py-2 text-left font-medium">
+                    TT Thanh toán
+                  </th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right font-medium">
+                    Số tiền
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium">Ghi chú</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {displayPayments.map((p) => {
+                  const booking = p.booking_id
+                    ? bookingMap.get(p.booking_id)
+                    : null;
+                  const listing = p.listing_id
+                    ? listingMap.get(p.listing_id)
+                    : null;
+                  const isOut = p.payment_type === "refund";
+                  return (
+                    <tr key={p.id} className="hover:bg-muted/30">
+                      <td className="whitespace-nowrap px-3 py-2">
+                        {format(new Date(p.paid_at), "dd/MM/yyyy")}
+                      </td>
+                      <td className="max-w-[130px] truncate px-3 py-2 text-muted-foreground">
+                        {listing?.title ?? "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        {booking?.guest_name ?? "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        {PAYMENT_TYPE_LABELS[p.payment_type] ?? p.payment_type}
+                      </td>
+                      <td className="px-3 py-2">
+                        {booking ? (
+                          <Badge
+                            variant={
+                              booking.status === "completed"
+                                ? "default"
+                                : booking.status === "cancelled"
+                                ? "destructive"
+                                : "secondary"
+                            }
+                            className="text-xs"
+                          >
+                            {BOOKING_STATUS_LABELS[booking.status] ??
+                              booking.status}
+                          </Badge>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 capitalize text-muted-foreground">
+                        {p.status}
+                      </td>
+                      <td
+                        className={`whitespace-nowrap px-3 py-2 text-right font-mono font-medium ${
+                          isOut ? "text-destructive" : "text-primary"
+                        }`}
+                      >
+                        {isOut ? "−" : "+"}
+                        {fmt(Number(p.amount))}
+                      </td>
+                      <td className="max-w-[130px] truncate px-3 py-2 text-xs text-muted-foreground">
+                        {p.note ?? ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── KPI card ───────────────────────────────────────────────────────────────────
 
 function KpiCard({
   label,
   value,
   accent,
+  onClick,
 }: {
   label: string;
   value: string;
   accent?: "positive" | "negative";
+  onClick?: () => void;
 }) {
   return (
-    <Card>
+    <Card
+      className={
+        onClick
+          ? "cursor-pointer transition-colors hover:bg-accent/50 active:scale-[0.98]"
+          : ""
+      }
+      onClick={onClick}
+    >
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {label}
@@ -1237,6 +1654,11 @@ function KpiCard({
         >
           {value}
         </div>
+        {onClick && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Nhấn để xem chi tiết →
+          </p>
+        )}
       </CardContent>
     </Card>
   );
