@@ -107,9 +107,9 @@ const EXPENSE_CATEGORIES = [
   "other",
 ];
 
-// Only these categories count as recognised P&L revenue.
-// Old categories ("booking", "deposit", "refund", "booking_balance") are excluded.
-const RECOGNIZED_REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue", "extra", "other"];
+// Only these two categories count as recognised P&L revenue.
+// All others ("booking", "booking_balance", "deposit", "extra", "other", "refund") are excluded.
+const RECOGNIZED_REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue"];
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

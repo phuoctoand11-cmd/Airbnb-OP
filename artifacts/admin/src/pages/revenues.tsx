@@ -6,7 +6,7 @@ export default function Revenues() {
       table="revenues"
       title="Revenues"
       dateColumn="received_at"
-      defaultCategory="booking"
+      defaultCategory="booking_revenue"
       showVendor={false}
     />
   );

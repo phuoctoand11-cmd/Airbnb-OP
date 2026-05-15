@@ -52,7 +52,7 @@ import { useAuth, canViewPrices } from "@/lib/auth-context";
 import { useI18n } from "@/i18n";
 import { useCurrency } from "@/lib/currency";
 
-const RECOGNIZED_REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue", "extra", "other"];
+const RECOGNIZED_REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue"];
 
 export default function Dashboard() {
   const { t } = useI18n();
