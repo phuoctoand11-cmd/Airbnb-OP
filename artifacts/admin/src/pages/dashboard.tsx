@@ -52,6 +52,8 @@ import { useAuth, canViewPrices } from "@/lib/auth-context";
 import { useI18n } from "@/i18n";
 import { useCurrency } from "@/lib/currency";
 
+const RECOGNIZED_REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue", "extra", "other"];
+
 export default function Dashboard() {
   const { t } = useI18n();
   const { fmt } = useCurrency();
@@ -104,7 +106,9 @@ export default function Dashboard() {
     const now = new Date();
     const last30Start = subDays(now, 30);
 
-    const revenue = dataQuery.data.revenues.reduce((s, r) => s + Number(r.amount), 0);
+    const revenue = dataQuery.data.revenues
+      .filter((r) => RECOGNIZED_REVENUE_CATEGORIES.includes(r.category))
+      .reduce((s, r) => s + Number(r.amount), 0);
     const expense = dataQuery.data.expenses.reduce((s, e) => s + Number(e.amount), 0);
     const completed = dataQuery.data.bookings.filter((b) => b.status === "completed").length;
     const cancelled = dataQuery.data.bookings.filter((b) => b.status === "cancelled").length;
@@ -162,7 +166,7 @@ export default function Dashboard() {
         return date.getFullYear() === m.getFullYear() && date.getMonth() === m.getMonth();
       };
       const rev = dataQuery.data!.revenues
-        .filter((r) => sameMonth(r.received_at))
+        .filter((r) => sameMonth(r.received_at) && RECOGNIZED_REVENUE_CATEGORIES.includes(r.category))
         .reduce((s, r) => s + Number(r.amount), 0);
       const exp = dataQuery.data!.expenses
         .filter((e) => sameMonth(e.spent_at))

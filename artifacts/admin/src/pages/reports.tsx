@@ -99,8 +99,9 @@ const EXPENSE_CATEGORIES = [
   "other",
 ];
 
-// Categories stored in revenues table that are cashflow-only — must be excluded from P&L revenue
-const CASHFLOW_ONLY_CATEGORIES = ["deposit", "refund"];
+// Only these categories count as recognised P&L revenue.
+// Old categories ("booking", "deposit", "refund", "booking_balance") are excluded.
+const RECOGNIZED_REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue", "extra", "other"];
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -195,7 +196,7 @@ export default function Reports() {
     if (!dataQuery.data) return [];
     return dataQuery.data.revenues.filter(
       (r) =>
-        !CASHFLOW_ONLY_CATEGORIES.includes(r.category) &&
+        RECOGNIZED_REVENUE_CATEGORIES.includes(r.category) &&
         (listingFilter === "all" || r.listing_id === listingFilter)
     );
   }, [dataQuery.data, listingFilter]);
@@ -417,9 +418,9 @@ export default function Reports() {
     if (!drillListingId || !dataQuery.data) return null;
     const listing = dataQuery.data.listings.find((l) => l.id === drillListingId);
     if (!listing) return null;
-    // Revenues: exclude deposit / refund — those are cashflow only
+    // Revenues: only recognised P&L categories (booking_revenue, cancellation_revenue, extra, other)
     const revs = dataQuery.data.revenues.filter(
-      (r) => r.listing_id === drillListingId && !CASHFLOW_ONLY_CATEGORIES.includes(r.category)
+      (r) => r.listing_id === drillListingId && RECOGNIZED_REVENUE_CATEGORIES.includes(r.category)
     );
     const exps = dataQuery.data.expenses.filter((e) => e.listing_id === drillListingId);
     const bkgs = dataQuery.data.bookings.filter(

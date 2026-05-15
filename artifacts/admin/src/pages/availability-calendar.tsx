@@ -1356,10 +1356,14 @@ export default function AvailabilityCalendar() {
       const _todayDate = format(_now, "yyyy-MM-dd");
 
       if (status === "pending") {
-        // pending → no finance changes
+        // pending → remove any recognised revenue (booking not complete)
+        await supabase.from("revenues").delete()
+          .eq("booking_id", id).eq("category", "booking_revenue");
 
       } else if (status === "confirmed") {
-        // confirmed → record deposit payment only (no revenue recognised yet)
+        // confirmed → remove any recognised revenue; record deposit payment only
+        await supabase.from("revenues").delete()
+          .eq("booking_id", id).eq("category", "booking_revenue");
         if (booking && (booking.deposit_amount ?? 0) > 0) {
           console.log("[PAYMENT_SYNC_ATTEMPT]", { booking_id: id, payment_type: "deposit", amount: booking.deposit_amount });
           const { error: depErr } = await supabase.from("payments").upsert({
@@ -1420,20 +1424,20 @@ export default function AvailabilityCalendar() {
           });
           if (balErr) paymentError = balErr;
         }
-        await supabase.from("revenues").delete()
-          .eq("booking_id", id).eq("category", "booking_revenue");
-        const { error: revErr } = await supabase.from("revenues").insert({
+        // Delete ALL revenues for this booking (removes any stale old-category rows)
+        await supabase.from("revenues").delete().eq("booking_id", id);
+        const { error: revErr } = await supabase.from("revenues").upsert({
           booking_id: id,
           listing_id: booking.listing_id,
           amount: booking.total_amount,
           category: "booking_revenue",
           description: `Revenue - ${booking.guest_name}`,
           received_at: booking.check_out || _todayDate,
-        });
+        }, { onConflict: "booking_id,category" });
         if (revErr) revenueError = revErr;
 
       } else if (status === "cancelled" && booking) {
-        // Delete ALL revenues for this booking (booking_revenue + any stale cancellation_revenue)
+        // Delete ALL revenues for this booking (booking_revenue + any stale rows)
         await supabase.from("revenues").delete().eq("booking_id", id);
 
         if ((booking.deposit_amount ?? 0) > 0) {
@@ -1452,15 +1456,15 @@ export default function AvailabilityCalendar() {
             });
             if (refErr) paymentError = refErr;
           } else {
-            // Case B: deposit kept → recognise deposit_amount as cancellation_revenue
-            const { error: canRevErr } = await supabase.from("revenues").insert({
+            // Case B: deposit kept → recognise deposit_amount as cancellation_revenue (upsert to avoid duplicates)
+            const { error: canRevErr } = await supabase.from("revenues").upsert({
               booking_id: id,
               listing_id: booking.listing_id,
               amount: booking.deposit_amount,
               category: "cancellation_revenue",
               description: `Cancellation Fee - ${booking.guest_name}`,
               received_at: _todayDate,
-            });
+            }, { onConflict: "booking_id,category" });
             if (canRevErr) revenueError = canRevErr;
           }
         }
