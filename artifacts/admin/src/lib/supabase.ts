@@ -415,6 +415,7 @@ export interface ChatTopic {
 
 export interface ChatMessage {
   id: string;
+  group_id: string;
   topic_id: string;
   sender_id: string;
   content: string;

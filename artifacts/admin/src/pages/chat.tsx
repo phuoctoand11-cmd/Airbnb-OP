@@ -86,6 +86,7 @@ interface ChatTopic {
 
 interface ChatMessage {
   id: string;
+  group_id: string;
   topic_id: string;
   sender_id: string;
   content: string;
@@ -528,27 +529,32 @@ export default function ChatPage() {
     queryKey: ["chat_topics", selectedGroupId],
     enabled: !!selectedGroupId,
     queryFn: async () => {
+      console.log("[CHAT_TOPICS_FOR_GROUP]", { selectedGroupId });
       const { data, error } = await supabase
         .from("chat_topics")
         .select("id, group_id, title, description, created_by, created_at")
         .eq("group_id", selectedGroupId!)
         .order("created_at");
       if (error) throw error;
+      console.log("[CHAT_TOPICS_FOR_GROUP] result", { count: data?.length, topics: data });
       return (data ?? []) as ChatTopic[];
     },
   });
 
   const messagesQuery = useQuery({
-    queryKey: ["chat_messages", selectedTopicId],
-    enabled: !!selectedTopicId,
+    queryKey: ["chat_messages", selectedGroupId, selectedTopicId],
+    enabled: !!selectedGroupId && !!selectedTopicId,
     queryFn: async () => {
+      console.log("[CHAT_MESSAGES_FOR_TOPIC]", { selectedGroupId, selectedTopicId });
       const { data, error } = await supabase
         .from("chat_messages")
-        .select("id, topic_id, sender_id, content, created_at")
+        .select("id, group_id, topic_id, sender_id, content, created_at")
+        .eq("group_id", selectedGroupId!)
         .eq("topic_id", selectedTopicId!)
         .order("created_at")
         .limit(200);
       if (error) throw error;
+      console.log("[CHAT_MESSAGES_FOR_TOPIC] result", { count: data?.length, messages: data });
       return (data ?? []) as ChatMessage[];
     },
   });
@@ -609,6 +615,16 @@ export default function ChatPage() {
   useEffect(() => {
     setSelectedTopicId(null);
   }, [selectedGroupId]);
+
+  // Auto-select first topic once topics load for a group
+  useEffect(() => {
+    if (selectedTopicId) return;
+    const topics = topicsQuery.data;
+    if (topics && topics.length > 0) {
+      console.log("[CHAT_SELECTED_TOPIC] auto-select first", topics[0]);
+      setSelectedTopicId(topics[0].id);
+    }
+  }, [topicsQuery.data, selectedTopicId]);
 
   // ── Derived data ──────────────────────────────────────────────────────────────
 
@@ -1045,7 +1061,10 @@ export default function ChatPage() {
                 {visibleGroups.map((g) => (
                   <button
                     key={g.id}
-                    onClick={() => setSelectedGroupId(g.id)}
+                    onClick={() => {
+                      console.log("[CHAT_SELECTED_GROUP]", g);
+                      setSelectedGroupId(g.id);
+                    }}
                     className={`w-full rounded-lg px-2.5 py-2 text-left transition-colors ${
                       selectedGroupId === g.id
                         ? "bg-foreground text-background"
@@ -1127,7 +1146,10 @@ export default function ChatPage() {
                   {(topicsQuery.data ?? []).map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => setSelectedTopicId(t.id)}
+                      onClick={() => {
+                        console.log("[CHAT_SELECTED_TOPIC]", t);
+                        setSelectedTopicId(t.id);
+                      }}
                       className={`flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
                         selectedTopicId === t.id
                           ? "bg-foreground text-background"
