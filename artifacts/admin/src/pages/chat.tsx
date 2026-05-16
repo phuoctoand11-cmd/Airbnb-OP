@@ -554,7 +554,7 @@ export default function ChatPage() {
         .order("created_at")
         .limit(200);
       if (error) throw error;
-      console.log("[CHAT_MESSAGES_FOR_TOPIC] result", { count: data?.length, messages: data });
+      console.log("[CHAT_MESSAGES_FETCHED]", { count: data?.length, messages: data });
       return (data ?? []) as ChatMessage[];
     },
   });
@@ -904,17 +904,24 @@ export default function ChatPage() {
         };
       }
 
-      // 2. Insert the message (use single space as content when image-only)
+      // 2. Insert the message — group_id is required (NOT NULL in schema)
+      if (!selectedGroupId || !selectedTopicId) {
+        throw new Error("Cannot send: no group or topic selected");
+      }
+      const payload = {
+        group_id: selectedGroupId,
+        topic_id: selectedTopicId,
+        sender_id: currentUserId,
+        content: text || "",
+      };
+      console.log("[CHAT_SEND_PAYLOAD]", payload);
       const { data: message, error: msgErr } = await supabase
         .from("chat_messages")
-        .insert({
-          topic_id: selectedTopicId!,
-          sender_id: currentUserId,
-          content: text || "",
-        })
+        .insert(payload)
         .select()
         .single();
       if (msgErr) throw msgErr;
+      console.log("[CHAT_SEND_RESULT]", message);
 
       // 3. Insert the attachment record
       if (attachmentPayload) {
@@ -933,7 +940,7 @@ export default function ChatPage() {
     onSuccess: ({ hasAttachment, attachmentPayload }) => {
       setMessageInput("");
       clearImage();
-      queryClient.invalidateQueries({ queryKey: ["chat_messages", selectedTopicId] });
+      queryClient.invalidateQueries({ queryKey: ["chat_messages", selectedGroupId, selectedTopicId] });
       if (hasAttachment) {
         queryClient.invalidateQueries({ queryKey: ["chat_attachments", selectedTopicId] });
         log({
@@ -999,9 +1006,9 @@ export default function ChatPage() {
   const handleSend = useCallback(() => {
     const text = messageInput.trim();
     if (!text && !imageFile) return;
-    if (!selectedTopicId) return;
+    if (!selectedGroupId || !selectedTopicId) return;
     sendMutation.mutate({ text, file: imageFile });
-  }, [messageInput, imageFile, selectedTopicId, sendMutation]);
+  }, [messageInput, imageFile, selectedGroupId, selectedTopicId, sendMutation]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
