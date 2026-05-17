@@ -70,11 +70,11 @@ interface ChatGroup {
 }
 
 interface ChatGroupMember {
-  id: string;
+  id?: string;            // may not exist — original PK is (group_id, user_id)
   group_id: string;
-  profile_id: string | null;
+  profile_id?: string | null;  // added by v2 migration; may not exist
   user_id: string;
-  role: "owner" | "admin" | "member" | null;
+  role?: "owner" | "admin" | "member" | null;  // added by v2 migration
   joined_at: string;
 }
 
@@ -520,11 +520,19 @@ export default function ChatPage() {
     queryKey: ["chat_group_members", selectedGroupId],
     enabled: !!selectedGroupId,
     queryFn: async () => {
+      console.log("[CHAT_SELECTED_GROUP_ID]", selectedGroupId);
+      // Use * so the query never fails if optional columns (id, profile_id, role)
+      // don't exist yet (pre-v2-migration tables).
       const { data, error } = await supabase
         .from("chat_group_members")
-        .select("id, group_id, profile_id, user_id, role, joined_at")
+        .select("*")
         .eq("group_id", selectedGroupId!)
         .order("joined_at");
+      console.log("[CHAT_GROUP_MEMBERS_FETCHED]", {
+        count: data?.length ?? 0,
+        data,
+        error,
+      });
       if (error) throw error;
       return (data ?? []) as ChatGroupMember[];
     },
@@ -676,13 +684,16 @@ export default function ChatPage() {
 
   /** Per-member permission: can the current user remove this specific member? */
   function canRemoveThisMember(gm: ChatGroupMember): boolean {
-    // Cannot remove yourself
-    if (gm.user_id === currentUserId) return false;
+    // Cannot remove yourself (check both profile_id and user_id)
+    const gmIdentity = gm.profile_id ?? gm.user_id;
+    if (gmIdentity === currentUserId || gm.user_id === currentUserId) return false;
     // admin/manager can remove anyone (including group owners)
     if (isAdmin) return true;
     // Group owner can remove non-owner members
     if (selectedGroup?.created_by === currentUserId) {
-      const isTargetOwner = gm.user_id === selectedGroup?.created_by;
+      const isTargetOwner =
+        gm.user_id === selectedGroup?.created_by ||
+        gm.profile_id === selectedGroup?.created_by;
       return !isTargetOwner;
     }
     // Regular members cannot remove anyone
@@ -842,47 +853,61 @@ export default function ChatPage() {
       gm: ChatGroupMember;
       memberName: string;
     }) => {
-      // Build OR filter:
-      //   profile_id = gm.profile_id
-      //   OR user_id  = gm.profile_id   (some rows store profile uuid in user_id)
-      //   OR user_id  = gm.user_id
       const targetProfileId = gm.profile_id ?? gm.user_id;
       const targetUserId = gm.user_id;
 
-      const orParts: string[] = [];
-      if (targetProfileId) orParts.push(`profile_id.eq.${targetProfileId}`);
-      if (targetProfileId) orParts.push(`user_id.eq.${targetProfileId}`);
-      if (targetUserId && targetUserId !== targetProfileId)
-        orParts.push(`user_id.eq.${targetUserId}`);
-      // Deduplicate
-      const orFilter = [...new Set(orParts)].join(",");
+      let deleted: unknown[] | null = null;
+      let error: { message: string } | null = null;
 
-      const payload = {
-        group_id: selectedGroupId,
-        or_filter: orFilter,
-        gm_profile_id: gm.profile_id,
-        gm_user_id: gm.user_id,
-      };
-      console.log("[CHAT_REMOVE_MEMBER_PAYLOAD]", payload);
+      // Path A: delete by primary key `id` if the column exists on this row
+      if (gm.id) {
+        const payload = { strategy: "by_id", id: gm.id, group_id: selectedGroupId };
+        console.log("[CHAT_REMOVE_MEMBER_PAYLOAD]", payload);
+        const res = await supabase
+          .from("chat_group_members")
+          .delete()
+          .eq("id", gm.id)
+          .select();
+        console.log("[CHAT_REMOVE_MEMBER_RESULT]", { deleted: res.data, error: res.error });
+        deleted = res.data;
+        error = res.error;
+      }
 
-      const { data: deleted, error } = await supabase
-        .from("chat_group_members")
-        .delete()
-        .eq("group_id", selectedGroupId!)
-        .or(orFilter)
-        .select();
+      // Path B: fallback — delete by group_id + OR(profile_id / user_id)
+      if (!gm.id || (deleted != null && deleted.length === 0 && !error)) {
+        const orParts = [...new Set([
+          targetProfileId && `profile_id.eq.${targetProfileId}`,
+          targetProfileId && `user_id.eq.${targetProfileId}`,
+          targetUserId !== targetProfileId && targetUserId && `user_id.eq.${targetUserId}`,
+        ].filter(Boolean) as string[])].join(",");
 
-      console.log("[CHAT_REMOVE_MEMBER_RESULT]", { deleted, error });
+        const payload = {
+          strategy: "by_or_filter",
+          group_id: selectedGroupId,
+          or_filter: orParts,
+          gm_profile_id: gm.profile_id,
+          gm_user_id: gm.user_id,
+        };
+        console.log("[CHAT_REMOVE_MEMBER_PAYLOAD]", payload);
 
-      if (error) throw error;
+        const res = await supabase
+          .from("chat_group_members")
+          .delete()
+          .eq("group_id", selectedGroupId!)
+          .or(orParts)
+          .select();
+        console.log("[CHAT_REMOVE_MEMBER_RESULT]", { deleted: res.data, error: res.error });
+        deleted = res.data;
+        error = res.error;
+      }
 
+      if (error) throw new Error((error as { message: string }).message);
       if (!deleted || deleted.length === 0) {
         throw new Error("Không tìm thấy thành viên để xóa");
       }
-
       return gm;
     },
-    onSuccess: (gm) => {
+    onSuccess: () => {
       setConfirmRemoveMember(null);
       queryClient.invalidateQueries({
         queryKey: ["chat_group_members", selectedGroupId],
@@ -1506,15 +1531,25 @@ export default function ChatPage() {
               ) : (
                 <div className="space-y-px p-2">
                   {(groupMembersQuery.data ?? []).map((gm) => {
-                    const member = memberMap.get(gm.user_id);
+                    // Look up employee by profile_id first, then user_id
+                    const member =
+                      memberMap.get(gm.profile_id ?? "") ??
+                      memberMap.get(gm.user_id);
                     const name = member?.full_name ?? "Unknown";
                     const memberRole = member?.role;
-                    const isCurrentUser = gm.user_id === currentUserId;
-                    const isCreator = gm.user_id === selectedGroup?.created_by;
+                    const memberEmail = member?.email;
+                    const gmKey = gm.id ?? `${gm.group_id}-${gm.user_id}`;
+                    const isCurrentUser =
+                      gm.user_id === currentUserId ||
+                      gm.profile_id === currentUserId;
+                    const isCreator =
+                      gm.user_id === selectedGroup?.created_by ||
+                      gm.profile_id === selectedGroup?.created_by;
+                    const groupRole = gm.role ?? (isCreator ? "owner" : "member");
 
                     return (
                       <div
-                        key={gm.id}
+                        key={gmKey}
                         className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent"
                       >
                         <Avatar className="h-7 w-7 shrink-0">
@@ -1528,24 +1563,22 @@ export default function ChatPage() {
                             {name}
                             {isCurrentUser && (
                               <span className="ml-1 text-muted-foreground">
-                                (you)
+                                (bạn)
                               </span>
                             )}
                           </p>
-                          {memberRole && (
-                            <p className="truncate text-[10px] text-muted-foreground">
-                              {ROLE_LABELS[memberRole as AppRole] ?? memberRole}
-                            </p>
-                          )}
+                          <p className="truncate text-[10px] text-muted-foreground">
+                            {memberRole
+                              ? (ROLE_LABELS[memberRole as AppRole] ?? memberRole)
+                              : (memberEmail ?? "")}
+                          </p>
                         </div>
-                        {isCreator && (
-                          <Badge
-                            variant="outline"
-                            className="shrink-0 px-1 py-0 text-[9px]"
-                          >
-                            Owner
-                          </Badge>
-                        )}
+                        <Badge
+                          variant={groupRole === "owner" ? "default" : "outline"}
+                          className="shrink-0 px-1 py-0 text-[9px]"
+                        >
+                          {groupRole === "owner" ? "Owner" : "Member"}
+                        </Badge>
                         {canRemoveThisMember(gm) && (
                           <button
                             className="hidden shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
