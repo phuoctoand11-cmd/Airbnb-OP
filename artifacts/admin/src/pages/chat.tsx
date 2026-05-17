@@ -75,7 +75,7 @@ interface ChatGroupMember {
   profile_id?: string | null;  // added by v2 migration; may not exist
   user_id: string;
   role?: "owner" | "admin" | "member" | null;  // added by v2 migration
-  joined_at: string;
+  joined_at?: string;     // may not exist in all deployments
 }
 
 interface ChatTopic {
@@ -526,8 +526,7 @@ export default function ChatPage() {
       const { data, error } = await supabase
         .from("chat_group_members")
         .select("*")
-        .eq("group_id", selectedGroupId!)
-        .order("joined_at");
+        .eq("group_id", selectedGroupId!);
       console.log("[CHAT_GROUP_MEMBERS_FETCHED]", {
         count: data?.length ?? 0,
         data,
@@ -667,10 +666,16 @@ export default function ChatPage() {
     [topicsQuery.data, selectedTopicId]
   );
 
-  const groupMemberIds = useMemo(
-    () => new Set((groupMembersQuery.data ?? []).map((m) => m.user_id)),
-    [groupMembersQuery.data]
-  );
+  // Include both profile_id and user_id so the AddMembersModal correctly
+  // treats already-added members as existing regardless of which field was used.
+  const groupMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of groupMembersQuery.data ?? []) {
+      ids.add(m.user_id);
+      if (m.profile_id) ids.add(m.profile_id);
+    }
+    return ids;
+  }, [groupMembersQuery.data]);
 
   const attachmentMap = useMemo(
     () => new Map((attachmentsQuery.data ?? []).map((a) => [a.message_id, a])),
@@ -811,37 +816,76 @@ export default function ChatPage() {
 
   const addMembersMutation = useMutation({
     mutationFn: async (profileIds: string[]) => {
-      const rows = profileIds.map((uid) => ({
+      // Always use employee.profile_id (not employee.id) for both columns
+      const rows = profileIds.map((profileId) => ({
         group_id: selectedGroupId!,
-        profile_id: uid,
-        user_id: uid,
-        role: "member",
+        profile_id: profileId,
+        user_id: profileId,
+        role: "member" as const,
       }));
-      const { error } = await supabase
+
+      console.log("[CHAT_ADD_MEMBERS_PAYLOAD]", {
+        group_id: selectedGroupId,
+        count: rows.length,
+        rows,
+      });
+
+      // Path A: upsert with conflict on (group_id, profile_id)
+      let { error } = await supabase
         .from("chat_group_members")
         .upsert(rows, { onConflict: "group_id,profile_id" });
-      if (error) throw error;
+
+      console.log("[CHAT_ADD_MEMBERS_RESULT]", { strategy: "upsert", error });
+
+      // Path B: if upsert not supported (no unique constraint yet), fall back to
+      // individual inserts and silently ignore duplicate-key errors (23505).
+      if (error) {
+        const insertErrors: string[] = [];
+        for (const row of rows) {
+          const { error: insErr } = await supabase
+            .from("chat_group_members")
+            .insert(row);
+          console.log("[CHAT_ADD_MEMBERS_RESULT]", {
+            strategy: "insert_fallback",
+            row,
+            error: insErr,
+          });
+          // 23505 = unique_violation — member already in group, skip
+          if (insErr && (insErr as { code?: string }).code !== "23505") {
+            insertErrors.push(insErr.message);
+          }
+        }
+        if (insertErrors.length > 0) {
+          throw new Error(insertErrors.join("; "));
+        }
+      }
+
       return profileIds;
     },
     onSuccess: (profileIds) => {
-      toast({ title: "Members added" });
       setAddMembersOpen(false);
       queryClient.invalidateQueries({
         queryKey: ["chat_group_members", selectedGroupId],
       });
+      queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
+      toast({ title: `Đã thêm ${profileIds.length} thành viên vào nhóm` });
       profileIds.forEach((uid) => {
         log({
           action: "chat_member_added",
           entityType: "chat_groups",
           entityId: selectedGroupId,
-          metadata: { user_id: uid },
+          metadata: {
+            group_id: selectedGroupId,
+            group_name: selectedGroup?.name ?? "",
+            profile_id: uid,
+          },
         });
       });
     },
     onError: (err: Error) =>
       toast({
         variant: "destructive",
-        title: "Failed to add members",
+        title: "Không thể thêm thành viên",
         description: err.message,
       }),
   });
