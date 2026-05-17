@@ -759,15 +759,31 @@ export default function ChatPage() {
     // Cannot remove yourself (check both profile_id and user_id)
     const gmIdentity = gm.profile_id ?? gm.user_id;
     if (gmIdentity === currentUserId || gm.user_id === currentUserId) return false;
-    // admin/manager can remove anyone (including group owners)
+
+    const isTargetOwner =
+      gm.role === "owner" ||
+      gm.user_id === selectedGroup?.created_by ||
+      gm.profile_id === selectedGroup?.created_by;
+
+    // Never remove the last/only owner — count owners in this group
+    if (isTargetOwner) {
+      const ownerCount = (groupMembersQuery.data ?? []).filter(
+        (m) =>
+          m.role === "owner" ||
+          m.user_id === selectedGroup?.created_by ||
+          m.profile_id === selectedGroup?.created_by
+      ).length;
+      if (ownerCount <= 1) return false;
+    }
+
+    // admin/manager can remove anyone (including extra owners)
     if (isAdmin) return true;
-    // Group owner can remove non-owner members
+
+    // Group owner can remove non-owner members only
     if (selectedGroup?.created_by === currentUserId) {
-      const isTargetOwner =
-        gm.user_id === selectedGroup?.created_by ||
-        gm.profile_id === selectedGroup?.created_by;
       return !isTargetOwner;
     }
+
     // Regular members cannot remove anyone
     return false;
   }
@@ -1021,7 +1037,7 @@ export default function ChatPage() {
     },
     onSuccess: () => {
       setConfirmRemoveMember(null);
-      queryClient.invalidateQueries({
+      queryClient.refetchQueries({
         queryKey: ["chat_group_members", selectedGroupId],
       });
       queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
@@ -1675,7 +1691,16 @@ export default function ChatPage() {
                       {canRemoveThisMember(gm) && (
                         <button
                           className="hidden shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
-                          onClick={() => setConfirmRemoveMember(gm)}
+                          onClick={() => {
+                            console.log("[CHAT_REMOVE_MEMBER_CLICK]", {
+                              group_id: selectedGroupId,
+                              gm_id: gm.id,
+                              profile_id: gm.profile_id,
+                              user_id: gm.user_id,
+                              name,
+                            });
+                            setConfirmRemoveMember(gm);
+                          }}
                           title="Xóa khỏi nhóm"
                         >
                           <UserMinus className="h-3 w-3" />
@@ -1775,7 +1800,11 @@ export default function ChatPage() {
 
       {/* ── Confirm remove member dialog ────────────────────────────────────── */}
       {confirmRemoveMember && (() => {
-        const targetMember = memberMap.get(confirmRemoveMember.user_id);
+        const targetMember =
+          groupMemberDetailsMap.get(confirmRemoveMember.profile_id ?? "") ??
+          groupMemberDetailsMap.get(confirmRemoveMember.user_id) ??
+          memberMap.get(confirmRemoveMember.profile_id ?? "") ??
+          memberMap.get(confirmRemoveMember.user_id);
         const memberName = targetMember?.full_name ?? "thành viên này";
         return (
           <Dialog
@@ -1789,7 +1818,9 @@ export default function ChatPage() {
               <p className="text-sm text-muted-foreground">
                 Bạn có chắc muốn xóa{" "}
                 <span className="font-semibold text-foreground">{memberName}</span>{" "}
-                khỏi nhóm <span className="font-semibold text-foreground">{selectedGroup?.name}</span>?
+                khỏi nhóm này không?
+              </p>
+              <p className="text-xs text-muted-foreground">
                 Lịch sử tin nhắn của họ sẽ được giữ lại.
               </p>
               <DialogFooter>
