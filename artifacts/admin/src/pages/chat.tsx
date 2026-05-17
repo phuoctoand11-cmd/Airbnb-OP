@@ -842,47 +842,53 @@ export default function ChatPage() {
       gm: ChatGroupMember;
       memberName: string;
     }) => {
-      // Try delete by profile_id first (preferred), fallback to user_id
-      const profileId = gm.profile_id ?? gm.user_id;
-      let { error } = await supabase
+      // Build OR filter:
+      //   profile_id = gm.profile_id
+      //   OR user_id  = gm.profile_id   (some rows store profile uuid in user_id)
+      //   OR user_id  = gm.user_id
+      const targetProfileId = gm.profile_id ?? gm.user_id;
+      const targetUserId = gm.user_id;
+
+      const orParts: string[] = [];
+      if (targetProfileId) orParts.push(`profile_id.eq.${targetProfileId}`);
+      if (targetProfileId) orParts.push(`user_id.eq.${targetProfileId}`);
+      if (targetUserId && targetUserId !== targetProfileId)
+        orParts.push(`user_id.eq.${targetUserId}`);
+      // Deduplicate
+      const orFilter = [...new Set(orParts)].join(",");
+
+      const payload = {
+        group_id: selectedGroupId,
+        or_filter: orFilter,
+        gm_profile_id: gm.profile_id,
+        gm_user_id: gm.user_id,
+      };
+      console.log("[CHAT_REMOVE_MEMBER_PAYLOAD]", payload);
+
+      const { data: deleted, error } = await supabase
         .from("chat_group_members")
         .delete()
         .eq("group_id", selectedGroupId!)
-        .eq("profile_id", profileId);
+        .or(orFilter)
+        .select();
 
-      // If profile_id delete failed or returned no rows, try user_id
-      if (error) {
-        ({ error } = await supabase
-          .from("chat_group_members")
-          .delete()
-          .eq("group_id", selectedGroupId!)
-          .eq("user_id", gm.user_id));
-      }
+      console.log("[CHAT_REMOVE_MEMBER_RESULT]", { deleted, error });
 
       if (error) throw error;
+
+      if (!deleted || deleted.length === 0) {
+        throw new Error("Không tìm thấy thành viên để xóa");
+      }
+
       return gm;
     },
-    onSuccess: (gm, { memberName }) => {
-      toast({ title: "Đã xóa thành viên khỏi nhóm" });
+    onSuccess: (gm) => {
       setConfirmRemoveMember(null);
       queryClient.invalidateQueries({
         queryKey: ["chat_group_members", selectedGroupId],
       });
       queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
-      queryClient.invalidateQueries({
-        queryKey: ["chat_my_memberships", gm.user_id],
-      });
-      log({
-        action: "chat_member_removed",
-        entityType: "chat_groups",
-        entityId: selectedGroupId,
-        metadata: {
-          group_id: selectedGroupId,
-          group_name: selectedGroup?.name ?? "",
-          removed_user: memberName,
-          removed_by: currentUserId,
-        },
-      });
+      toast({ title: "Đã xóa thành viên khỏi nhóm" });
     },
     onError: (err: Error) =>
       toast({
