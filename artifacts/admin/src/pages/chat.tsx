@@ -975,65 +975,37 @@ export default function ChatPage() {
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: async ({
-      gm,
-    }: {
-      gm: ChatGroupMember;
-      memberName: string;
-    }) => {
-      const targetProfileId = gm.profile_id ?? gm.user_id;
-      const targetUserId = gm.user_id;
+    mutationFn: async (gm: ChatGroupMember) => {
+      console.log("[CHAT_REMOVE_MEMBER_PAYLOAD]", {
+        id: gm.id,
+        group_id: gm.group_id,
+        profile_id: gm.profile_id,
+        user_id: gm.user_id,
+      });
 
-      let deleted: unknown[] | null = null;
-      let error: { message: string } | null = null;
-
-      // Path A: delete by primary key `id` if the column exists on this row
+      // Path A: delete by row id (preferred — exact match, no ambiguity)
       if (gm.id) {
-        const payload = { strategy: "by_id", id: gm.id, group_id: selectedGroupId };
-        console.log("[CHAT_REMOVE_MEMBER_PAYLOAD]", payload);
-        const res = await supabase
+        const { data, error } = await supabase
           .from("chat_group_members")
           .delete()
           .eq("id", gm.id)
           .select();
-        console.log("[CHAT_REMOVE_MEMBER_RESULT]", { deleted: res.data, error: res.error });
-        deleted = res.data;
-        error = res.error;
+        console.log("[CHAT_REMOVE_MEMBER_RESULT]", { strategy: "by_id", data, error });
+        if (error) throw error;
+        if (data && data.length > 0) return;
+        // data empty but no error — fall through to Path B
       }
 
-      // Path B: fallback — delete by group_id + OR(profile_id / user_id)
-      if (!gm.id || (deleted != null && deleted.length === 0 && !error)) {
-        const orParts = [...new Set([
-          targetProfileId && `profile_id.eq.${targetProfileId}`,
-          targetProfileId && `user_id.eq.${targetProfileId}`,
-          targetUserId !== targetProfileId && targetUserId && `user_id.eq.${targetUserId}`,
-        ].filter(Boolean) as string[])].join(",");
-
-        const payload = {
-          strategy: "by_or_filter",
-          group_id: selectedGroupId,
-          or_filter: orParts,
-          gm_profile_id: gm.profile_id,
-          gm_user_id: gm.user_id,
-        };
-        console.log("[CHAT_REMOVE_MEMBER_PAYLOAD]", payload);
-
-        const res = await supabase
-          .from("chat_group_members")
-          .delete()
-          .eq("group_id", selectedGroupId!)
-          .or(orParts)
-          .select();
-        console.log("[CHAT_REMOVE_MEMBER_RESULT]", { deleted: res.data, error: res.error });
-        deleted = res.data;
-        error = res.error;
-      }
-
-      if (error) throw new Error((error as { message: string }).message);
-      if (!deleted || deleted.length === 0) {
-        throw new Error("Không tìm thấy thành viên để xóa");
-      }
-      return gm;
+      // Path B: fallback — delete by group_id + profile_id
+      const profileId = gm.profile_id ?? gm.user_id;
+      const { data, error } = await supabase
+        .from("chat_group_members")
+        .delete()
+        .eq("group_id", gm.group_id)
+        .eq("profile_id", profileId)
+        .select();
+      console.log("[CHAT_REMOVE_MEMBER_RESULT]", { strategy: "by_profile_id", data, error });
+      if (error) throw error;
     },
     onSuccess: () => {
       setConfirmRemoveMember(null);
@@ -1043,12 +1015,15 @@ export default function ChatPage() {
       queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
       toast({ title: "Đã xóa thành viên khỏi nhóm" });
     },
-    onError: (err: Error) =>
+    onError: (err: unknown) => {
+      const raw = err as { message?: string; details?: string; code?: string };
+      const description = [raw?.message, raw?.details].filter(Boolean).join(" — ") || String(err);
       toast({
         variant: "destructive",
         title: "Không thể xóa thành viên",
-        description: err.message,
-      }),
+        description,
+      });
+    },
   });
 
   const sendMutation = useMutation({
@@ -1690,7 +1665,7 @@ export default function ChatPage() {
                       </Badge>
                       {canRemoveThisMember(gm) && (
                         <button
-                          className="hidden shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
+                          className="flex shrink-0 items-center justify-center rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           onClick={() => {
                             console.log("[CHAT_REMOVE_MEMBER_CLICK]", {
                               group_id: selectedGroupId,
@@ -1703,8 +1678,7 @@ export default function ChatPage() {
                           }}
                           title="Xóa khỏi nhóm"
                         >
-                          <UserMinus className="h-3 w-3" />
-                          <span>Xóa</span>
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
@@ -1834,12 +1808,7 @@ export default function ChatPage() {
                 <Button
                   variant="destructive"
                   disabled={removeMemberMutation.isPending}
-                  onClick={() => {
-                    removeMemberMutation.mutate({
-                      gm: confirmRemoveMember,
-                      memberName,
-                    });
-                  }}
+                  onClick={() => removeMemberMutation.mutate(confirmRemoveMember)}
                 >
                   {removeMemberMutation.isPending && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
