@@ -10,6 +10,7 @@ import {
   Plus,
   Search,
   Send,
+  UserMinus,
   UserPlus,
   Users,
   X,
@@ -71,7 +72,9 @@ interface ChatGroup {
 interface ChatGroupMember {
   id: string;
   group_id: string;
+  profile_id: string | null;
   user_id: string;
+  role: "owner" | "admin" | "member" | null;
   joined_at: string;
 }
 
@@ -465,6 +468,7 @@ export default function ChatPage() {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createTopicOpen, setCreateTopicOpen] = useState(false);
   const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<ChatGroupMember | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
@@ -519,7 +523,8 @@ export default function ChatPage() {
       const { data, error } = await supabase
         .from("chat_group_members")
         .select("id, group_id, profile_id, user_id, role, joined_at")
-        .eq("group_id", selectedGroupId!);
+        .eq("group_id", selectedGroupId!)
+        .order("joined_at");
       if (error) throw error;
       return (data ?? []) as ChatGroupMember[];
     },
@@ -669,6 +674,21 @@ export default function ChatPage() {
       ? isAdmin || selectedGroup.created_by === currentUserId
       : false;
 
+  /** Per-member permission: can the current user remove this specific member? */
+  function canRemoveThisMember(gm: ChatGroupMember): boolean {
+    // Cannot remove yourself
+    if (gm.user_id === currentUserId) return false;
+    // admin/manager can remove anyone (including group owners)
+    if (isAdmin) return true;
+    // Group owner can remove non-owner members
+    if (selectedGroup?.created_by === currentUserId) {
+      const isTargetOwner = gm.user_id === selectedGroup?.created_by;
+      return !isTargetOwner;
+    }
+    // Regular members cannot remove anyone
+    return false;
+  }
+
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
   const createGroupMutation = useMutation({
@@ -816,31 +836,58 @@ export default function ChatPage() {
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const { error } = await supabase
+    mutationFn: async ({
+      gm,
+    }: {
+      gm: ChatGroupMember;
+      memberName: string;
+    }) => {
+      // Try delete by profile_id first (preferred), fallback to user_id
+      const profileId = gm.profile_id ?? gm.user_id;
+      let { error } = await supabase
         .from("chat_group_members")
         .delete()
         .eq("group_id", selectedGroupId!)
-        .eq("user_id", userId);
+        .eq("profile_id", profileId);
+
+      // If profile_id delete failed or returned no rows, try user_id
+      if (error) {
+        ({ error } = await supabase
+          .from("chat_group_members")
+          .delete()
+          .eq("group_id", selectedGroupId!)
+          .eq("user_id", gm.user_id));
+      }
+
       if (error) throw error;
-      return userId;
+      return gm;
     },
-    onSuccess: (userId) => {
-      toast({ title: "Member removed" });
+    onSuccess: (gm, { memberName }) => {
+      toast({ title: "Đã xóa thành viên khỏi nhóm" });
+      setConfirmRemoveMember(null);
       queryClient.invalidateQueries({
         queryKey: ["chat_group_members", selectedGroupId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
+      queryClient.invalidateQueries({
+        queryKey: ["chat_my_memberships", gm.user_id],
       });
       log({
         action: "chat_member_removed",
         entityType: "chat_groups",
         entityId: selectedGroupId,
-        metadata: { user_id: userId },
+        metadata: {
+          group_id: selectedGroupId,
+          group_name: selectedGroup?.name ?? "",
+          removed_user: memberName,
+          removed_by: currentUserId,
+        },
       });
     },
     onError: (err: Error) =>
       toast({
         variant: "destructive",
-        title: "Failed to remove member",
+        title: "Không thể xóa thành viên",
         description: err.message,
       }),
   });
@@ -1493,15 +1540,14 @@ export default function ChatPage() {
                             Owner
                           </Badge>
                         )}
-                        {canManageGroup && !isCurrentUser && !isCreator && (
+                        {canRemoveThisMember(gm) && (
                           <button
-                            className="hidden shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive group-hover:block"
-                            onClick={() =>
-                              removeMemberMutation.mutate(gm.user_id)
-                            }
-                            title="Remove member"
+                            className="hidden shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
+                            onClick={() => setConfirmRemoveMember(gm)}
+                            title="Xóa khỏi nhóm"
                           >
-                            <X className="h-3 w-3" />
+                            <UserMinus className="h-3 w-3" />
+                            <span>Xóa</span>
                           </button>
                         )}
                       </div>
@@ -1595,6 +1641,55 @@ export default function ChatPage() {
           loading={addMembersMutation.isPending}
         />
       )}
+
+      {/* ── Confirm remove member dialog ────────────────────────────────────── */}
+      {confirmRemoveMember && (() => {
+        const targetMember = memberMap.get(confirmRemoveMember.user_id);
+        const memberName = targetMember?.full_name ?? "thành viên này";
+        return (
+          <Dialog
+            open={!!confirmRemoveMember}
+            onOpenChange={(o) => !o && setConfirmRemoveMember(null)}
+          >
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Xóa khỏi nhóm</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                Bạn có chắc muốn xóa{" "}
+                <span className="font-semibold text-foreground">{memberName}</span>{" "}
+                khỏi nhóm <span className="font-semibold text-foreground">{selectedGroup?.name}</span>?
+                Lịch sử tin nhắn của họ sẽ được giữ lại.
+              </p>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmRemoveMember(null)}
+                  disabled={removeMemberMutation.isPending}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={removeMemberMutation.isPending}
+                  onClick={() => {
+                    removeMemberMutation.mutate({
+                      gm: confirmRemoveMember,
+                      memberName,
+                    });
+                  }}
+                >
+                  {removeMemberMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  <UserMinus className="mr-1.5 h-4 w-4" />
+                  Xóa khỏi nhóm
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* ── Image viewer ────────────────────────────────────────────────────── */}
       <Dialog open={!!imageViewerUrl} onOpenChange={(o) => !o && setImageViewerUrl(null)}>
