@@ -527,7 +527,7 @@ export default function ChatPage() {
         .from("chat_group_members")
         .select("*")
         .eq("group_id", selectedGroupId!);
-      console.log("[CHAT_GROUP_MEMBERS_FETCHED]", {
+      console.log("[CHAT_GROUP_MEMBERS_RAW]", {
         count: data?.length ?? 0,
         data,
         error,
@@ -676,6 +676,73 @@ export default function ChatPage() {
     }
     return ids;
   }, [groupMembersQuery.data]);
+
+  // Sorted, stable list of IDs used as the query key for member detail fetching.
+  const memberIdList = useMemo(
+    () => [...groupMemberIds].sort(),
+    [groupMemberIds]
+  );
+
+  // Dedicated employee-details fetch for the selected group's members.
+  // Avoids relying on the global employees list and works even if status != active.
+  const groupMemberDetailsQuery = useQuery({
+    queryKey: ["chat_member_details", memberIdList],
+    enabled: memberIdList.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employees")
+        .select("id, profile_id, full_name, email, role, status, avatar_url")
+        .in("profile_id", memberIdList);
+      if (error) throw error;
+      return (data ?? []) as CompanyMember[];
+    },
+  });
+
+  // Map keyed by profile_id for O(1) lookup.
+  const groupMemberDetailsMap = useMemo(() => {
+    const map = new Map<string, CompanyMember>();
+    for (const emp of groupMemberDetailsQuery.data ?? []) {
+      if (emp.profile_id) map.set(emp.profile_id, emp);
+    }
+    return map;
+  }, [groupMemberDetailsQuery.data]);
+
+  // Pre-compute the display objects once; also fires the [CHAT_GROUP_MEMBERS_RENDERED] log.
+  const renderedMembers = useMemo(() => {
+    const rows = groupMembersQuery.data ?? [];
+    const result = rows.map((gm) => {
+      const emp =
+        groupMemberDetailsMap.get(gm.profile_id ?? "") ??
+        groupMemberDetailsMap.get(gm.user_id) ??
+        memberMap.get(gm.profile_id ?? "") ??
+        memberMap.get(gm.user_id);
+      const isCreator =
+        gm.user_id === selectedGroup?.created_by ||
+        gm.profile_id === selectedGroup?.created_by;
+      return {
+        gm,
+        emp,
+        name: emp?.full_name ?? "Unknown",
+        email: emp?.email ?? "",
+        employeeRole: emp?.role ?? null,
+        groupRole: gm.role ?? (isCreator ? "owner" : "member"),
+        isCreator,
+        isCurrentUser:
+          gm.user_id === currentUserId || gm.profile_id === currentUserId,
+        gmKey: gm.id ?? `${gm.group_id}-${gm.user_id}`,
+      };
+    });
+    console.log("[CHAT_GROUP_MEMBERS_RENDERED]", {
+      count: result.length,
+      members: result.map((r) => ({
+        user_id: r.gm.user_id,
+        profile_id: r.gm.profile_id,
+        name: r.name,
+        groupRole: r.groupRole,
+      })),
+    });
+    return result;
+  }, [groupMembersQuery.data, groupMemberDetailsMap, memberMap, selectedGroup, currentUserId]);
 
   const attachmentMap = useMemo(
     () => new Map((attachmentsQuery.data ?? []).map((a) => [a.message_id, a])),
@@ -864,7 +931,8 @@ export default function ChatPage() {
     },
     onSuccess: (profileIds) => {
       setAddMembersOpen(false);
-      queryClient.invalidateQueries({
+      // refetchQueries forces an immediate re-fetch (not just mark-stale)
+      queryClient.refetchQueries({
         queryKey: ["chat_group_members", selectedGroupId],
       });
       queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
@@ -1563,79 +1631,59 @@ export default function ChatPage() {
 
             {/* Group members */}
             <ScrollArea className="flex-1">
-              {groupMembersQuery.isLoading ? (
+              {groupMembersQuery.isLoading || groupMemberDetailsQuery.isLoading ? (
                 <div className="flex justify-center py-6">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 </div>
-              ) : (groupMembersQuery.data ?? []).length === 0 ? (
+              ) : renderedMembers.length === 0 ? (
                 <div className="px-3 py-6 text-center">
                   <Users className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
-                  <p className="text-xs text-muted-foreground">No members</p>
+                  <p className="text-xs text-muted-foreground">Chưa có thành viên</p>
                 </div>
               ) : (
                 <div className="space-y-px p-2">
-                  {(groupMembersQuery.data ?? []).map((gm) => {
-                    // Look up employee by profile_id first, then user_id
-                    const member =
-                      memberMap.get(gm.profile_id ?? "") ??
-                      memberMap.get(gm.user_id);
-                    const name = member?.full_name ?? "Unknown";
-                    const memberRole = member?.role;
-                    const memberEmail = member?.email;
-                    const gmKey = gm.id ?? `${gm.group_id}-${gm.user_id}`;
-                    const isCurrentUser =
-                      gm.user_id === currentUserId ||
-                      gm.profile_id === currentUserId;
-                    const isCreator =
-                      gm.user_id === selectedGroup?.created_by ||
-                      gm.profile_id === selectedGroup?.created_by;
-                    const groupRole = gm.role ?? (isCreator ? "owner" : "member");
-
-                    return (
-                      <div
-                        key={gmKey}
-                        className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent"
-                      >
-                        <Avatar className="h-7 w-7 shrink-0">
-                          <AvatarImage src={member?.avatar_url ?? ""} />
-                          <AvatarFallback className="text-[10px]">
-                            {initials(name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium">
-                            {name}
-                            {isCurrentUser && (
-                              <span className="ml-1 text-muted-foreground">
-                                (bạn)
-                              </span>
-                            )}
-                          </p>
-                          <p className="truncate text-[10px] text-muted-foreground">
-                            {memberRole
-                              ? (ROLE_LABELS[memberRole as AppRole] ?? memberRole)
-                              : (memberEmail ?? "")}
-                          </p>
-                        </div>
-                        <Badge
-                          variant={groupRole === "owner" ? "default" : "outline"}
-                          className="shrink-0 px-1 py-0 text-[9px]"
-                        >
-                          {groupRole === "owner" ? "Owner" : "Member"}
-                        </Badge>
-                        {canRemoveThisMember(gm) && (
-                          <button
-                            className="hidden shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
-                            onClick={() => setConfirmRemoveMember(gm)}
-                            title="Xóa khỏi nhóm"
-                          >
-                            <UserMinus className="h-3 w-3" />
-                            <span>Xóa</span>
-                          </button>
-                        )}
+                  {renderedMembers.map(({ gm, emp, name, email, employeeRole, groupRole, isCurrentUser, gmKey }) => (
+                    <div
+                      key={gmKey}
+                      className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent"
+                    >
+                      <Avatar className="h-7 w-7 shrink-0">
+                        <AvatarImage src={emp?.avatar_url ?? ""} />
+                        <AvatarFallback className="text-[10px]">
+                          {initials(name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">
+                          {name}
+                          {isCurrentUser && (
+                            <span className="ml-1 text-muted-foreground">(bạn)</span>
+                          )}
+                        </p>
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          {employeeRole
+                            ? (ROLE_LABELS[employeeRole as AppRole] ?? employeeRole)
+                            : email}
+                        </p>
                       </div>
-                    );
-                  })}
+                      <Badge
+                        variant={groupRole === "owner" ? "default" : "outline"}
+                        className="shrink-0 px-1 py-0 text-[9px]"
+                      >
+                        {groupRole === "owner" ? "Owner" : "Member"}
+                      </Badge>
+                      {canRemoveThisMember(gm) && (
+                        <button
+                          className="hidden shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
+                          onClick={() => setConfirmRemoveMember(gm)}
+                          title="Xóa khỏi nhóm"
+                        >
+                          <UserMinus className="h-3 w-3" />
+                          <span>Xóa</span>
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </ScrollArea>
