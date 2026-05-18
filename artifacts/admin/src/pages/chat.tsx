@@ -1023,6 +1023,21 @@ export default function ChatPage() {
     },
   });
 
+  async function removeMemberDebug(member: GroupMemberView) {
+    console.log("[REMOVE_MEMBER_CLICK]", member);
+    console.log("[REMOVE_MEMBER_ID]", member.membership_id);
+    const result = await supabase
+      .from("chat_group_members")
+      .delete()
+      .eq("id", member.membership_id);
+    console.log("[REMOVE_MEMBER_DELETE_RESULT]", result);
+    if (!result.error) {
+      setRemovedMemberIds((prev) => new Set([...prev, member.membership_id]));
+      queryClient.refetchQueries({ queryKey: ["chat_group_members", selectedGroupId] });
+      toast({ title: "Đã xóa thành viên khỏi nhóm" });
+    }
+  }
+
   /** Direct remove — no confirm dialog, always fires for debugging. */
   async function handleRemoveMember(member: GroupMemberView) {
     console.log("[REMOVE_MEMBER_CLICK]", member);
@@ -1693,11 +1708,10 @@ export default function ChatPage() {
                         {member.group_role === "owner" ? "Owner" : "Member"}
                       </Badge>
                       <button
-                        className="flex shrink-0 items-center justify-center rounded p-1 text-destructive hover:bg-destructive/10"
-                        onClick={() => handleRemoveMember(member)}
-                        title="Xóa khỏi nhóm"
+                        style={{ background: "red", color: "white", padding: "2px 6px", fontSize: 11, borderRadius: 4, border: "none", cursor: "pointer", flexShrink: 0 }}
+                        onClick={() => removeMemberDebug(member)}
                       >
-                        <X className="h-3.5 w-3.5" />
+                        DEBUG DELETE
                       </button>
                     </div>
                   );
