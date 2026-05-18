@@ -469,6 +469,7 @@ export default function ChatPage() {
   const [createTopicOpen, setCreateTopicOpen] = useState(false);
   const [addMembersOpen, setAddMembersOpen] = useState(false);
   const [confirmRemoveMember, setConfirmRemoveMember] = useState<ChatGroupMember | null>(null);
+  const [removedMemberIds, setRemovedMemberIds] = useState<Set<string>>(new Set());
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
@@ -721,6 +722,7 @@ export default function ChatPage() {
         gm.profile_id === selectedGroup?.created_by;
       return {
         gm,
+        membership_id: gm.id ?? null,
         emp,
         name: emp?.full_name ?? "Unknown",
         email: emp?.email ?? "",
@@ -976,39 +978,32 @@ export default function ChatPage() {
 
   const removeMemberMutation = useMutation({
     mutationFn: async (gm: ChatGroupMember) => {
-      console.log("[CHAT_REMOVE_MEMBER_PAYLOAD]", {
-        id: gm.id,
+      const membershipId = gm.id;
+      console.log("[REMOVE_MEMBER_MEMBERSHIP_ID]", {
+        membership_id: membershipId,
         group_id: gm.group_id,
         profile_id: gm.profile_id,
         user_id: gm.user_id,
       });
 
-      // Path A: delete by row id (preferred — exact match, no ambiguity)
-      if (gm.id) {
-        const { data, error } = await supabase
-          .from("chat_group_members")
-          .delete()
-          .eq("id", gm.id)
-          .select();
-        console.log("[CHAT_REMOVE_MEMBER_RESULT]", { strategy: "by_id", data, error });
-        if (error) throw error;
-        if (data && data.length > 0) return;
-        // data empty but no error — fall through to Path B
+      if (!membershipId) {
+        throw new Error("Thiếu membership_id nên không thể xóa");
       }
 
-      // Path B: fallback — delete by group_id + profile_id
-      const profileId = gm.profile_id ?? gm.user_id;
       const { data, error } = await supabase
         .from("chat_group_members")
         .delete()
-        .eq("group_id", gm.group_id)
-        .eq("profile_id", profileId)
+        .eq("id", membershipId)
         .select();
-      console.log("[CHAT_REMOVE_MEMBER_RESULT]", { strategy: "by_profile_id", data, error });
+
+      console.log("[REMOVE_MEMBER_DELETE_RESULT]", { data, error });
+
       if (error) throw error;
+      return { membershipId };
     },
-    onSuccess: () => {
+    onSuccess: ({ membershipId }) => {
       setConfirmRemoveMember(null);
+      setRemovedMemberIds((prev) => new Set([...prev, membershipId]));
       queryClient.refetchQueries({
         queryKey: ["chat_group_members", selectedGroupId],
       });
@@ -1633,10 +1628,12 @@ export default function ChatPage() {
                 </div>
               ) : (
                 <div className="space-y-px p-2">
-                  {renderedMembers.map(({ gm, emp, name, email, employeeRole, groupRole, isCurrentUser, gmKey }) => (
+                  {renderedMembers
+                    .filter((r) => !removedMemberIds.has(r.membership_id ?? "__none__"))
+                    .map(({ gm, membership_id, emp, name, email, employeeRole, groupRole, isCurrentUser, gmKey }) => (
                     <div
                       key={gmKey}
-                      className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent"
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent"
                     >
                       <Avatar className="h-7 w-7 shrink-0">
                         <AvatarImage src={emp?.avatar_url ?? ""} />
@@ -1663,13 +1660,13 @@ export default function ChatPage() {
                       >
                         {groupRole === "owner" ? "Owner" : "Member"}
                       </Badge>
-                      {canRemoveThisMember(gm) && (
+                      {isAdmin && !isCurrentUser && (
                         <button
                           className="flex shrink-0 items-center justify-center rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           onClick={() => {
-                            console.log("[CHAT_REMOVE_MEMBER_CLICK]", {
+                            console.log("[REMOVE_MEMBER_MEMBERSHIP_ID]", {
+                              membership_id,
                               group_id: selectedGroupId,
-                              gm_id: gm.id,
                               profile_id: gm.profile_id,
                               user_id: gm.user_id,
                               name,
