@@ -1623,7 +1623,7 @@ export default function ChatPage() {
                 <div className="flex justify-center py-6">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 </div>
-              ) : renderedMembers.length === 0 ? (
+              ) : groupMemberViews.length === 0 ? (
                 <div className="px-3 py-6 text-center">
                   <Users className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
                   <p className="text-xs text-muted-foreground">Chưa có thành viên</p>
