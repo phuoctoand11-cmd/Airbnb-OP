@@ -70,12 +70,26 @@ interface ChatGroup {
 }
 
 interface ChatGroupMember {
-  id?: string;            // may not exist — original PK is (group_id, user_id)
+  id: string;
   group_id: string;
-  profile_id?: string | null;  // added by v2 migration; may not exist
+  profile_id?: string | null;
   user_id: string;
-  role?: "owner" | "admin" | "member" | null;  // added by v2 migration
-  joined_at?: string;     // may not exist in all deployments
+  role?: "owner" | "admin" | "member" | null;
+  created_at?: string;
+}
+
+/** Flat view of a group member used by the sidebar and remove mutation. */
+interface GroupMemberView {
+  membership_id: string;        // chat_group_members.id — the ONLY delete key
+  group_id: string;
+  profile_id: string | null;
+  user_id: string;
+  group_role: string;
+  full_name: string;
+  email: string;
+  employee_role: string | null;
+  avatar_url: string | null;
+  is_current_user: boolean;
 }
 
 interface ChatTopic {
@@ -468,7 +482,7 @@ export default function ChatPage() {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createTopicOpen, setCreateTopicOpen] = useState(false);
   const [addMembersOpen, setAddMembersOpen] = useState(false);
-  const [confirmRemoveMember, setConfirmRemoveMember] = useState<ChatGroupMember | null>(null);
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<GroupMemberView | null>(null);
   const [removedMemberIds, setRemovedMemberIds] = useState<Set<string>>(new Set());
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -708,10 +722,10 @@ export default function ChatPage() {
     return map;
   }, [groupMemberDetailsQuery.data]);
 
-  // Pre-compute the display objects once; also fires the [CHAT_GROUP_MEMBERS_RENDERED] log.
-  const renderedMembers = useMemo(() => {
+  // Flat GroupMemberView list — membership_id is the only delete key.
+  const groupMemberViews = useMemo((): GroupMemberView[] => {
     const rows = groupMembersQuery.data ?? [];
-    const result = rows.map((gm) => {
+    const views = rows.map((gm) => {
       const emp =
         groupMemberDetailsMap.get(gm.profile_id ?? "") ??
         groupMemberDetailsMap.get(gm.user_id) ??
@@ -721,29 +735,28 @@ export default function ChatPage() {
         gm.user_id === selectedGroup?.created_by ||
         gm.profile_id === selectedGroup?.created_by;
       return {
-        gm,
-        membership_id: gm.id ?? null,
-        emp,
-        name: emp?.full_name ?? "Unknown",
+        membership_id: gm.id,
+        group_id: gm.group_id,
+        profile_id: gm.profile_id ?? null,
+        user_id: gm.user_id,
+        group_role: gm.role ?? (isCreator ? "owner" : "member"),
+        full_name: emp?.full_name ?? "Unknown",
         email: emp?.email ?? "",
-        employeeRole: emp?.role ?? null,
-        groupRole: gm.role ?? (isCreator ? "owner" : "member"),
-        isCreator,
-        isCurrentUser:
+        employee_role: emp?.role ?? null,
+        avatar_url: emp?.avatar_url ?? null,
+        is_current_user:
           gm.user_id === currentUserId || gm.profile_id === currentUserId,
-        gmKey: gm.id ?? `${gm.group_id}-${gm.user_id}`,
-      };
+      } satisfies GroupMemberView;
     });
     console.log("[CHAT_GROUP_MEMBERS_RENDERED]", {
-      count: result.length,
-      members: result.map((r) => ({
-        user_id: r.gm.user_id,
-        profile_id: r.gm.profile_id,
-        name: r.name,
-        groupRole: r.groupRole,
+      count: views.length,
+      members: views.map((v) => ({
+        membership_id: v.membership_id,
+        full_name: v.full_name,
+        group_role: v.group_role,
       })),
     });
-    return result;
+    return views;
   }, [groupMembersQuery.data, groupMemberDetailsMap, memberMap, selectedGroup, currentUserId]);
 
   const attachmentMap = useMemo(
@@ -977,47 +990,36 @@ export default function ChatPage() {
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: async (gm: ChatGroupMember) => {
-      const membershipId = gm.id;
-      console.log("[REMOVE_MEMBER_MEMBERSHIP_ID]", {
-        membership_id: membershipId,
-        group_id: gm.group_id,
-        profile_id: gm.profile_id,
-        user_id: gm.user_id,
-      });
+    mutationFn: async (member: GroupMemberView) => {
+      console.log("[REMOVE_MEMBER_CLICK]", member);
+      console.log("[REMOVE_MEMBER_MEMBERSHIP_ID]", member.membership_id);
 
-      if (!membershipId) {
-        throw new Error("Thiếu membership_id nên không thể xóa");
+      if (!member.membership_id) {
+        toast({ variant: "destructive", title: "Không thể xóa: thiếu membership_id" });
+        throw new Error("Không thể xóa: thiếu membership_id");
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("chat_group_members")
         .delete()
-        .eq("id", membershipId)
-        .select();
+        .eq("id", member.membership_id);
 
-      console.log("[REMOVE_MEMBER_DELETE_RESULT]", { data, error });
+      console.log("[REMOVE_MEMBER_DELETE_ERROR]", error);
 
       if (error) throw error;
-      return { membershipId };
+      return { membership_id: member.membership_id };
     },
-    onSuccess: ({ membershipId }) => {
+    onSuccess: ({ membership_id }) => {
       setConfirmRemoveMember(null);
-      setRemovedMemberIds((prev) => new Set([...prev, membershipId]));
-      queryClient.refetchQueries({
-        queryKey: ["chat_group_members", selectedGroupId],
-      });
+      setRemovedMemberIds((prev) => new Set([...prev, membership_id]));
+      queryClient.refetchQueries({ queryKey: ["chat_group_members", selectedGroupId] });
       queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
       toast({ title: "Đã xóa thành viên khỏi nhóm" });
     },
     onError: (err: unknown) => {
       const raw = err as { message?: string; details?: string; code?: string };
       const description = [raw?.message, raw?.details].filter(Boolean).join(" — ") || String(err);
-      toast({
-        variant: "destructive",
-        title: "Không thể xóa thành viên",
-        description,
-      });
+      toast({ variant: "destructive", title: "Không thể xóa thành viên", description });
     },
   });
 
@@ -1628,51 +1630,42 @@ export default function ChatPage() {
                 </div>
               ) : (
                 <div className="space-y-px p-2">
-                  {renderedMembers
-                    .filter((r) => !removedMemberIds.has(r.membership_id ?? "__none__"))
-                    .map(({ gm, membership_id, emp, name, email, employeeRole, groupRole, isCurrentUser, gmKey }) => (
+                  {groupMemberViews
+                    .filter((m) => !removedMemberIds.has(m.membership_id))
+                    .map((member) => (
                     <div
-                      key={gmKey}
+                      key={member.membership_id}
                       className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent"
                     >
                       <Avatar className="h-7 w-7 shrink-0">
-                        <AvatarImage src={emp?.avatar_url ?? ""} />
+                        <AvatarImage src={member.avatar_url ?? ""} />
                         <AvatarFallback className="text-[10px]">
-                          {initials(name)}
+                          {initials(member.full_name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium">
-                          {name}
-                          {isCurrentUser && (
+                          {member.full_name}
+                          {member.is_current_user && (
                             <span className="ml-1 text-muted-foreground">(bạn)</span>
                           )}
                         </p>
                         <p className="truncate text-[10px] text-muted-foreground">
-                          {employeeRole
-                            ? (ROLE_LABELS[employeeRole as AppRole] ?? employeeRole)
-                            : email}
+                          {member.employee_role
+                            ? (ROLE_LABELS[member.employee_role as AppRole] ?? member.employee_role)
+                            : member.email}
                         </p>
                       </div>
                       <Badge
-                        variant={groupRole === "owner" ? "default" : "outline"}
+                        variant={member.group_role === "owner" ? "default" : "outline"}
                         className="shrink-0 px-1 py-0 text-[9px]"
                       >
-                        {groupRole === "owner" ? "Owner" : "Member"}
+                        {member.group_role === "owner" ? "Owner" : "Member"}
                       </Badge>
-                      {isAdmin && !isCurrentUser && (
+                      {isAdmin && !member.is_current_user && (
                         <button
                           className="flex shrink-0 items-center justify-center rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => {
-                            console.log("[REMOVE_MEMBER_MEMBERSHIP_ID]", {
-                              membership_id,
-                              group_id: selectedGroupId,
-                              profile_id: gm.profile_id,
-                              user_id: gm.user_id,
-                              name,
-                            });
-                            setConfirmRemoveMember(gm);
-                          }}
+                          onClick={() => setConfirmRemoveMember(member)}
                           title="Xóa khỏi nhóm"
                         >
                           <X className="h-3.5 w-3.5" />
@@ -1770,54 +1763,48 @@ export default function ChatPage() {
       )}
 
       {/* ── Confirm remove member dialog ────────────────────────────────────── */}
-      {confirmRemoveMember && (() => {
-        const targetMember =
-          groupMemberDetailsMap.get(confirmRemoveMember.profile_id ?? "") ??
-          groupMemberDetailsMap.get(confirmRemoveMember.user_id) ??
-          memberMap.get(confirmRemoveMember.profile_id ?? "") ??
-          memberMap.get(confirmRemoveMember.user_id);
-        const memberName = targetMember?.full_name ?? "thành viên này";
-        return (
-          <Dialog
-            open={!!confirmRemoveMember}
-            onOpenChange={(o) => !o && setConfirmRemoveMember(null)}
-          >
-            <DialogContent className="max-w-sm">
-              <DialogHeader>
-                <DialogTitle>Xóa khỏi nhóm</DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">
-                Bạn có chắc muốn xóa{" "}
-                <span className="font-semibold text-foreground">{memberName}</span>{" "}
-                khỏi nhóm này không?
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Lịch sử tin nhắn của họ sẽ được giữ lại.
-              </p>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setConfirmRemoveMember(null)}
-                  disabled={removeMemberMutation.isPending}
-                >
-                  Hủy
-                </Button>
-                <Button
-                  variant="destructive"
-                  disabled={removeMemberMutation.isPending}
-                  onClick={() => removeMemberMutation.mutate(confirmRemoveMember)}
-                >
-                  {removeMemberMutation.isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  <UserMinus className="mr-1.5 h-4 w-4" />
-                  Xóa khỏi nhóm
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        );
-      })()}
+      {confirmRemoveMember && (
+        <Dialog
+          open={!!confirmRemoveMember}
+          onOpenChange={(o) => !o && setConfirmRemoveMember(null)}
+        >
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Xóa khỏi nhóm</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Bạn có chắc muốn xóa{" "}
+              <span className="font-semibold text-foreground">
+                {confirmRemoveMember.full_name}
+              </span>{" "}
+              khỏi nhóm này không?
+            </p>
+            <p className="text-xs text-muted-foreground">
+              membership_id: {confirmRemoveMember.membership_id}
+            </p>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setConfirmRemoveMember(null)}
+                disabled={removeMemberMutation.isPending}
+              >
+                Hủy
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={removeMemberMutation.isPending}
+                onClick={() => removeMemberMutation.mutate(confirmRemoveMember)}
+              >
+                {removeMemberMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                <UserMinus className="mr-1.5 h-4 w-4" />
+                Xóa khỏi nhóm
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* ── Image viewer ────────────────────────────────────────────────────── */}
       <Dialog open={!!imageViewerUrl} onOpenChange={(o) => !o && setImageViewerUrl(null)}>
