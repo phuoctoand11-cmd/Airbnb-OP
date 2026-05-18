@@ -1023,6 +1023,34 @@ export default function ChatPage() {
     },
   });
 
+  /** Direct remove — no confirm dialog, always fires for debugging. */
+  async function handleRemoveMember(member: GroupMemberView) {
+    console.log("[REMOVE_MEMBER_CLICK]", member);
+    console.log("[REMOVE_MEMBER_ID]", member.membership_id);
+
+    if (!member.membership_id) {
+      toast({ variant: "destructive", title: "Thiếu membership_id" });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("chat_group_members")
+      .delete()
+      .eq("id", member.membership_id);
+
+    console.log("[REMOVE_MEMBER_DELETE_RESULT]", { error });
+
+    if (error) {
+      toast({ variant: "destructive", title: "Không thể xóa thành viên", description: error.message });
+      return;
+    }
+
+    setRemovedMemberIds((prev) => new Set([...prev, member.membership_id]));
+    queryClient.refetchQueries({ queryKey: ["chat_group_members", selectedGroupId] });
+    queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
+    toast({ title: "Đã xóa thành viên khỏi nhóm" });
+  }
+
   const sendMutation = useMutation({
     mutationFn: async ({
       text,
@@ -1664,18 +1692,13 @@ export default function ChatPage() {
                       >
                         {member.group_role === "owner" ? "Owner" : "Member"}
                       </Badge>
-                      {isAdmin && !member.is_current_user && (
-                        <button
-                          className="flex shrink-0 items-center justify-center rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => {
-                            console.log("[REMOVE_MEMBER_ID]", member.membership_id);
-                            setConfirmRemoveMember(member);
-                          }}
-                          title="Xóa khỏi nhóm"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <button
+                        className="flex shrink-0 items-center justify-center rounded p-1 text-destructive hover:bg-destructive/10"
+                        onClick={() => handleRemoveMember(member)}
+                        title="Xóa khỏi nhóm"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   );
                   })}
