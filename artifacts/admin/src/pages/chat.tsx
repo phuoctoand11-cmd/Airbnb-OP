@@ -1234,13 +1234,10 @@ export default function ChatPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <AppLayout title="Chat">
-      <div
-        className="flex overflow-hidden rounded-xl border border-border bg-background"
-        style={{ height: "calc(100vh - 9rem)" }}
-      >
+    <AppLayout title="Chat" fullWidth>
+      <div className="flex h-full w-full overflow-hidden border-t border-border bg-background">
         {/* ── Groups sidebar ──────────────────────────────────────────────── */}
-        <div className="flex w-56 shrink-0 flex-col border-r border-border">
+        <div className="flex w-[260px] shrink-0 flex-col border-r border-border">
           <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Groups
@@ -1322,7 +1319,7 @@ export default function ChatPage() {
 
         {/* ── Topics panel ────────────────────────────────────────────────── */}
         {selectedGroupId && (
-          <div className="flex w-44 shrink-0 flex-col border-r border-border">
+          <div className="hidden sm:flex w-[220px] shrink-0 flex-col border-r border-border">
             <div className="border-b border-border px-3 py-2.5">
               <p className="truncate text-xs font-semibold text-foreground">
                 {selectedGroup?.name}
@@ -1395,7 +1392,7 @@ export default function ChatPage() {
         )}
 
         {/* ── Messages panel ───────────────────────────────────────────────── */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col" style={{ minWidth: "320px" }}>
           {!selectedGroupId ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <MessageSquare className="h-10 w-10 text-muted-foreground/30" />
@@ -1532,7 +1529,7 @@ export default function ChatPage() {
                                     src={getAttachmentUrl(att)}
                                     alt={att.file_name}
                                     title="Click to view full size"
-                                    className="max-h-48 max-w-xs cursor-pointer rounded-xl object-cover shadow-sm transition-opacity hover:opacity-90"
+                                    className="max-h-64 max-w-[420px] cursor-pointer rounded-xl object-cover shadow-sm transition-opacity hover:opacity-90"
                                     onClick={() => setImageViewerUrl(getAttachmentUrl(att))}
                                   />
                                   <button
@@ -1642,7 +1639,7 @@ export default function ChatPage() {
 
         {/* ── Members panel ────────────────────────────────────────────────── */}
         {selectedGroupId && (
-          <div className="flex w-48 shrink-0 flex-col border-l border-border">
+          <div className="hidden lg:flex w-[300px] shrink-0 flex-col border-l border-border">
             <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Members
@@ -1708,10 +1705,11 @@ export default function ChatPage() {
                         {member.group_role === "owner" ? "Owner" : "Member"}
                       </Badge>
                       <button
-                        style={{ background: "red", color: "white", padding: "2px 6px", fontSize: 11, borderRadius: 4, border: "none", cursor: "pointer", flexShrink: 0 }}
-                        onClick={() => removeMemberDebug(member)}
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-destructive border border-destructive/40 hover:bg-destructive hover:text-white transition-colors"
+                        onClick={() => setConfirmRemoveMember(member)}
+                        title="Xóa khỏi nhóm"
                       >
-                        DEBUG DELETE
+                        Xóa
                       </button>
                     </div>
                   );

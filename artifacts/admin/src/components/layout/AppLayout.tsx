@@ -41,6 +41,8 @@ interface AppLayoutProps {
   children: ReactNode;
   title: string;
   action?: ReactNode;
+  /** Remove max-width cap and padding — for full-bleed pages like Chat */
+  fullWidth?: boolean;
 }
 
 const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
@@ -48,7 +50,7 @@ const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
   { value: "vi", label: "Tiếng Việt", flag: "🇻🇳" },
 ];
 
-export function AppLayout({ children, title, action }: AppLayoutProps) {
+export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps) {
   const [location] = useLocation();
   const { profile, role, signOut, blockError, session, employee } = useAuth();
   const { t, lang, setLang } = useI18n();
@@ -272,9 +274,15 @@ export function AppLayout({ children, title, action }: AppLayoutProps) {
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl">{children}</div>
-        </main>
+        {fullWidth ? (
+          <main className="flex min-h-0 flex-1 overflow-hidden bg-background">
+            {children}
+          </main>
+        ) : (
+          <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 lg:p-8">
+            <div className="mx-auto max-w-7xl">{children}</div>
+          </main>
+        )}
       </div>
 
       {/* Mobile overlay */}
