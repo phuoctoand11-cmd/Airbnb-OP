@@ -1632,7 +1632,9 @@ export default function ChatPage() {
                 <div className="space-y-px p-2">
                   {groupMemberViews
                     .filter((m) => !removedMemberIds.has(m.membership_id))
-                    .map((member) => (
+                    .map((member) => {
+                      console.log("[MEMBER_ROW]", member);
+                      return (
                     <div
                       key={member.membership_id}
                       className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent"
@@ -1665,14 +1667,18 @@ export default function ChatPage() {
                       {isAdmin && !member.is_current_user && (
                         <button
                           className="flex shrink-0 items-center justify-center rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => setConfirmRemoveMember(member)}
+                          onClick={() => {
+                            console.log("[REMOVE_MEMBER_ID]", member.membership_id);
+                            setConfirmRemoveMember(member);
+                          }}
                           title="Xóa khỏi nhóm"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </ScrollArea>
