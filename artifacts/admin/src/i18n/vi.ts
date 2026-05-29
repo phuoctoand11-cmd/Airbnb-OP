@@ -357,12 +357,16 @@ export const vi: Translations = {
     deactivate: "Vô hiệu hóa",
     activate: "Kích hoạt",
     confirmStatusTitle: "Xác nhận thay đổi trạng thái",
-    confirmStatusDesc: "Thay đổi trạng thái sang \"{status}\" sẽ hạn chế nhân viên này khỏi các phân công và đặt phòng mới. Dữ liệu lịch sử sẽ không bị ảnh hưởng. Bạn có chắc không?",
+    confirmStatusDesc:
+      'Thay đổi trạng thái sang "{status}" sẽ hạn chế nhân viên này khỏi các phân công và đặt phòng mới. Dữ liệu lịch sử sẽ không bị ảnh hưởng. Bạn có chắc không?',
     confirmDeactivateTitle: "Xác nhận vô hiệu hóa",
-    confirmDeactivateDept: "Vô hiệu hóa phòng ban này sẽ ngăn nhân viên mới được gán vào. Dữ liệu hiện có không bị ảnh hưởng.",
-    confirmDeactivatePos: "Vô hiệu hóa chức vụ này sẽ ngăn nhân viên mới được gán vào. Dữ liệu hiện có không bị ảnh hưởng.",
+    confirmDeactivateDept:
+      "Vô hiệu hóa phòng ban này sẽ ngăn nhân viên mới được gán vào. Dữ liệu hiện có không bị ảnh hưởng.",
+    confirmDeactivatePos:
+      "Vô hiệu hóa chức vụ này sẽ ngăn nhân viên mới được gán vào. Dữ liệu hiện có không bị ảnh hưởng.",
     accessDenied: "Truy cập bị từ chối",
-    accessDeniedDesc: "Bạn không có quyền truy cập mô-đun nhân sự. Liên hệ quản trị viên để được hỗ trợ.",
+    accessDeniedDesc:
+      "Bạn không có quyền truy cập mô-đun nhân sự. Liên hệ quản trị viên để được hỗ trợ.",
     fullName: "Họ và tên",
     email: "Email",
     phone: "Số điện thoại",
@@ -425,7 +429,8 @@ export const vi: Translations = {
     oldData: "Trước",
     newData: "Sau",
     migrationTitle: "Cần tạo bảng activity_logs",
-    migrationDesc: "Chạy lệnh SQL bên dưới trong Supabase SQL Editor để kích hoạt tính năng này.",
+    migrationDesc:
+      "Chạy lệnh SQL bên dưới trong Supabase SQL Editor để kích hoạt tính năng này.",
     showSql: "Xem SQL migration",
     hideSql: "Ẩn SQL",
     copied: "Đã sao chép!",
@@ -523,7 +528,8 @@ export const vi: Translations = {
     voidLog: "Hủy hiệu lực",
     voided: "Đã hủy",
     voidConfirmTitle: "Hủy hiệu lực log điểm này?",
-    voidConfirmDesc: "Log này sẽ bị đánh dấu đã hủy và không tính vào điểm. Điểm tháng sẽ được tính lại tự động. Thao tác này không thể hoàn tác.",
+    voidConfirmDesc:
+      "Log này sẽ bị đánh dấu đã hủy và không tính vào điểm. Điểm tháng sẽ được tính lại tự động. Thao tác này không thể hoàn tác.",
     logEdited: "Đã cập nhật log điểm",
     logVoided: "Đã hủy hiệu lực log điểm",
     adminNote: "Ghi chú admin (nội bộ)",
@@ -548,7 +554,8 @@ export const vi: Translations = {
     startingScore: "Điểm khởi đầu: 100",
     noAccess: "Bạn không có quyền truy cập mô-đun này.",
     migrationNote: "Cần tạo bảng hiệu suất",
-    migrationDesc: "Chạy lệnh SQL migration bên dưới trong Supabase SQL Editor để kích hoạt tính năng này.",
+    migrationDesc:
+      "Chạy lệnh SQL migration bên dưới trong Supabase SQL Editor để kích hoạt tính năng này.",
     showSql: "Xem SQL migration",
     hideSql: "Ẩn SQL",
     copied: "Đã sao chép!",

@@ -67,23 +67,37 @@ import { useCurrency } from "@/lib/currency";
 // ── Constants ──────────────────────────────────────────────────────
 
 const EMPLOYEE_STATUSES: EmployeeStatus[] = [
-  "candidate", "interviewing", "probation", "active",
-  "inactive", "resigned", "terminated", "rejected",
+  "candidate",
+  "interviewing",
+  "probation",
+  "active",
+  "inactive",
+  "resigned",
+  "terminated",
+  "rejected",
 ];
 
 const TERMINAL_STATUSES: EmployeeStatus[] = [
-  "inactive", "resigned", "terminated", "rejected",
+  "inactive",
+  "resigned",
+  "terminated",
+  "rejected",
 ];
 
 const EMPLOYMENT_TYPES: EmploymentType[] = [
-  "full_time", "part_time", "freelancer", "probation", "intern",
+  "full_time",
+  "part_time",
+  "freelancer",
+  "probation",
+  "intern",
 ];
 
-const GENDERS: GenderType[] = [
-  "male", "female", "other", "prefer_not_to_say",
-];
+const GENDERS: GenderType[] = ["male", "female", "other", "prefer_not_to_say"];
 
-const STATUS_VARIANT: Record<EmployeeStatus, "default" | "secondary" | "destructive" | "outline"> = {
+const STATUS_VARIANT: Record<
+  EmployeeStatus,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
   candidate: "outline",
   interviewing: "secondary",
   probation: "secondary",
@@ -101,16 +115,33 @@ const employeeSchema = z.object({
   email: z.string().email(),
   phone: z.string().optional(),
   date_of_birth: z.string().optional(),
-  gender: z.enum(["male", "female", "other", "prefer_not_to_say", "__none__"]).optional(),
+  gender: z
+    .enum(["male", "female", "other", "prefer_not_to_say", "__none__"])
+    .optional(),
   address: z.string().optional(),
   emergency_contact: z.string().optional(),
   department_id: z.string().min(1),
   position_id: z.string().min(1),
-  employment_type: z.enum(["full_time", "part_time", "freelancer", "probation", "intern"]),
+  employment_type: z.enum([
+    "full_time",
+    "part_time",
+    "freelancer",
+    "probation",
+    "intern",
+  ]),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   salary_base: z.string().optional(),
-  status: z.enum(["candidate", "interviewing", "probation", "active", "inactive", "resigned", "terminated", "rejected"]),
+  status: z.enum([
+    "candidate",
+    "interviewing",
+    "probation",
+    "active",
+    "inactive",
+    "resigned",
+    "terminated",
+    "rejected",
+  ]),
   role: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -125,7 +156,6 @@ const deptPosSchema = z.object({
 type DeptPosFormValues = z.infer<typeof deptPosSchema>;
 
 // ── Helpers ───────────────────────────────────────────────────────
-
 
 // ═══════════════════════════════════════════════════════════════════
 // MAIN PAGE
@@ -157,7 +187,11 @@ export default function HRRecruitment() {
         </TabsList>
 
         <TabsContent value="employees">
-          <EmployeesTab isAdmin={isAdmin} canManage={canManage} showSalary={showSalary} />
+          <EmployeesTab
+            isAdmin={isAdmin}
+            canManage={canManage}
+            showSalary={showSalary}
+          />
         </TabsContent>
         <TabsContent value="departments">
           <DepartmentsTab canManage={canManage} />
@@ -197,7 +231,10 @@ function EmployeesTab({
 
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [employeeFormOpen, setEmployeeFormOpen] = useState(false);
-  const [statusChangeTarget, setStatusChangeTarget] = useState<{ emp: Employee; status: EmployeeStatus } | null>(null);
+  const [statusChangeTarget, setStatusChangeTarget] = useState<{
+    emp: Employee;
+    status: EmployeeStatus;
+  } | null>(null);
 
   // ── Stage 1: RPC fetch — bypasses RLS via SECURITY DEFINER ──────
   // get_hr_employees() runs as postgres (function owner), so RLS on the
@@ -206,7 +243,7 @@ function EmployeesTab({
   // returns all rows for admin/manager, or only the caller's own row for others.
   const employeesQuery = useQuery({
     queryKey: ["hr-employees-rpc", role],
-    enabled: role !== null,   // never fire before we know who the user is
+    enabled: role !== null, // never fire before we know who the user is
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: "always",
@@ -228,7 +265,10 @@ function EmployeesTab({
   const deptsQuery = useQuery({
     queryKey: ["departments"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("departments").select("*").order("name");
+      const { data, error } = await supabase
+        .from("departments")
+        .select("*")
+        .order("name");
       if (error) throw error;
       return (data ?? []) as Department[];
     },
@@ -237,7 +277,10 @@ function EmployeesTab({
   const positionsQuery = useQuery({
     queryKey: ["positions"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("positions").select("*").order("name");
+      const { data, error } = await supabase
+        .from("positions")
+        .select("*")
+        .order("name");
       if (error) throw error;
       return (data ?? []) as Position[];
     },
@@ -267,32 +310,63 @@ function EmployeesTab({
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     const result = afterPermissionFilter.filter((e) => {
-      if (q && !e.full_name.toLowerCase().includes(q) &&
-          !e.email.toLowerCase().includes(q) &&
-          !(e.phone ?? "").toLowerCase().includes(q)) return false;
+      if (
+        q &&
+        !e.full_name.toLowerCase().includes(q) &&
+        !e.email.toLowerCase().includes(q) &&
+        !(e.phone ?? "").toLowerCase().includes(q)
+      )
+        return false;
       if (deptFilter !== "all" && e.department_id !== deptFilter) return false;
       if (posFilter !== "all" && e.position_id !== posFilter) return false;
       if (statusFilter !== "all" && e.status !== statusFilter) return false;
-      if (typeFilter !== "all" && e.employment_type !== typeFilter) return false;
+      if (typeFilter !== "all" && e.employment_type !== typeFilter)
+        return false;
       return true;
     });
     // eslint-disable-next-line no-console
     console.info("[HR] UI FILTER done", {
       afterPermissionFilterCount: afterPermissionFilter.length,
       afterUIFilterCount: result.length,
-      activeFilters: { search, deptFilter, posFilter, statusFilter, typeFilter },
+      activeFilters: {
+        search,
+        deptFilter,
+        posFilter,
+        statusFilter,
+        typeFilter,
+      },
     });
     return result;
-  }, [afterPermissionFilter, search, deptFilter, posFilter, statusFilter, typeFilter]);
+  }, [
+    afterPermissionFilter,
+    search,
+    deptFilter,
+    posFilter,
+    statusFilter,
+    typeFilter,
+  ]);
 
-  const deptName = (id: string) => deptsQuery.data?.find((d) => d.id === id)?.name ?? "—";
-  const posName = (id: string) => positionsQuery.data?.find((p) => p.id === id)?.name ?? "—";
+  const deptName = (id: string) =>
+    deptsQuery.data?.find((d) => d.id === id)?.name ?? "—";
+  const posName = (id: string) =>
+    positionsQuery.data?.find((p) => p.id === id)?.name ?? "—";
 
   const log = useLogActivity();
 
   const statusMutation = useMutation({
-    mutationFn: async ({ id, status, name }: { id: string; status: EmployeeStatus; name?: string }) => {
-      const { error } = await supabase.from("employees").update({ status }).eq("id", id);
+    mutationFn: async ({
+      id,
+      status,
+      name,
+    }: {
+      id: string;
+      status: EmployeeStatus;
+      name?: string;
+    }) => {
+      const { error } = await supabase
+        .from("employees")
+        .update({ status })
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: (_, { id, status, name }) => {
@@ -310,22 +384,41 @@ function EmployeesTab({
       setStatusChangeTarget(null);
       queryClient.invalidateQueries({ queryKey: ["employees"] });
     },
-    onError: (err: Error) => toast({ variant: "destructive", title: t.hr.couldNotSave, description: err.message }),
+    onError: (err: Error) =>
+      toast({
+        variant: "destructive",
+        title: t.hr.couldNotSave,
+        description: err.message,
+      }),
   });
 
-  const openCreate = () => { setEditingEmployee(null); setEmployeeFormOpen(true); };
-  const openEdit = (e: Employee) => { setEditingEmployee(e); setEmployeeFormOpen(true); };
+  const openCreate = () => {
+    setEditingEmployee(null);
+    setEmployeeFormOpen(true);
+  };
+  const openEdit = (e: Employee) => {
+    setEditingEmployee(e);
+    setEmployeeFormOpen(true);
+  };
 
   const handleStatusChange = (emp: Employee, newStatus: EmployeeStatus) => {
     if (TERMINAL_STATUSES.includes(newStatus)) {
       setStatusChangeTarget({ emp, status: newStatus });
     } else {
-      statusMutation.mutate({ id: emp.id, status: newStatus, name: emp.full_name });
+      statusMutation.mutate({
+        id: emp.id,
+        status: newStatus,
+        name: emp.full_name,
+      });
     }
   };
 
-  const isLoading = employeesQuery.isLoading || deptsQuery.isLoading || positionsQuery.isLoading;
-  const loadError = employeesQuery.error || deptsQuery.error || positionsQuery.error;
+  const isLoading =
+    employeesQuery.isLoading ||
+    deptsQuery.isLoading ||
+    positionsQuery.isLoading;
+  const loadError =
+    employeesQuery.error || deptsQuery.error || positionsQuery.error;
 
   return (
     <>
@@ -347,39 +440,58 @@ function EmployeesTab({
           />
         </div>
         <Select value={deptFilter} onValueChange={setDeptFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder={t.hr.allDepartments} /></SelectTrigger>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder={t.hr.allDepartments} />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t.hr.allDepartments}</SelectItem>
-            {deptsQuery.data?.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+            {deptsQuery.data?.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={posFilter} onValueChange={setPosFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder={t.hr.allPositions} /></SelectTrigger>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder={t.hr.allPositions} />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t.hr.allPositions}</SelectItem>
-            {positionsQuery.data?.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            {positionsQuery.data?.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40"><SelectValue placeholder={t.hr.allStatuses} /></SelectTrigger>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder={t.hr.allStatuses} />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t.hr.allStatuses}</SelectItem>
             {EMPLOYEE_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{(t.hr as Record<string, string>)[s] ?? s}</SelectItem>
+              <SelectItem key={s} value={s}>
+                {(t.hr as Record<string, string>)[s] ?? s}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-40"><SelectValue placeholder={t.hr.allEmploymentTypes} /></SelectTrigger>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder={t.hr.allEmploymentTypes} />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t.hr.allEmploymentTypes}</SelectItem>
             {EMPLOYMENT_TYPES.map((et) => (
-              <SelectItem key={et} value={et}>{(t.hr as Record<string, string>)[et] ?? et}</SelectItem>
+              <SelectItem key={et} value={et}>
+                {(t.hr as Record<string, string>)[et] ?? et}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
-
 
       {/* Read-only notice for accountant and other non-managing roles */}
       {!canManage && (
@@ -396,58 +508,99 @@ function EmployeesTab({
         </Alert>
       ) : isLoading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <Users className="mb-3 h-8 w-8 text-muted-foreground" />
-          <p className="font-medium text-muted-foreground">{t.hr.noEmployees}</p>
+          <p className="font-medium text-muted-foreground">
+            {t.hr.noEmployees}
+          </p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">{t.hr.fullName}</th>
-                <th className="px-4 py-3 text-left font-medium">{t.hr.email}</th>
-                <th className="px-4 py-3 text-left font-medium">{t.hr.department}</th>
-                <th className="px-4 py-3 text-left font-medium">{t.hr.position}</th>
-                <th className="px-4 py-3 text-left font-medium">{t.hr.employmentType}</th>
-                {showSalary && <th className="px-4 py-3 text-left font-medium">{t.hr.salaryBase} (VND)</th>}
-                <th className="px-4 py-3 text-left font-medium">{t.hr.statusBadge}</th>
-                {canManage && <th className="px-4 py-3 text-left font-medium">Login</th>}
-                {canManage && <th className="px-4 py-3 text-left font-medium">{t.common.actions}</th>}
+                <th className="px-4 py-3 text-left font-medium">
+                  {t.hr.fullName}
+                </th>
+                <th className="px-4 py-3 text-left font-medium">
+                  {t.hr.email}
+                </th>
+                <th className="px-4 py-3 text-left font-medium">
+                  {t.hr.department}
+                </th>
+                <th className="px-4 py-3 text-left font-medium">
+                  {t.hr.position}
+                </th>
+                <th className="px-4 py-3 text-left font-medium">
+                  {t.hr.employmentType}
+                </th>
+                {showSalary && (
+                  <th className="px-4 py-3 text-left font-medium">
+                    {t.hr.salaryBase} (VND)
+                  </th>
+                )}
+                <th className="px-4 py-3 text-left font-medium">
+                  {t.hr.statusBadge}
+                </th>
+                {canManage && (
+                  <th className="px-4 py-3 text-left font-medium">Login</th>
+                )}
+                {canManage && (
+                  <th className="px-4 py-3 text-left font-medium">
+                    {t.common.actions}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y">
               {filtered.map((emp) => (
                 <tr key={emp.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3 font-medium">{emp.full_name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{emp.email}</td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {emp.email}
+                  </td>
                   <td className="px-4 py-3">{deptName(emp.department_id)}</td>
                   <td className="px-4 py-3">{posName(emp.position_id)}</td>
                   <td className="px-4 py-3">
                     <Badge variant="outline" className="capitalize">
-                      {(t.hr as Record<string, string>)[emp.employment_type] ?? emp.employment_type}
+                      {(t.hr as Record<string, string>)[emp.employment_type] ??
+                        emp.employment_type}
                     </Badge>
                   </td>
                   {showSalary && (
-                    <td className="px-4 py-3 font-mono text-sm">{emp.salary_base != null ? fmt(emp.salary_base) : "—"}</td>
+                    <td className="px-4 py-3 font-mono text-sm">
+                      {emp.salary_base != null ? fmt(emp.salary_base) : "—"}
+                    </td>
                   )}
                   <td className="px-4 py-3">
-                    <Badge variant={STATUS_VARIANT[emp.status]} className="capitalize">
-                      {(t.hr as Record<string, string>)[emp.status] ?? emp.status}
+                    <Badge
+                      variant={STATUS_VARIANT[emp.status]}
+                      className="capitalize"
+                    >
+                      {(t.hr as Record<string, string>)[emp.status] ??
+                        emp.status}
                     </Badge>
                   </td>
                   {canManage && (
                     <td className="px-4 py-3">
                       {emp.profile_id ? (
-                        <Badge variant="outline" className="gap-1 text-xs text-green-700 border-green-300 bg-green-50">
+                        <Badge
+                          variant="outline"
+                          className="gap-1 text-xs text-green-700 border-green-300 bg-green-50"
+                        >
                           <UserCheck className="h-3 w-3" />
                           Linked
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="gap-1 text-xs text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          className="gap-1 text-xs text-muted-foreground"
+                        >
                           <Link2Off className="h-3 w-3" />
                           Not linked
                         </Badge>
@@ -457,12 +610,18 @@ function EmployeesTab({
                   {canManage && (
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(emp)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEdit(emp)}
+                        >
                           {t.common.edit}
                         </Button>
                         <Select
                           value={emp.status}
-                          onValueChange={(v) => handleStatusChange(emp, v as EmployeeStatus)}
+                          onValueChange={(v) =>
+                            handleStatusChange(emp, v as EmployeeStatus)
+                          }
                         >
                           <SelectTrigger className="h-8 w-36">
                             <SelectValue />
@@ -489,17 +648,27 @@ function EmployeesTab({
       {canManage && (
         <EmployeeFormDialog
           open={employeeFormOpen}
-          onOpenChange={(v) => { setEmployeeFormOpen(v); if (!v) setEditingEmployee(null); }}
+          onOpenChange={(v) => {
+            setEmployeeFormOpen(v);
+            if (!v) setEditingEmployee(null);
+          }}
           employee={editingEmployee}
           departments={deptsQuery.data ?? []}
           positions={positionsQuery.data ?? []}
           showSalary={showSalary}
-          onSaved={() => queryClient.invalidateQueries({ queryKey: ["employees"] })}
+          onSaved={() =>
+            queryClient.invalidateQueries({ queryKey: ["employees"] })
+          }
         />
       )}
 
       {/* Status change confirmation */}
-      <Dialog open={!!statusChangeTarget} onOpenChange={(v) => { if (!v) setStatusChangeTarget(null); }}>
+      <Dialog
+        open={!!statusChangeTarget}
+        onOpenChange={(v) => {
+          if (!v) setStatusChangeTarget(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
@@ -510,21 +679,35 @@ function EmployeesTab({
               {t.hr.confirmStatusDesc.replace(
                 "{status}",
                 statusChangeTarget
-                  ? ((t.hr as Record<string, string>)[statusChangeTarget.status] ?? statusChangeTarget.status)
-                  : ""
+                  ? ((t.hr as Record<string, string>)[
+                      statusChangeTarget.status
+                    ] ?? statusChangeTarget.status)
+                  : "",
               )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStatusChangeTarget(null)}>
+            <Button
+              variant="outline"
+              onClick={() => setStatusChangeTarget(null)}
+            >
               {t.common.cancel}
             </Button>
             <Button
               variant="destructive"
               disabled={statusMutation.isPending}
-              onClick={() => statusChangeTarget && statusMutation.mutate({ id: statusChangeTarget.emp.id, status: statusChangeTarget.status, name: statusChangeTarget.emp.full_name })}
+              onClick={() =>
+                statusChangeTarget &&
+                statusMutation.mutate({
+                  id: statusChangeTarget.emp.id,
+                  status: statusChangeTarget.status,
+                  name: statusChangeTarget.emp.full_name,
+                })
+              }
             >
-              {statusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {statusMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {t.common.yes}
             </Button>
           </DialogFooter>
@@ -609,7 +792,9 @@ function EmployeeFormDialog({
         email: v.email,
         phone: v.phone || null,
         date_of_birth: v.date_of_birth || null,
-        gender: (v.gender === "__none__" ? null : v.gender) as GenderType | null,
+        gender: (v.gender === "__none__"
+          ? null
+          : v.gender) as GenderType | null,
         address: v.address || null,
         emergency_contact: v.emergency_contact || null,
         department_id: v.department_id,
@@ -624,7 +809,10 @@ function EmployeeFormDialog({
       };
 
       if (isEdit && employee) {
-        const { error } = await supabase.from("employees").update(payload).eq("id", employee.id);
+        const { error } = await supabase
+          .from("employees")
+          .update(payload)
+          .eq("id", employee.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("employees").insert(payload);
@@ -653,184 +841,338 @@ function EmployeeFormDialog({
       onOpenChange(false);
       onSaved();
     },
-    onError: (err: Error) => toast({ variant: "destructive", title: t.hr.couldNotSave, description: err.message }),
+    onError: (err: Error) =>
+      toast({
+        variant: "destructive",
+        title: t.hr.couldNotSave,
+        description: err.message,
+      }),
   });
 
   const activeDepts = departments.filter((d) => d.is_active);
   const activePositions = positions.filter((p) => p.is_active);
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (v) resetForm(employee); else resetForm(null); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (v) resetForm(employee);
+        else resetForm(null);
+      }}
+    >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? t.hr.editEmployee : t.hr.newEmployee}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? t.hr.editEmployee : t.hr.newEmployee}
+          </DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((v) => saveMutation.mutate(v))} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit((v) => saveMutation.mutate(v))}
+            className="space-y-4"
+          >
             {/* Basic info */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField control={form.control} name="full_name" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.fullName} *</FormLabel>
-                  <FormControl><Input {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="email" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.email} *</FormLabel>
-                  <FormControl><Input type="email" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="phone" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.phone}</FormLabel>
-                  <FormControl><Input {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="date_of_birth" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.dateOfBirth}</FormLabel>
-                  <FormControl><Input type="date" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="gender" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.gender}</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? "__none__"}>
-                    <FormControl><SelectTrigger><SelectValue placeholder={t.hr.selectGender} /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      <SelectItem value="__none__">{t.common.none}</SelectItem>
-                      {GENDERS.map((g) => (
-                        <SelectItem key={g} value={g}>{(t.hr as Record<string, string>)[g] ?? g}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="status" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.statusBadge} *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {EMPLOYEE_STATUSES.map((s) => (
-                        <SelectItem key={s} value={s}>{(t.hr as Record<string, string>)[s] ?? s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              <FormField
+                control={form.control}
+                name="full_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.fullName} *</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.email} *</FormLabel>
+                    <FormControl>
+                      <Input type="email" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.phone}</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="date_of_birth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.dateOfBirth}</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="gender"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.gender}</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value ?? "__none__"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t.hr.selectGender} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__none__">
+                          {t.common.none}
+                        </SelectItem>
+                        {GENDERS.map((g) => (
+                          <SelectItem key={g} value={g}>
+                            {(t.hr as Record<string, string>)[g] ?? g}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.statusBadge} *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {EMPLOYEE_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {(t.hr as Record<string, string>)[s] ?? s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
-            <FormField control={form.control} name="address" render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t.hr.address}</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <FormField control={form.control} name="emergency_contact" render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t.hr.emergencyContact}</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+            <FormField
+              control={form.control}
+              name="address"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.hr.address}</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="emergency_contact"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.hr.emergencyContact}</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {/* Org */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField control={form.control} name="department_id" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.department} *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder={t.hr.selectDepartment} /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {activeDepts.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="position_id" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.position} *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder={t.hr.selectPosition} /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {activePositions.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="employment_type" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.employmentType} *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {EMPLOYMENT_TYPES.map((et) => (
-                        <SelectItem key={et} value={et}>{(t.hr as Record<string, string>)[et] ?? et}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="role" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.common.role}</FormLabel>
-                  <FormControl><Input {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="start_date" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.startDate}</FormLabel>
-                  <FormControl><Input type="date" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="end_date" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.endDate}</FormLabel>
-                  <FormControl><Input type="date" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              <FormField
+                control={form.control}
+                name="department_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.department} *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t.hr.selectDepartment} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {activeDepts.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="position_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.position} *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t.hr.selectPosition} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {activePositions.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="employment_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.employmentType} *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {EMPLOYMENT_TYPES.map((et) => (
+                          <SelectItem key={et} value={et}>
+                            {(t.hr as Record<string, string>)[et] ?? et}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.common.role}</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="start_date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.startDate}</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="end_date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.endDate}</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             {/* Salary — admin only; hidden for manager */}
             {showSalary && (
-              <FormField control={form.control} name="salary_base" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.hr.salaryBase} (VND)</FormLabel>
-                  <FormControl><Input type="number" min={0} step="0.01" placeholder="0.00" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              <FormField
+                control={form.control}
+                name="salary_base"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.hr.salaryBase} (VND)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="0.00"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             )}
 
-            <FormField control={form.control} name="notes" render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t.hr.notes}</FormLabel>
-                <FormControl><Textarea rows={3} {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.hr.notes}</FormLabel>
+                  <FormControl>
+                    <Textarea rows={3} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+              >
                 {t.common.cancel}
               </Button>
               <Button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {saveMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 {isEdit ? t.hr.saveEmployee : t.hr.createEmployee}
               </Button>
             </DialogFooter>
@@ -842,10 +1184,7 @@ function EmployeeFormDialog({
           <>
             <Separator />
             <div className="px-1 pb-2">
-              <AccountLinkSection
-                employee={employee}
-                onLinked={onSaved}
-              />
+              <AccountLinkSection employee={employee} onLinked={onSaved} />
             </div>
           </>
         )}
@@ -919,7 +1258,11 @@ function AccountLinkSection({
       await refreshProfile();
       onLinked();
     } catch (err) {
-      toast({ variant: "destructive", title: "Link failed", description: (err as Error).message });
+      toast({
+        variant: "destructive",
+        title: "Link failed",
+        description: (err as Error).message,
+      });
     } finally {
       setLinking(false);
     }
@@ -936,7 +1279,11 @@ function AccountLinkSection({
       toast({ title: "Login account unlinked." });
       onLinked();
     } catch (err) {
-      toast({ variant: "destructive", title: "Unlink failed", description: (err as Error).message });
+      toast({
+        variant: "destructive",
+        title: "Unlink failed",
+        description: (err as Error).message,
+      });
     } finally {
       setUnlinking(false);
     }
@@ -948,24 +1295,37 @@ function AccountLinkSection({
         <UserCheck className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">Login Account</span>
         {isLinked ? (
-          <Badge variant="default" className="ml-auto text-xs">Linked</Badge>
+          <Badge variant="default" className="ml-auto text-xs">
+            Linked
+          </Badge>
         ) : (
-          <Badge variant="outline" className="ml-auto text-xs text-muted-foreground">Not linked</Badge>
+          <Badge
+            variant="outline"
+            className="ml-auto text-xs text-muted-foreground"
+          >
+            Not linked
+          </Badge>
         )}
       </div>
 
       {isLinked ? (
         <>
           {linkedUserQuery.isLoading ? (
-            <div className="text-xs text-muted-foreground">Loading account info…</div>
+            <div className="text-xs text-muted-foreground">
+              Loading account info…
+            </div>
           ) : linkedUserQuery.data ? (
             <div className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">{linkedUserQuery.data.full_name}</span>
+              <span className="font-medium text-foreground">
+                {linkedUserQuery.data.full_name}
+              </span>
               {" · "}
               {linkedUserQuery.data.email}
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground">Linked (profile ID: {employee.profile_id})</div>
+            <div className="text-xs text-muted-foreground">
+              Linked (profile ID: {employee.profile_id})
+            </div>
           )}
           <Button
             type="button"
@@ -975,9 +1335,11 @@ function AccountLinkSection({
             disabled={unlinking}
             onClick={handleUnlink}
           >
-            {unlinking
-              ? <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-              : <Link2Off className="mr-2 h-3 w-3" />}
+            {unlinking ? (
+              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+            ) : (
+              <Link2Off className="mr-2 h-3 w-3" />
+            )}
             Unlink Account
           </Button>
         </>
@@ -985,7 +1347,10 @@ function AccountLinkSection({
         <>
           <p className="text-xs text-muted-foreground">
             Linking connects this employee record to a login account with email{" "}
-            <span className="font-medium text-foreground">{employee.email}</span>.
+            <span className="font-medium text-foreground">
+              {employee.email}
+            </span>
+            .
           </p>
           <Button
             type="button"
@@ -993,9 +1358,11 @@ function AccountLinkSection({
             disabled={linking}
             onClick={handleLink}
           >
-            {linking
-              ? <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-              : <Link2 className="mr-2 h-3 w-3" />}
+            {linking ? (
+              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+            ) : (
+              <Link2 className="mr-2 h-3 w-3" />
+            )}
             Link Login Account
           </Button>
         </>
@@ -1015,20 +1382,34 @@ function DepartmentsTab({ canManage }: { canManage: boolean }) {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Department | null>(null);
-  const [confirmDeactivate, setConfirmDeactivate] = useState<Department | null>(null);
+  const [confirmDeactivate, setConfirmDeactivate] = useState<Department | null>(
+    null,
+  );
 
   const query = useQuery({
     queryKey: ["departments"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("departments").select("*").order("name");
+      const { data, error } = await supabase
+        .from("departments")
+        .select("*")
+        .order("name");
       if (error) throw error;
       return (data ?? []) as Department[];
     },
   });
 
   const toggleMutation = useMutation({
-    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from("departments").update({ is_active }).eq("id", id);
+    mutationFn: async ({
+      id,
+      is_active,
+    }: {
+      id: string;
+      is_active: boolean;
+    }) => {
+      const { error } = await supabase
+        .from("departments")
+        .update({ is_active })
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: (_, vars) => {
@@ -1036,14 +1417,24 @@ function DepartmentsTab({ canManage }: { canManage: boolean }) {
       setConfirmDeactivate(null);
       queryClient.invalidateQueries({ queryKey: ["departments"] });
     },
-    onError: (err: Error) => toast({ variant: "destructive", title: t.hr.couldNotSave, description: err.message }),
+    onError: (err: Error) =>
+      toast({
+        variant: "destructive",
+        title: t.hr.couldNotSave,
+        description: err.message,
+      }),
   });
 
   return (
     <>
       {canManage && (
         <div className="mb-4 flex justify-end">
-          <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" />
             {t.hr.newDepartment}
           </Button>
@@ -1056,11 +1447,17 @@ function DepartmentsTab({ canManage }: { canManage: boolean }) {
           <AlertDescription>{(query.error as Error).message}</AlertDescription>
         </Alert>
       ) : query.isLoading ? (
-        <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       ) : (query.data ?? []).length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <Building2 className="mb-3 h-8 w-8 text-muted-foreground" />
-          <p className="font-medium text-muted-foreground">{t.hr.noDepartments}</p>
+          <p className="font-medium text-muted-foreground">
+            {t.hr.noDepartments}
+          </p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1076,20 +1473,40 @@ function DepartmentsTab({ canManage }: { canManage: boolean }) {
               </CardHeader>
               {dept.description && (
                 <CardContent className="pb-3 pt-0">
-                  <p className="text-sm text-muted-foreground">{dept.description}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {dept.description}
+                  </p>
                 </CardContent>
               )}
               {canManage && (
                 <CardContent className="flex gap-2 pb-3 pt-0">
-                  <Button size="sm" variant="outline" onClick={() => { setEditing(dept); setFormOpen(true); }}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditing(dept);
+                      setFormOpen(true);
+                    }}
+                  >
                     {t.common.edit}
                   </Button>
                   {dept.is_active ? (
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setConfirmDeactivate(dept)}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setConfirmDeactivate(dept)}
+                    >
                       {t.hr.deactivate}
                     </Button>
                   ) : (
-                    <Button size="sm" variant="ghost" onClick={() => toggleMutation.mutate({ id: dept.id, is_active: true })}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        toggleMutation.mutate({ id: dept.id, is_active: true })
+                      }
+                    >
                       {t.hr.activate}
                     </Button>
                   )}
@@ -1104,28 +1521,51 @@ function DepartmentsTab({ canManage }: { canManage: boolean }) {
       {canManage && (
         <DeptPosFormDialog
           open={formOpen}
-          onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
+          onOpenChange={(v) => {
+            setFormOpen(v);
+            if (!v) setEditing(null);
+          }}
           editing={editing}
           entityType="department"
-          onSaved={() => queryClient.invalidateQueries({ queryKey: ["departments"] })}
+          onSaved={() =>
+            queryClient.invalidateQueries({ queryKey: ["departments"] })
+          }
         />
       )}
 
       {/* Deactivate confirm */}
-      <Dialog open={!!confirmDeactivate} onOpenChange={(v) => { if (!v) setConfirmDeactivate(null); }}>
+      <Dialog
+        open={!!confirmDeactivate}
+        onOpenChange={(v) => {
+          if (!v) setConfirmDeactivate(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t.hr.confirmDeactivateTitle}</DialogTitle>
             <DialogDescription>{t.hr.confirmDeactivateDept}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDeactivate(null)}>{t.common.cancel}</Button>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeactivate(null)}
+            >
+              {t.common.cancel}
+            </Button>
             <Button
               variant="destructive"
               disabled={toggleMutation.isPending}
-              onClick={() => confirmDeactivate && toggleMutation.mutate({ id: confirmDeactivate.id, is_active: false })}
+              onClick={() =>
+                confirmDeactivate &&
+                toggleMutation.mutate({
+                  id: confirmDeactivate.id,
+                  is_active: false,
+                })
+              }
             >
-              {toggleMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {toggleMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {t.hr.deactivate}
             </Button>
           </DialogFooter>
@@ -1146,20 +1586,34 @@ function PositionsTab({ canManage }: { canManage: boolean }) {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Position | null>(null);
-  const [confirmDeactivate, setConfirmDeactivate] = useState<Position | null>(null);
+  const [confirmDeactivate, setConfirmDeactivate] = useState<Position | null>(
+    null,
+  );
 
   const query = useQuery({
     queryKey: ["positions"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("positions").select("*").order("name");
+      const { data, error } = await supabase
+        .from("positions")
+        .select("*")
+        .order("name");
       if (error) throw error;
       return (data ?? []) as Position[];
     },
   });
 
   const toggleMutation = useMutation({
-    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from("positions").update({ is_active }).eq("id", id);
+    mutationFn: async ({
+      id,
+      is_active,
+    }: {
+      id: string;
+      is_active: boolean;
+    }) => {
+      const { error } = await supabase
+        .from("positions")
+        .update({ is_active })
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: (_, vars) => {
@@ -1167,14 +1621,24 @@ function PositionsTab({ canManage }: { canManage: boolean }) {
       setConfirmDeactivate(null);
       queryClient.invalidateQueries({ queryKey: ["positions"] });
     },
-    onError: (err: Error) => toast({ variant: "destructive", title: t.hr.couldNotSave, description: err.message }),
+    onError: (err: Error) =>
+      toast({
+        variant: "destructive",
+        title: t.hr.couldNotSave,
+        description: err.message,
+      }),
   });
 
   return (
     <>
       {canManage && (
         <div className="mb-4 flex justify-end">
-          <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setFormOpen(true);
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" />
             {t.hr.newPosition}
           </Button>
@@ -1187,11 +1651,17 @@ function PositionsTab({ canManage }: { canManage: boolean }) {
           <AlertDescription>{(query.error as Error).message}</AlertDescription>
         </Alert>
       ) : query.isLoading ? (
-        <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       ) : (query.data ?? []).length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <Briefcase className="mb-3 h-8 w-8 text-muted-foreground" />
-          <p className="font-medium text-muted-foreground">{t.hr.noPositions}</p>
+          <p className="font-medium text-muted-foreground">
+            {t.hr.noPositions}
+          </p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1207,20 +1677,40 @@ function PositionsTab({ canManage }: { canManage: boolean }) {
               </CardHeader>
               {pos.description && (
                 <CardContent className="pb-3 pt-0">
-                  <p className="text-sm text-muted-foreground">{pos.description}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {pos.description}
+                  </p>
                 </CardContent>
               )}
               {canManage && (
                 <CardContent className="flex gap-2 pb-3 pt-0">
-                  <Button size="sm" variant="outline" onClick={() => { setEditing(pos); setFormOpen(true); }}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditing(pos);
+                      setFormOpen(true);
+                    }}
+                  >
                     {t.common.edit}
                   </Button>
                   {pos.is_active ? (
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setConfirmDeactivate(pos)}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setConfirmDeactivate(pos)}
+                    >
                       {t.hr.deactivate}
                     </Button>
                   ) : (
-                    <Button size="sm" variant="ghost" onClick={() => toggleMutation.mutate({ id: pos.id, is_active: true })}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        toggleMutation.mutate({ id: pos.id, is_active: true })
+                      }
+                    >
                       {t.hr.activate}
                     </Button>
                   )}
@@ -1235,28 +1725,51 @@ function PositionsTab({ canManage }: { canManage: boolean }) {
       {canManage && (
         <DeptPosFormDialog
           open={formOpen}
-          onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
+          onOpenChange={(v) => {
+            setFormOpen(v);
+            if (!v) setEditing(null);
+          }}
           editing={editing}
           entityType="position"
-          onSaved={() => queryClient.invalidateQueries({ queryKey: ["positions"] })}
+          onSaved={() =>
+            queryClient.invalidateQueries({ queryKey: ["positions"] })
+          }
         />
       )}
 
       {/* Deactivate confirm */}
-      <Dialog open={!!confirmDeactivate} onOpenChange={(v) => { if (!v) setConfirmDeactivate(null); }}>
+      <Dialog
+        open={!!confirmDeactivate}
+        onOpenChange={(v) => {
+          if (!v) setConfirmDeactivate(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t.hr.confirmDeactivateTitle}</DialogTitle>
             <DialogDescription>{t.hr.confirmDeactivatePos}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDeactivate(null)}>{t.common.cancel}</Button>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeactivate(null)}
+            >
+              {t.common.cancel}
+            </Button>
             <Button
               variant="destructive"
               disabled={toggleMutation.isPending}
-              onClick={() => confirmDeactivate && toggleMutation.mutate({ id: confirmDeactivate.id, is_active: false })}
+              onClick={() =>
+                confirmDeactivate &&
+                toggleMutation.mutate({
+                  id: confirmDeactivate.id,
+                  is_active: false,
+                })
+              }
             >
-              {toggleMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {toggleMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {t.hr.deactivate}
             </Button>
           </DialogFooter>
@@ -1288,13 +1801,22 @@ function DeptPosFormDialog({
   const isEdit = !!editing;
 
   const table = entityType === "department" ? "departments" : "positions";
-  const createLabel = entityType === "department" ? t.hr.createDepartment : t.hr.createPosition;
-  const saveLabel = entityType === "department" ? t.hr.saveDepartment : t.hr.savePosition;
-  const titleLabel = entityType === "department"
-    ? (isEdit ? t.hr.editDepartment : t.hr.newDepartment)
-    : (isEdit ? t.hr.editPosition : t.hr.newPosition);
-  const createdMsg = entityType === "department" ? t.hr.departmentCreated : t.hr.positionCreated;
-  const updatedMsg = entityType === "department" ? t.hr.departmentUpdated : t.hr.positionUpdated;
+  const createLabel =
+    entityType === "department" ? t.hr.createDepartment : t.hr.createPosition;
+  const saveLabel =
+    entityType === "department" ? t.hr.saveDepartment : t.hr.savePosition;
+  const titleLabel =
+    entityType === "department"
+      ? isEdit
+        ? t.hr.editDepartment
+        : t.hr.newDepartment
+      : isEdit
+        ? t.hr.editPosition
+        : t.hr.newPosition;
+  const createdMsg =
+    entityType === "department" ? t.hr.departmentCreated : t.hr.positionCreated;
+  const updatedMsg =
+    entityType === "department" ? t.hr.departmentUpdated : t.hr.positionUpdated;
 
   const form = useForm<DeptPosFormValues>({
     resolver: zodResolver(deptPosSchema),
@@ -1309,7 +1831,10 @@ function DeptPosFormDialog({
     mutationFn: async (v: DeptPosFormValues) => {
       const payload = { name: v.name, description: v.description || null };
       if (isEdit && editing) {
-        const { error } = await supabase.from(table).update(payload).eq("id", editing.id);
+        const { error } = await supabase
+          .from(table)
+          .update(payload)
+          .eq("id", editing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from(table).insert(payload);
@@ -1321,35 +1846,70 @@ function DeptPosFormDialog({
       onOpenChange(false);
       onSaved();
     },
-    onError: (err: Error) => toast({ variant: "destructive", title: t.hr.couldNotSave, description: err.message }),
+    onError: (err: Error) =>
+      toast({
+        variant: "destructive",
+        title: t.hr.couldNotSave,
+        description: err.message,
+      }),
   });
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (v) resetForm(editing); else resetForm(null); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (v) resetForm(editing);
+        else resetForm(null);
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{titleLabel}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((v) => saveMutation.mutate(v))} className="space-y-4">
-            <FormField control={form.control} name="name" render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t.common.name} *</FormLabel>
-                <FormControl><Input {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <FormField control={form.control} name="description" render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t.hr.description}</FormLabel>
-                <FormControl><Textarea rows={2} {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+          <form
+            onSubmit={form.handleSubmit((v) => saveMutation.mutate(v))}
+            className="space-y-4"
+          >
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.common.name} *</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.hr.description}</FormLabel>
+                  <FormControl>
+                    <Textarea rows={2} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{t.common.cancel}</Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+              >
+                {t.common.cancel}
+              </Button>
               <Button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {saveMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 {isEdit ? saveLabel : createLabel}
               </Button>
             </DialogFooter>
