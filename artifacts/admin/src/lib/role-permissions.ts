@@ -6,7 +6,7 @@ export const ROLE_PERMISSIONS = {
   manageCalendar: ["admin", "manager", "sales"] as AppRole[],
   managePricing: ["admin", "manager"] as AppRole[],
   manageBookings: ["admin", "manager", "sales", "accountant"] as AppRole[],
-  manageTasks: ["admin", "manager", "maintenance", "cleaner", "cleaningstaff", "staff"] as AppRole[],
+  manageTasks: ["admin", "manager","sales", "maintenance", "cleaner", "cleaningstaff", "staff"] as AppRole[],
   manageFinance: ["admin", "accountant"] as AppRole[],
   manageUsers: ["admin"] as AppRole[],
   viewReports: ["admin", "manager", "accountant"] as AppRole[],

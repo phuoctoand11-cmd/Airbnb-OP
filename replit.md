@@ -1,3 +1,5 @@
+> ⚠️ Trước khi sửa bất kỳ thứ gì, đọc `PROJECT_CONTEXT.md` ở thư mục gốc. KHÔNG tạo bảng/vai trò trùng với danh mục đã liệt kê. Hỏi tôi trước khi xóa/đổi bảng.
+
 # Workspace
 
 ## Overview
