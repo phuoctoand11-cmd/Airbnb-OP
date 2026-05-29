@@ -113,6 +113,7 @@ const STATUS_VARIANT: Record<
 const employeeSchema = z.object({
   full_name: z.string().min(1),
   email: z.string().email(),
+  password: z.string().optional(),
   phone: z.string().optional(),
   date_of_birth: z.string().optional(),
   gender: z
@@ -746,6 +747,7 @@ function EmployeeFormDialog({
     defaultValues: {
       full_name: "",
       email: "",
+      password: "",
       phone: "",
       date_of_birth: "",
       gender: "__none__",
@@ -768,6 +770,7 @@ function EmployeeFormDialog({
     form.reset({
       full_name: emp?.full_name ?? "",
       email: emp?.email ?? "",
+      password: "",
       phone: emp?.phone ?? "",
       date_of_birth: emp?.date_of_birth ?? "",
       gender: (emp?.gender ?? "__none__") as EmployeeFormValues["gender"],
@@ -787,35 +790,47 @@ function EmployeeFormDialog({
 
   const saveMutation = useMutation({
     mutationFn: async (v: EmployeeFormValues) => {
-      const payload = {
-        full_name: v.full_name,
-        email: v.email,
-        phone: v.phone || null,
-        date_of_birth: v.date_of_birth || null,
-        gender: (v.gender === "__none__"
-          ? null
-          : v.gender) as GenderType | null,
-        address: v.address || null,
-        emergency_contact: v.emergency_contact || null,
-        department_id: v.department_id,
-        position_id: v.position_id,
-        employment_type: v.employment_type,
-        start_date: v.start_date || null,
-        end_date: v.end_date || null,
-        salary_base: v.salary_base ? parseFloat(v.salary_base) : null,
-        status: v.status,
-        role: v.role || null,
-        notes: v.notes || null,
-      };
-
       if (isEdit && employee) {
-        const { error } = await supabase
-          .from("employees")
-          .update(payload)
-          .eq("id", employee.id);
+        const updatePayload = {
+          full_name: v.full_name,
+          phone: v.phone || null,
+          date_of_birth: v.date_of_birth || null,
+          gender: (v.gender === "__none__" ? null : v.gender) as GenderType | null,
+          address: v.address || null,
+          emergency_contact: v.emergency_contact || null,
+          department_id: v.department_id,
+          position_id: v.position_id,
+          employment_type: v.employment_type,
+          start_date: v.start_date || null,
+          end_date: v.end_date || null,
+          salary_base: v.salary_base ? parseFloat(v.salary_base) : null,
+          status: v.status,
+          notes: v.notes || null,
+        };
+        const { error } = await supabase.from("employees").update(updatePayload).eq("id", employee.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("employees").insert(payload);
+        if (!v.password || v.password.length < 8) throw new Error("Mật khẩu tối thiểu 8 ký tự");
+        if (!v.role) throw new Error("Vui lòng chọn vai trò");
+        const { error } = await supabase.rpc("admin_create_employee", {
+          p_email: v.email,
+          p_password: v.password,
+          p_role_name: v.role,
+          p_full_name: v.full_name,
+          p_department_id: v.department_id,
+          p_position_id: v.position_id,
+          p_employment_type: v.employment_type,
+          p_status: v.status,
+          p_phone: v.phone || null,
+          p_date_of_birth: v.date_of_birth || null,
+          p_gender: v.gender === "__none__" ? null : v.gender,
+          p_address: v.address || null,
+          p_emergency_contact: v.emergency_contact || null,
+          p_start_date: v.start_date || null,
+          p_end_date: v.end_date || null,
+          p_salary_base: v.salary_base ? parseFloat(v.salary_base) : null,
+          p_notes: v.notes || null,
+        });
         if (error) throw error;
       }
     },
@@ -894,12 +909,21 @@ function EmployeeFormDialog({
                   <FormItem>
                     <FormLabel>{t.hr.email} *</FormLabel>
                     <FormControl>
-                      <Input type="email" {...field} />
+                      <Input type="email" disabled={isEdit} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+              {!isEdit && (
+                <FormField control={form.control} name="password" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Mật khẩu đăng nhập *</FormLabel>
+                    <FormControl><Input type="password" placeholder="Tối thiểu 8 ký tự" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
               <FormField
                 control={form.control}
                 name="phone"
@@ -1088,10 +1112,18 @@ function EmployeeFormDialog({
                 name="role"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t.common.role}</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
+                    <FormLabel>{t.common.role} *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isEdit}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Chọn vai trò" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="admin">Chủ (admin)</SelectItem>
+                        <SelectItem value="manager">Quản lý (manager)</SelectItem>
+                        <SelectItem value="sales">Sale + Check-in/out (sales)</SelectItem>
+                        <SelectItem value="cleaner">Dọn dẹp (cleaner)</SelectItem>
+                        <SelectItem value="maintenance">Bảo trì (maintenance)</SelectItem>
+                        <SelectItem value="accountant">Kế toán (accountant)</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
