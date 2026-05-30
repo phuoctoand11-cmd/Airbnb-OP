@@ -384,7 +384,7 @@ export default function Bookings() {
             payment_type: "deposit",
             amount: values.deposit_amount,
             paid_at: values.deposit_paid_at
-              ? new Date(`${values.deposit_paid_at}T00:00:00`).toISOString()
+              ? new Date(`${values.deposit_paid_at}T12:00:00`).toISOString()
               : _todayISO,
             status: "paid",
             note: values.deposit_note ?? null,
@@ -407,7 +407,7 @@ export default function Bookings() {
             payment_type: "deposit",
             amount: values.deposit_amount,
             paid_at: values.deposit_paid_at
-              ? new Date(`${values.deposit_paid_at}T00:00:00`).toISOString()
+              ? new Date(`${values.deposit_paid_at}T12:00:00`).toISOString()
               : _todayISO,
             status: "paid",
             note: values.deposit_note ?? null,
@@ -429,7 +429,7 @@ export default function Bookings() {
             payment_type: "balance",
             amount: balanceAmount,
             paid_at: values.check_out
-              ? new Date(`${values.check_out}T00:00:00`).toISOString()
+              ? new Date(`${values.check_out}T12:00:00`).toISOString()
               : _todayISO,
             status: "paid",
             note: `Balance - ${values.guest_name}`,
@@ -555,7 +555,7 @@ export default function Bookings() {
             payment_type: "deposit",
             amount: booking.deposit_amount,
             paid_at: booking.deposit_paid_at
-              ? new Date(`${booking.deposit_paid_at}T00:00:00`).toISOString()
+              ? new Date(`${booking.deposit_paid_at}T12:00:00`).toISOString()
               : _todayISO,
             status: "paid",
             note: booking.deposit_note ?? null,
@@ -578,7 +578,7 @@ export default function Bookings() {
             payment_type: "deposit",
             amount: booking.deposit_amount,
             paid_at: booking.deposit_paid_at
-              ? new Date(`${booking.deposit_paid_at}T00:00:00`).toISOString()
+              ? new Date(`${booking.deposit_paid_at}T12:00:00`).toISOString()
               : _todayISO,
             status: "paid",
             note: booking.deposit_note ?? null,
@@ -600,7 +600,7 @@ export default function Bookings() {
             payment_type: "balance",
             amount: balanceAmount,
             paid_at: booking.check_out
-              ? new Date(`${booking.check_out}T00:00:00`).toISOString()
+              ? new Date(`${booking.check_out}T12:00:00`).toISOString()
               : _todayISO,
             status: "paid",
             note: `Balance - ${guestName ?? booking.guest_name}`,
