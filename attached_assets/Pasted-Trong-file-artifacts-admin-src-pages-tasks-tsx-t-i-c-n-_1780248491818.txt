@@ -1,0 +1,57 @@
+Trong file artifacts/admin/src/pages/tasks.tsx, tôi cần thêm chức năng phân công nhân viên ngay trong dialog xem chi tiết task (TaskDetailDialog), chỉ admin/manager dùng được. Làm CHÍNH XÁC các bước sau, KHÔNG refactor, KHÔNG sửa gì khác:
+
+1. Tạo mutation phân công (đặt cạnh updateStatusMutation, khoảng dòng 416):
+const assignMutation = useMutation({
+  mutationFn: async ({ taskId, employeeId }: { taskId: string; employeeId: string | null }) => {
+    const { error } = await supabase
+      .from("tasks")
+      .update({ assigned_employee_id: employeeId })
+      .eq("id", taskId);
+    if (error) throw error;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["tasks"] });
+  },
+});
+
+2. Truyền thêm props cho TaskDetailDialog ở chỗ render nó (khoảng dòng 941). Thêm vào các props đang có:
+  canAssign={canManageAll}
+  assignableEmployees={employeesQuery.data ?? []}
+  onAssign={(employeeId) => assignMutation.mutate({ taskId: detailTask.id, employeeId })}
+  isAssigning={assignMutation.isPending}
+
+3. Cập nhật interface TaskDetailDialogProps (dòng 1404) — thêm:
+  canAssign: boolean;
+  assignableEmployees: Pick<Employee, "id" | "full_name" | "email" | "status" | "role">[];
+  onAssign: (employeeId: string | null) => void;
+  isAssigning: boolean;
+và thêm 4 tham số tương ứng vào hàm function TaskDetailDialog({ ... }).
+
+4. Trong phần render dialog, thay khối "Assigned employee" (dòng ~1465, khối hiển thị Nhân viên dạng chỉ đọc) bằng:
+{canAssign ? (
+  <div className="flex items-center gap-2 text-sm">
+    <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <span className="text-muted-foreground">Nhân viên:</span>
+    <Select
+      value={task.assigned_employee_id ?? "__none__"}
+      onValueChange={(v) => onAssign(v === "__none__" ? null : v)}
+      disabled={isAssigning}
+    >
+      <SelectTrigger className="h-8 flex-1"><SelectValue placeholder="Chưa phân công" /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">Chưa phân công</SelectItem>
+        {assignableEmployees.map((e) => (
+          <SelectItem key={e.id} value={e.id}>{e.full_name ?? e.email}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
+) : (
+  <div className="flex items-center gap-2 text-sm">
+    <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <span className="text-muted-foreground">Nhân viên:</span>
+    <span className="font-medium">{assigneeName}</span>
+  </div>
+)}
+
+Sau khi xong chạy pnpm run typecheck và báo kết quả.

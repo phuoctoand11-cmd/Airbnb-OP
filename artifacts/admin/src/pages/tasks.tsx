@@ -435,6 +435,19 @@ export default function Tasks() {
       toast({ variant: "destructive", title: t.tasks.couldNotSave, description: err.message }),
   });
 
+  const assignMutation = useMutation({
+    mutationFn: async ({ taskId, employeeId }: { taskId: string; employeeId: string | null }) => {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ assigned_employee_id: employeeId })
+        .eq("id", taskId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+
   const updateChecklistMutation = useMutation({
     mutationFn: async ({ id, checklist, title }: { id: string; checklist: ChecklistItem[]; title?: string }) => {
       const { error } = await supabase.from("tasks").update({ checklist }).eq("id", id);
@@ -946,6 +959,10 @@ export default function Tasks() {
           priorityLabel={t.status[detailTask.priority]}
           priorityVariant={PRIORITY_VARIANT[detailTask.priority]}
           onClose={() => setDetailTask(null)}
+          canAssign={canManageAll}
+          assignableEmployees={employeesQuery.data ?? []}
+          onAssign={(employeeId) => assignMutation.mutate({ taskId: detailTask.id, employeeId })}
+          isAssigning={assignMutation.isPending}
         />
       )}
     </AppLayout>
@@ -1409,6 +1426,10 @@ interface TaskDetailDialogProps {
   priorityLabel: string;
   priorityVariant: "default" | "secondary" | "destructive" | "outline";
   onClose: () => void;
+  canAssign: boolean;
+  assignableEmployees: Pick<Employee, "id" | "full_name" | "email" | "status" | "role">[];
+  onAssign: (employeeId: string | null) => void;
+  isAssigning: boolean;
 }
 
 function TaskDetailDialog({
@@ -1419,6 +1440,10 @@ function TaskDetailDialog({
   priorityLabel,
   priorityVariant,
   onClose,
+  canAssign,
+  assignableEmployees,
+  onAssign,
+  isAssigning,
 }: TaskDetailDialogProps) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
@@ -1461,11 +1486,31 @@ function TaskDetailDialog({
             </div>
 
             {/* Assigned employee */}
-            <div className="flex items-center gap-2 text-sm">
-              <User className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="text-muted-foreground">Nhân viên:</span>
-              <span className="font-medium">{assigneeName}</span>
-            </div>
+            {canAssign ? (
+              <div className="flex items-center gap-2 text-sm">
+                <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-muted-foreground">Nhân viên:</span>
+                <Select
+                  value={task.assigned_employee_id ?? "__none__"}
+                  onValueChange={(v) => onAssign(v === "__none__" ? null : v)}
+                  disabled={isAssigning}
+                >
+                  <SelectTrigger className="h-8 flex-1"><SelectValue placeholder="Chưa phân công" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Chưa phân công</SelectItem>
+                    {assignableEmployees.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>{e.full_name ?? e.email}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm">
+                <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-muted-foreground">Nhân viên:</span>
+                <span className="font-medium">{assigneeName}</span>
+              </div>
+            )}
 
             {/* Due date */}
             {task.due_date && (
