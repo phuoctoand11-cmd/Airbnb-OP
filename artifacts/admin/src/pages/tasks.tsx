@@ -71,6 +71,14 @@ import { useI18n } from "@/i18n";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
+const TASK_PREFERRED_ROLES: Record<string, string[]> = {
+  cleaning: ["cleaner"],
+  maintenance: ["maintenance"],
+  checkin_prepare: ["sales"],
+  checkout_check: ["sales"],
+  inspection: ["maintenance", "manager"],
+};
+
 const STATUSES: Task["status"][] = ["todo", "in_progress", "done"];
 
 const TASK_TYPES: TaskType[] = [
@@ -1457,6 +1465,15 @@ function TaskDetailDialog({
       ? format(parseISO(task.updated_at), "MMM d, yyyy HH:mm")
       : null;
 
+  const preferredRoles = task.task_type ? (TASK_PREFERRED_ROLES[task.task_type] ?? []) : [];
+  const sortedEmployees = [...assignableEmployees].sort((a, b) => {
+    const aMatch = a.role && preferredRoles.includes(a.role) ? 0 : 1;
+    const bMatch = b.role && preferredRoles.includes(b.role) ? 0 : 1;
+    if (aMatch !== bMatch) return aMatch - bMatch;
+    return (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email);
+  });
+  const hasPreferred = preferredRoles.length > 0 && sortedEmployees.some((e) => e.role && preferredRoles.includes(e.role));
+
   return (
     <>
       <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -1498,9 +1515,19 @@ function TaskDetailDialog({
                   <SelectTrigger className="h-8 flex-1"><SelectValue placeholder="Chưa phân công" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Chưa phân công</SelectItem>
-                    {assignableEmployees.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.full_name ?? e.email}</SelectItem>
-                    ))}
+                    {sortedEmployees.map((e, idx) => {
+                      const isMatch = e.role && preferredRoles.includes(e.role);
+                      const prevMatch = idx > 0 && sortedEmployees[idx - 1].role && preferredRoles.includes(sortedEmployees[idx - 1].role!);
+                      const showSuitableLabel = hasPreferred && idx === 0 && isMatch;
+                      const showOtherLabel = hasPreferred && !isMatch && (idx === 0 || prevMatch);
+                      return (
+                        <div key={e.id}>
+                          {showSuitableLabel && <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Phù hợp</div>}
+                          {showOtherLabel && <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Khác</div>}
+                          <SelectItem value={e.id}>{e.full_name ?? e.email}</SelectItem>
+                        </div>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>

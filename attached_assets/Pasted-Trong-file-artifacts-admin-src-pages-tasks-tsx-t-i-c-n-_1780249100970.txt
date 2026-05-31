@@ -1,0 +1,40 @@
+Trong file artifacts/admin/src/pages/tasks.tsx, tôi cần sắp xếp lại dropdown phân công nhân viên trong TaskDetailDialog theo kiểu "lọc mềm": nhân viên có vai trò khớp với loại task được nhóm lên đầu (mục "Phù hợp"), còn lại xuống dưới (mục "Khác"). Vẫn chọn được tất cả. KHÔNG refactor, KHÔNG sửa gì khác.
+
+1. Thêm hằng số map loại task → vai trò ưu tiên (đặt gần đầu file, sau các import):
+const TASK_PREFERRED_ROLES: Record<string, string[]> = {
+  cleaning: ["cleaner"],
+  maintenance: ["maintenance"],
+  checkin_prepare: ["sales"],
+  checkout_check: ["sales"],
+  inspection: ["maintenance", "manager"],
+};
+
+2. Trong component TaskDetailDialog, ngay trước phần return, thêm logic chia nhóm:
+const preferredRoles = task.task_type ? (TASK_PREFERRED_ROLES[task.task_type] ?? []) : [];
+const sortedEmployees = [...assignableEmployees].sort((a, b) => {
+  const aMatch = a.role && preferredRoles.includes(a.role) ? 0 : 1;
+  const bMatch = b.role && preferredRoles.includes(b.role) ? 0 : 1;
+  if (aMatch !== bMatch) return aMatch - bMatch;
+  return (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email);
+});
+const hasPreferred = preferredRoles.length > 0 && sortedEmployees.some((e) => e.role && preferredRoles.includes(e.role));
+
+3. Trong khối Select phân công (phần canAssign), thay đoạn map assignableEmployees bằng sortedEmployees, và thêm nhãn nhóm. Cụ thể, thay phần <SelectContent>...</SelectContent> hiện tại bằng:
+<SelectContent>
+  <SelectItem value="__none__">Chưa phân công</SelectItem>
+  {sortedEmployees.map((e, idx) => {
+    const isMatch = e.role && preferredRoles.includes(e.role);
+    const prevMatch = idx > 0 && sortedEmployees[idx - 1].role && preferredRoles.includes(sortedEmployees[idx - 1].role!);
+    const showSuitableLabel = hasPreferred && idx === 0 && isMatch;
+    const showOtherLabel = hasPreferred && !isMatch && (idx === 0 || prevMatch);
+    return (
+      <div key={e.id}>
+        {showSuitableLabel && <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Phù hợp</div>}
+        {showOtherLabel && <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Khác</div>}
+        <SelectItem value={e.id}>{e.full_name ?? e.email}</SelectItem>
+      </div>
+    );
+  })}
+</SelectContent>
+
+Sau khi xong chạy pnpm run typecheck và báo kết quả.
