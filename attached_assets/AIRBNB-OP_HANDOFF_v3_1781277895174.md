@@ -127,9 +127,7 @@ Các tính năng đã hoàn thiện/sửa xong:
 
 ## 7. Danh mục bảng (40) & giá trị hợp lệ
 
-**Nhóm bảng:** Danh tính/HR (`users`, `roles`, `profiles`, `employees`, `departments`, `positions`, `teams`) · Villa (`listings`, `listing_images`, `amenities`, `listing_amenities`, `pricing_rules`) · Lịch (`listing_calendar`, `calendar_entries`, `listing_blocks`) · Booking/Tài chính (`bookings`, `payments`, `revenues`, `expenses`, `customers`, `channels`) · Task (`tasks`) · HR hiệu suất (`employee_performance_logs`, `employee_performance_scores`, `employee_monthly_reviews`) · Chat (`chat_groups`, `chat_group_members`, `chat_topics`, `chat_messages`, `chat_attachments`) · Báo cáo (`daily_ops_logs`, `weekly_reviews`, `monthly_reports`) · Marketing (`content_posts`, `competitors`, `competitor_prices`, `reviews`, `owners`) · Hệ thống (`activity_logs`, `notifications`)
-
-> Tất cả bảng đã bật RLS và có policy.
+**Nhóm bảng:** Danh tính/HR (`users`, `roles`, `profiles`, `employees`, `departments`, `positions`, `teams`) · Villa (`listings`, `listing_images`, `amenities`, `listing_amenities`, `pricing_rules`) · Lịch (`listing_calendar`, `calendar_entries`, `listing_blocks`) · Booking/Tài chính (`bookings`, `payments`, `revenues`, `expenses`, `customers`, `channels`) · Task (`tasks`) · HR hiệu suất (`employee_performance_logs`, `employee_performance_scores`, `employee_monthly_reviews`) · Chat (`chat_groups`, `chat_group_members`, `chat_topics`, `chat_messages`, `chat_attachments`) · Báo cáo (`daily_ops_logs`, `weekly_reviews`, `monthly_reports`) · Marketing (`content_posts`, `competitors`, `competitor_prices`, `reviews`, `owners`) · Hệ thống (`activity_logs`, `notifications`).
 
 **Giá trị hợp lệ:**
 - `roles.name`: admin, manager, sales, cleaner, maintenance, accountant
