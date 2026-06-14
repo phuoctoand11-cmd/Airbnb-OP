@@ -37,6 +37,7 @@ const schema = z.object({
   base_price: z.coerce.number().min(0),
   cleaning_fee: z.coerce.number().min(0),
   status: z.enum(["active", "inactive", "maintenance"]),
+  airbnb_listing_name: z.string().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -66,6 +67,7 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
       address: v.address || null,
       city: v.city || null,
       country: v.country || null,
+      airbnb_listing_name: v.airbnb_listing_name || null,
     });
 
   return (
@@ -140,6 +142,22 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
                 )}
               />
             </div>
+            <FormField
+              control={form.control}
+              name="airbnb_listing_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tên trên Airbnb</FormLabel>
+                  <FormControl>
+                    <Input disabled={!canManage} {...field} value={field.value ?? ""} />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Dán đúng tên nhà như hiển thị trong file CSV Airbnb để khớp doanh thu khi import.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
               <NumberField name="bedrooms" label="Bedrooms" form={form} disabled={!canManage} />
               <NumberField name="bathrooms" label="Bathrooms" form={form} disabled={!canManage} />
@@ -227,5 +245,6 @@ function defaults(l: Listing): FormValues {
     base_price: Number(l.base_price),
     cleaning_fee: Number(l.cleaning_fee),
     status: l.status,
+    airbnb_listing_name: l.airbnb_listing_name ?? "",
   };
 }

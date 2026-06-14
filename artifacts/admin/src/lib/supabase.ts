@@ -99,6 +99,7 @@ export interface Listing {
   cover_image_url: string | null;
   created_at: string;
   updated_at: string;
+  airbnb_listing_name?: string | null;
 }
 
 export interface ListingImage {
