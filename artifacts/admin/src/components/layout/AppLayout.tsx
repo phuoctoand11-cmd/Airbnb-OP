@@ -17,6 +17,7 @@ import {
   PieChart,
   Receipt,
   Settings,
+  Upload,
   Users,
   X,
 } from "lucide-react";
@@ -74,6 +75,7 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
     { href: "/hr", label: t.nav.hr, icon: Users, permission: "viewHR" },
     { href: "/revenues", label: t.nav.revenues, icon: CreditCard, permission: "manageFinance" },
     { href: "/expenses", label: t.nav.expenses, icon: Receipt, permission: "manageFinance" },
+    { href: "/import-airbnb", label: "Nhập báo cáo Airbnb", icon: Upload, permission: "manageFinance" },
     { href: "/performance", label: t.nav.performance, icon: BarChart2, permission: "viewPerformance" },
     { href: "/chat", label: t.nav.chat, icon: MessageSquare },
     { href: "/activity-logs", label: t.nav.activityLogs, icon: History, permission: "viewActivityLogs" },

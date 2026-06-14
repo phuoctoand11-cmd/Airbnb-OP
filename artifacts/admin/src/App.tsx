@@ -24,6 +24,7 @@ import AvailabilityCalendar from "@/pages/availability-calendar";
 import HRRecruitment from "@/pages/hr";
 import ActivityLogs from "@/pages/activity-logs";
 import Performance from "@/pages/performance";
+import ImportAirbnb from "@/pages/import-airbnb";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -111,6 +112,12 @@ function Router() {
       <Route path="/reports">
         <ProtectedRoute permission="viewReports">
           <Reports />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/import-airbnb">
+        <ProtectedRoute permission="manageFinance">
+          <ImportAirbnb />
         </ProtectedRoute>
       </Route>
 
