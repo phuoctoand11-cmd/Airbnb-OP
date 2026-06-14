@@ -76,13 +76,10 @@ interface MoneyTableConfig {
 
 const REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue"];
 const EXPENSE_CATEGORIES = [
-  "cleaning",
-  "supplies",
-  "maintenance",
-  "utilities",
-  "marketing",
-  "platform_fees",
-  "other",
+  "Tiền nhà",
+  "Tiền vệ sinh",
+  "Chi phí vận hành",
+  "Chi phí phát sinh khác",
 ];
 
 export function MoneyTablePage(config: MoneyTableConfig) {
@@ -337,7 +334,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   <TableRow key={r.id}>
                     <TableCell>{format(parseISO(r.date), "MMM d, yyyy")}</TableCell>
                     <TableCell>{listingTitle(r.listing_id)}</TableCell>
-                    <TableCell className="capitalize">{r.category.replace(/_/g, " ")}</TableCell>
+                    <TableCell>{r.category.replace(/_/g, " ")}</TableCell>
                     {config.showVendor && <TableCell>{r.vendor ?? "—"}</TableCell>}
                     {config.showAttachment && (
                       <TableCell>
