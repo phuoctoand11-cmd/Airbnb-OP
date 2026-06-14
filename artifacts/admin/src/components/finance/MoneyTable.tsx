@@ -62,6 +62,7 @@ interface MoneyRecord {
   description: string | null;
   date: string;
   vendor?: string | null;
+  attachment_url?: string | null;
 }
 
 interface MoneyTableConfig {
@@ -70,6 +71,7 @@ interface MoneyTableConfig {
   dateColumn: "received_at" | "spent_at";
   defaultCategory: string;
   showVendor: boolean;
+  showAttachment?: boolean;
 }
 
 const REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue"];
@@ -121,6 +123,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
         description: r.description,
         date: r[config.dateColumn],
         vendor: r.vendor ?? null,
+        attachment_url: r.attachment_url ?? null,
       })) as MoneyRecord[];
     },
   });
@@ -150,6 +153,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
     category: z.string().min(1),
     description: z.string().optional(),
     vendor: z.string().optional(),
+    attachment_url: z.string().optional(),
     date: z.string().min(1),
   });
   type FormValues = z.infer<typeof schema>;
@@ -160,6 +164,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
       amount: 0,
       category: config.defaultCategory,
       date: format(new Date(), "yyyy-MM-dd"),
+      attachment_url: "",
     },
   });
 
@@ -173,6 +178,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
         [config.dateColumn]: v.date,
       };
       if (config.showVendor) payload.vendor = v.vendor || null;
+      if (config.showAttachment) payload.attachment_url = v.attachment_url || null;
       const { error } = await supabase.from(config.table).insert(payload);
       if (error) throw error;
     },
@@ -320,6 +326,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   <TableHead>{t.finance.listingCol}</TableHead>
                   <TableHead>{t.finance.categoryCol}</TableHead>
                   {config.showVendor && <TableHead>{t.finance.vendorCol}</TableHead>}
+                  {config.showAttachment && <TableHead>Chứng từ</TableHead>}
                   <TableHead>{t.finance.descriptionCol}</TableHead>
                   <TableHead className="text-right">{t.finance.amountCol}</TableHead>
                   {canManage && <TableHead />}
@@ -332,6 +339,13 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                     <TableCell>{listingTitle(r.listing_id)}</TableCell>
                     <TableCell className="capitalize">{r.category.replace(/_/g, " ")}</TableCell>
                     {config.showVendor && <TableCell>{r.vendor ?? "—"}</TableCell>}
+                    {config.showAttachment && (
+                      <TableCell>
+                        {r.attachment_url
+                          ? <a href={r.attachment_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">Mở</a>
+                          : "—"}
+                      </TableCell>
+                    )}
                     <TableCell className="max-w-[260px] truncate text-muted-foreground">
                       {r.description ?? "—"}
                     </TableCell>
@@ -454,6 +468,21 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                       <FormLabel>{t.finance.vendor}</FormLabel>
                       <FormControl>
                         <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              {config.showAttachment && (
+                <FormField
+                  control={form.control}
+                  name="attachment_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Link Drive (chứng từ)</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="https://..." />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

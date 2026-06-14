@@ -1,0 +1,26 @@
+Thêm trường "Link Drive (chứng từ)" cho bảng Chi phí. Phạm vi giới hạn, KHÔNG refactor, KHÔNG đụng logic khác. Làm theo đúng pattern showVendor đã có sẵn trong file.
+
+Bối cảnh: bảng expenses đã có sẵn cột attachment_url (text, nullable). Component dùng chung là artifacts/admin/src/components/finance/MoneyTable.tsx, điều khiển bằng config.
+
+Trong MoneyTable.tsx, thêm cấu hình mới showAttachment (giống showVendor), làm đúng các điểm:
+
+1. interface MoneyTableConfig: thêm  showAttachment?: boolean;
+2. interface MoneyRecord: thêm  attachment_url?: string | null;
+3. Trong map kết quả query (chỗ đang có  vendor: r.vendor ?? null): thêm  attachment_url: r.attachment_url ?? null,
+4. zod schema (chỗ có  vendor: z.string().optional()): thêm  attachment_url: z.string().optional(),
+5. Mọi nơi đổ giá trị vào form: defaultValues khi tạo mới thêm attachment_url: ""; khi mở SỬA một bản ghi thì nạp record.attachment_url ?? "".
+6. Khi dựng payload để lưu (chỗ có  if (config.showVendor) payload.vendor = v.vendor || null;): thêm  if (config.showAttachment) payload.attachment_url = v.attachment_url || null;
+7. Trong form, ngay sau khối  {config.showVendor && ( ...FormField vendor... )}: thêm khối tương tự, hiển thị khi config.showAttachment, FormField name="attachment_url", FormLabel chuỗi cứng "Link Drive (chứng từ)", ô <Input placeholder="https://..." />.
+8. Header bảng (chỗ có  {config.showVendor && <TableHead>...vendorCol...</TableHead>}): thêm  {config.showAttachment && <TableHead>Chứng từ</TableHead>}
+9. Ô trong bảng (chỗ có  {config.showVendor && <TableCell>{r.vendor ?? "—"}</TableCell>}): thêm, đặt đúng thứ tự tương ứng header:
+   {config.showAttachment && (
+     <TableCell>
+       {r.attachment_url
+         ? <a href={r.attachment_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">Mở</a>
+         : "—"}
+     </TableCell>
+   )}
+
+Trong artifacts/admin/src/pages/expenses.tsx: thêm prop showAttachment để bật cho bảng chi phí. KHÔNG bật cho revenues.tsx.
+
+Dùng chuỗi tiếng Việt trực tiếp như trên, KHÔNG thêm khóa i18n mới. Chỉ sửa MoneyTable.tsx và expenses.tsx. KHÔNG sửa file khác.

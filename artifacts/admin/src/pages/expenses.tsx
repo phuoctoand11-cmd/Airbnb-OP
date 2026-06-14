@@ -8,6 +8,7 @@ export default function Expenses() {
       dateColumn="spent_at"
       defaultCategory="cleaning"
       showVendor
+      showAttachment
     />
   );
 }
