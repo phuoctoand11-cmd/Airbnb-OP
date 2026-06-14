@@ -10,6 +10,7 @@ import {
   Plus,
   Search,
   Send,
+  Trash2,
   UserMinus,
   UserPlus,
   Users,
@@ -869,6 +870,19 @@ export default function ChatPage() {
       }),
   });
 
+  const deleteGroupMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      const { error } = await supabase.from("chat_groups").delete().eq("id", groupId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
+      setSelectedGroupId(null);
+      toast({ title: "Đã xóa nhóm" });
+    },
+    onError: (err: Error) => toast({ variant: "destructive", title: "Không xóa được nhóm", description: err.message }),
+  });
+
   const createTopicMutation = useMutation({
     mutationFn: async ({
       title,
@@ -1321,9 +1335,25 @@ export default function ChatPage() {
         {selectedGroupId && (
           <div className="hidden sm:flex w-[220px] shrink-0 flex-col border-r border-border">
             <div className="border-b border-border px-3 py-2.5">
-              <p className="truncate text-xs font-semibold text-foreground">
-                {selectedGroup?.name}
-              </p>
+              <div className="flex items-center justify-between gap-1">
+                <p className="truncate text-xs font-semibold text-foreground">
+                  {selectedGroup?.name}
+                </p>
+                {role === "admin" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
+                    onClick={() => {
+                      if (window.confirm("Xóa nhóm này? Toàn bộ tin nhắn, thành viên và file trong nhóm sẽ bị xóa vĩnh viễn, không thể khôi phục.")) {
+                        deleteGroupMutation.mutate(selectedGroup!.id);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
               {selectedGroup?.description && (
                 <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                   {selectedGroup.description}
