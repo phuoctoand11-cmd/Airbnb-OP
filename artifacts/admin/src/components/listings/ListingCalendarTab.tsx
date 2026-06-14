@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 
+import { IcalSyncPanel } from "@/components/listings/IcalSyncPanel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -322,6 +323,9 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
+      {/* ── iCal sync panel (admin / manager only) ────────────────────── */}
+      {canManage && <IcalSyncPanel listingId={listing.id} canManage={canManage} />}
+
       {/* ── Migration notice ──────────────────────────────────────────── */}
       {tableNotFound && (
         <Alert className="border-amber-300 bg-amber-50 text-amber-800">
