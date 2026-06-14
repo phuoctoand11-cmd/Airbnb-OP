@@ -1060,8 +1060,12 @@ function TaskCard({
       </div>
 
       {/* Meta */}
-      <div className="mb-2 text-xs text-muted-foreground">
-        {assigneeName} · {listingTitle}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        {task.assigned_employee_id
+          ? <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">{assigneeName}</span>
+          : <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-600">Chưa được phân công</span>
+        }
+        <span>·</span> {listingTitle}
         {task.due_date && (
           <span>
             {" · "}
@@ -1535,7 +1539,10 @@ function TaskDetailDialog({
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="text-muted-foreground">Nhân viên:</span>
-                <span className="font-medium">{assigneeName}</span>
+                {task.assigned_employee_id
+                  ? <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">{assigneeName}</span>
+                  : <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-600">Chưa được phân công</span>
+                }
               </div>
             )}
 
