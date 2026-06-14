@@ -173,6 +173,20 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
     },
   });
 
+  const blocksQuery = useQuery({
+    queryKey: ["calendar-blocks", listing.id, format(start, "yyyy-MM")],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("listing_blocks")
+        .select("id,listing_id,start_date,end_date,reason")
+        .eq("listing_id", listing.id)
+        .lt("start_date", format(addDays(end, 1), "yyyy-MM-dd"))
+        .gt("end_date", format(start, "yyyy-MM-dd"));
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   // ── Derived lookups ───────────────────────────────────────────────────
   const calByDate = useMemo(() => {
     const m = new Map<string, ListingCalendar>();
@@ -196,8 +210,19 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
     return s;
   }, [bookings]);
 
+  const blockedDates = useMemo(() => {
+    const s = new Set<string>();
+    (blocksQuery.data ?? []).forEach((b: any) => {
+      let d = parseISO(b.start_date);
+      const e = parseISO(b.end_date);
+      while (d < e) { s.add(format(d, "yyyy-MM-dd")); d = addDays(d, 1); }
+    });
+    return s;
+  }, [blocksQuery.data]);
+
   function getDayDisplayStatus(ds: string): "booked" | ListingCalStatus | "none" {
     if (bookedDates.has(ds)) return "booked";
+    if (blockedDates.has(ds)) return "blocked";
     const entry = calByDate.get(ds);
     return entry ? entry.status : "none";
   }
