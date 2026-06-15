@@ -88,13 +88,13 @@ import {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const CHART_COLORS = [
-  "#0369a1",
-  "#0d9488",
-  "#0e7490",
-  "#65a30d",
-  "#ca8a04",
-  "#dc2626",
-  "#7c3aed",
+  "#6366f1", // [0] electric indigo  — Doanh thu / revenue
+  "#22d3ee", // [1] electric cyan    — Cashflow cash_in / occupancy line
+  "#f472b6", // [2] hot pink
+  "#a3e635", // [3] electric lime    — Lợi nhuận / net cashflow
+  "#fb923c", // [4] electric coral
+  "#e879f9", // [5] vivid fuchsia    — Chi phí / refunds
+  "#facc15", // [6] electric yellow
 ];
 
 const EXPENSE_CATEGORIES = [
