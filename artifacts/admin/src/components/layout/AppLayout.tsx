@@ -99,20 +99,20 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
     <div className="flex h-screen overflow-hidden bg-background">
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Logo */}
-        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground text-background shadow-sm">
-            <Building2 className="h-4.5 w-4.5" />
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-sidebar-border px-5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+            <Building2 className="h-4 w-4" />
           </div>
           <div>
-            <div className="text-sm font-semibold leading-none tracking-tight text-foreground">
+            <div className="text-sm font-semibold leading-none tracking-tight text-sidebar-foreground">
               Airbnb Ops
             </div>
-            <div className="mt-0.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            <div className="mt-0.5 text-[10px] font-medium tracking-widest text-sidebar-foreground/40 uppercase">
               {t.nav.operationsCockpit}
             </div>
           </div>
@@ -129,10 +129,10 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
                 <li key={item.href}>
                   <Link href={item.href} onClick={() => setMobileMenuOpen(false)}>
                     <div
-                      className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
                         isActive
-                          ? "bg-foreground text-background shadow-sm"
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       }`}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
@@ -146,21 +146,21 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
         </nav>
 
         {/* Footer controls */}
-        <div className="border-t border-border p-3 space-y-1.5">
+        <div className="border-t border-sidebar-border p-3 space-y-1">
           {/* Currency toggle */}
           <div className="px-1 flex items-center gap-2">
-            <span className="text-[11px] font-medium text-muted-foreground flex-1 uppercase tracking-wide">
+            <span className="text-[10px] font-medium text-sidebar-foreground/40 flex-1 uppercase tracking-widest">
               Currency
             </span>
-            <div className="flex overflow-hidden rounded-lg border border-border text-[11px] font-semibold">
+            <div className="flex overflow-hidden rounded-md border border-sidebar-border text-[11px] font-semibold">
               {(["VND", "USD"] as Currency[]).map((c) => (
                 <button
                   key={c}
                   onClick={() => setCurrency(c)}
                   className={`px-2.5 py-1 transition-colors ${
                     currency === c
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:bg-accent"
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   }`}
                 >
                   {c}
@@ -175,7 +175,7 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-start px-2 text-muted-foreground hover:bg-accent hover:text-foreground rounded-xl"
+                className="w-full justify-start px-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-lg"
               >
                 <span className="mr-2 text-base">{currentLangOption.flag}</span>
                 {currentLangOption.label}
@@ -200,23 +200,23 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                className="h-auto w-full justify-start px-2 py-2 rounded-xl hover:bg-accent"
+                className="h-auto w-full justify-start px-2 py-2 rounded-lg hover:bg-sidebar-accent"
               >
                 <div className="flex w-full items-center gap-3 overflow-hidden text-left">
-                  <Avatar className="h-8 w-8 border border-border">
+                  <Avatar className="h-8 w-8 border border-sidebar-border">
                     <AvatarImage src={profile?.avatar_url ?? ""} />
-                    <AvatarFallback className="bg-foreground text-background text-xs font-semibold">
+                    <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs font-semibold">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-foreground">
+                    <p className="truncate text-sm font-semibold text-sidebar-foreground">
                       {profile?.full_name ?? profile?.email ?? "User"}
                     </p>
                     {role && (
                       <Badge
                         variant="outline"
-                        className="mt-0.5 px-1.5 py-0 text-[10px] font-medium capitalize border-border text-muted-foreground"
+                        className="mt-0.5 px-1.5 py-0 text-[10px] font-medium capitalize border-sidebar-border text-sidebar-foreground/50"
                       >
                         {ROLE_LABELS[role] ?? role}
                       </Badge>
@@ -245,17 +245,17 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
       {/* ── Main content ────────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 sm:px-6 lg:px-8">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden rounded-xl"
+              className="md:hidden rounded-lg"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">{title}</h1>
+            <h1 className="text-base font-semibold tracking-tight text-foreground">{title}</h1>
           </div>
           {action && <div className="ml-4">{action}</div>}
         </header>
@@ -290,7 +290,7 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
       {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/30 md:hidden backdrop-blur-sm"
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
@@ -298,14 +298,14 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
       {/* ── Auth debug panel ─────────────────────────────────────────────── */}
       <div className="fixed bottom-3 right-3 z-50">
         {debugOpen ? (
-          <div className="w-72 rounded-2xl border border-border bg-background shadow-lg">
+          <div className="w-72 rounded-lg border border-border bg-background shadow-md">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Auth Debug
               </span>
               <button
                 onClick={() => setDebugOpen(false)}
-                className="rounded-lg p-0.5 text-muted-foreground hover:text-foreground"
+                className="rounded p-0.5 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
