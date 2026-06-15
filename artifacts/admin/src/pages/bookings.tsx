@@ -795,52 +795,38 @@ export default function Bookings() {
               </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t.bookings.guest}</TableHead>
-                  <TableHead>{t.common.listing}</TableHead>
-                  <TableHead>{t.bookings.dates}</TableHead>
-                  <TableHead className="text-right">{t.bookings.nights}</TableHead>
-                  <TableHead className="text-right">{t.common.total}</TableHead>
-                  <TableHead>{t.bookings.source}</TableHead>
-                  <TableHead>{t.common.status}</TableHead>
-                  <TableHead className="text-right">{t.bookings.actions}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* ── Mobile card list (hidden on md+) ──────────────────────── */}
+              <div className="md:hidden divide-y divide-border/40">
                 {filtered.map((b) => {
                   const nights = differenceInCalendarDays(
                     parseISO(b.check_out),
                     parseISO(b.check_in)
                   );
+                  const dateLabel =
+                    format(parseISO(b.check_in), "dd/MM") +
+                    " – " +
+                    format(parseISO(b.check_out), "dd/MM/yyyy") +
+                    " · " +
+                    nights +
+                    " đêm";
                   return (
-                    <TableRow key={b.id}>
-                      <TableCell className="font-medium">
-                        <div>{b.guest_name}</div>
-                        {b.guest_email && (
-                          <div className="text-xs text-muted-foreground">{b.guest_email}</div>
-                        )}
-                      </TableCell>
-                      <TableCell>{listingTitle(b.listing_id)}</TableCell>
-                      <TableCell>
-                        {format(parseISO(b.check_in), "MMM d")} –{" "}
-                        {format(parseISO(b.check_out), "MMM d, yyyy")}
-                      </TableCell>
-                      <TableCell className="text-right">{nights}</TableCell>
-                      <TableCell className="text-right">
-                        {fmt(Number(b.total_amount))}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {b.source ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={STATUS_VARIANT[b.status]} className="capitalize">
+                    <div key={b.id} className="px-4 py-3 space-y-1">
+                      {/* Row 1: guest name + status badge */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-sm truncate">{b.guest_name}</span>
+                        <Badge variant={STATUS_VARIANT[b.status]} className="shrink-0 capitalize text-xs">
                           {t.status[b.status]}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {canManage ? (
+                      </div>
+                      {/* Row 2: villa name */}
+                      <p className="text-sm text-muted-foreground truncate">{listingTitle(b.listing_id)}</p>
+                      {/* Row 3: dates — single line guaranteed */}
+                      <p className="text-sm whitespace-nowrap overflow-hidden text-ellipsis">{dateLabel}</p>
+                      {/* Row 4: total + optional status select */}
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <span className="font-semibold text-sm tabular-nums">{fmt(Number(b.total_amount))}</span>
+                        {canManage && (
                           <Select
                             value={b.status}
                             onValueChange={(v) => {
@@ -856,7 +842,7 @@ export default function Bookings() {
                               }
                             }}
                           >
-                            <SelectTrigger className="ml-auto h-8 w-[140px]">
+                            <SelectTrigger className="h-8 w-[148px] text-xs">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -866,13 +852,95 @@ export default function Bookings() {
                               <SelectItem value="cancelled">{t.status.cancelled}</SelectItem>
                             </SelectContent>
                           </Select>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
-              </TableBody>
-            </Table>
+              </div>
+
+              {/* ── Desktop table (hidden below md) ───────────────────────── */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t.bookings.guest}</TableHead>
+                      <TableHead>{t.common.listing}</TableHead>
+                      <TableHead>{t.bookings.dates}</TableHead>
+                      <TableHead className="text-right">{t.bookings.nights}</TableHead>
+                      <TableHead className="text-right">{t.common.total}</TableHead>
+                      <TableHead>{t.bookings.source}</TableHead>
+                      <TableHead>{t.common.status}</TableHead>
+                      <TableHead className="text-right">{t.bookings.actions}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((b) => {
+                      const nights = differenceInCalendarDays(
+                        parseISO(b.check_out),
+                        parseISO(b.check_in)
+                      );
+                      return (
+                        <TableRow key={b.id}>
+                          <TableCell className="font-medium">
+                            <div>{b.guest_name}</div>
+                            {b.guest_email && (
+                              <div className="text-xs text-muted-foreground">{b.guest_email}</div>
+                            )}
+                          </TableCell>
+                          <TableCell>{listingTitle(b.listing_id)}</TableCell>
+                          <TableCell>
+                            {format(parseISO(b.check_in), "MMM d")} –{" "}
+                            {format(parseISO(b.check_out), "MMM d, yyyy")}
+                          </TableCell>
+                          <TableCell className="text-right">{nights}</TableCell>
+                          <TableCell className="text-right">
+                            {fmt(Number(b.total_amount))}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {b.source ?? "—"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={STATUS_VARIANT[b.status]} className="capitalize">
+                              {t.status[b.status]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {canManage ? (
+                              <Select
+                                value={b.status}
+                                onValueChange={(v) => {
+                                  if (v === "cancelled") {
+                                    setCancelTarget({ id: b.id, booking: b });
+                                  } else {
+                                    updateStatusMutation.mutate({
+                                      id: b.id,
+                                      status: v as Booking["status"],
+                                      guestName: b.guest_name,
+                                      booking: b,
+                                    });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="ml-auto h-8 w-[140px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">{t.status.pending}</SelectItem>
+                                  <SelectItem value="confirmed">{t.status.confirmed}</SelectItem>
+                                  <SelectItem value="completed">{t.status.completed}</SelectItem>
+                                  <SelectItem value="cancelled">{t.status.cancelled}</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
