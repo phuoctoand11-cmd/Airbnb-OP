@@ -1839,14 +1839,32 @@ export default function AvailabilityCalendar() {
           )}
         </div>
       ) : view === "month" ? (
-        <MonthView
-          listings={listings}
-          bookings={bookings}
-          blocks={blocks}
-          calEntryMap={calEntryMap}
-          viewDate={viewDate}
-          onBookingClick={setSelectedBooking}
-        />
+        listings.length > 1 ? (
+          <div className="space-y-6">
+            {listings.map((l) => (
+              <div key={l.id}>
+                <h3 className="mb-2 text-sm font-semibold text-foreground">{l.title}</h3>
+                <MonthView
+                  listings={[l]}
+                  bookings={bookings}
+                  blocks={blocks}
+                  calEntryMap={calEntryMap}
+                  viewDate={viewDate}
+                  onBookingClick={setSelectedBooking}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <MonthView
+            listings={listings}
+            bookings={bookings}
+            blocks={blocks}
+            calEntryMap={calEntryMap}
+            viewDate={viewDate}
+            onBookingClick={setSelectedBooking}
+          />
+        )
       ) : (
         <TimelineView
           listings={listings}
