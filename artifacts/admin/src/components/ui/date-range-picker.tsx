@@ -30,14 +30,6 @@ const PRESETS: { label: string; getRange: () => { from: Date; to: Date } }[] = [
     getRange: () => { const d = new Date(); return { from: d, to: d }; },
   },
   {
-    label: "7 ngày gần đây",
-    getRange: () => ({ from: subDays(new Date(), 7), to: new Date() }),
-  },
-  {
-    label: "30 ngày gần đây",
-    getRange: () => ({ from: subDays(new Date(), 30), to: new Date() }),
-  },
-  {
     label: "Tháng này",
     getRange: () => ({ from: startOfMonth(new Date()), to: new Date() }),
   },
@@ -189,8 +181,6 @@ export function DateRangePicker({
           )}
         >
           <CalendarRange className="h-4 w-4 shrink-0 text-primary/80" />
-          <span className="text-sm text-muted-foreground">Khoảng thời gian</span>
-          <span className="h-4 w-px bg-border/70 mx-0.5" />
           <span className="text-sm font-semibold tabular-nums">{triggerLabel}</span>
         </Button>
       </PopoverTrigger>
