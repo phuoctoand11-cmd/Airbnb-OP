@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import {
+  ChevronLeft,
   Hash,
   ImageIcon,
   Loader2,
@@ -1251,7 +1252,7 @@ export default function ChatPage() {
     <AppLayout title="Chat" fullWidth>
       <div className="flex h-full w-full overflow-hidden border-t border-border bg-background">
         {/* ── Groups sidebar ──────────────────────────────────────────────── */}
-        <div className="flex w-[260px] shrink-0 flex-col border-r border-border">
+        <div className={`${selectedGroupId ? "hidden md:flex" : "flex"} w-full md:w-[260px] shrink-0 flex-col border-r border-border`}>
           <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Groups
@@ -1422,7 +1423,36 @@ export default function ChatPage() {
         )}
 
         {/* ── Messages panel ───────────────────────────────────────────────── */}
-        <div className="flex min-w-0 flex-1 flex-col" style={{ minWidth: "320px" }}>
+        <div className={`${selectedGroupId ? "flex" : "hidden md:flex"} min-w-0 flex-1 flex-col`} style={{ minWidth: 0 }}>
+          {/* Mobile back bar — only visible on small screens when a group is selected */}
+          {selectedGroupId && (
+            <div className="md:hidden flex items-center gap-1 border-b border-border px-2 py-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1 px-2 shrink-0"
+                onClick={() => setSelectedGroupId(null)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Quay lại
+              </Button>
+              <span className="font-semibold text-sm truncate flex-1">{selectedGroup?.name}</span>
+              {role === "admin" && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                  onClick={() => {
+                    if (window.confirm("Xóa nhóm này? Toàn bộ tin nhắn, thành viên và file trong nhóm sẽ bị xóa vĩnh viễn, không thể khôi phục.")) {
+                      deleteGroupMutation.mutate(selectedGroup!.id);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          )}
           {!selectedGroupId ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <MessageSquare className="h-10 w-10 text-muted-foreground/30" />
