@@ -60,125 +60,129 @@
   --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 4px);
-  --radius-xl: calc(var(--radius) + 8px);
+  /* BMW M: radius hierarchy is "almost always 0, sometimes circular"
+     rounded-sm / rounded-md = 0   |   rounded-lg = 2px   |   rounded-xl = 4px   |   rounded-full = 9999px */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 2px;
+  --radius-xl: 4px;
 }
 
 /*
-  Bento Dark Design System
-  Background: #0A0A0A  · Card: #111111  · Surface: #161616
-  Border: #1E1E1E  · Purple: #7C3AED  · Orange: #F97316
-  Lime: #A3E635  · Yellow: #FACC15
+  BMW M Design System
+  Canvas: #000000  · Surface-card: #1a1a1a  · Surface-elevated: #262626
+  Hairline: #3c3c3c  · Body: #bbbbbb  · Muted: #7e7e7e
+  M-blue-dark: #1c69d4  · M-blue-light: #0066b1  · M-red: #e22718
+  Primary type: #ffffff  · On-primary: #000000
 */
 
 :root {
-  --button-outline: rgba(255,255,255,.08);
-  --badge-outline: rgba(255,255,255,.06);
+  --button-outline: rgba(255,255,255,.20);
+  --badge-outline: rgba(255,255,255,.08);
   --opaque-button-border-intensity: 8;
-  --elevate-1: rgba(255,255,255,.03);
-  --elevate-2: rgba(255,255,255,.06);
+  --elevate-1: rgba(255,255,255,.02);
+  --elevate-2: rgba(255,255,255,.04);
 
-  /* Deep black canvas */
-  --background:            0   0%   4%;   /* #0A0A0A */
-  --foreground:            0   0%  95%;   /* near-white */
+  /* True black canvas */
+  --background:            0   0%   0%;   /* #000000 */
+  --foreground:            0   0% 100%;   /* #ffffff — on-dark */
 
-  /* Subtle dark border */
-  --border:                0   0%  12%;   /* #1E1E1E */
-  --input:                 0   0%  12%;
-  --ring:                262  80%  58%;   /* purple #7C3AED */
+  /* Hairline border — #3c3c3c */
+  --border:                0   0%  24%;
+  --input:                 0   0%  10%;   /* surface-card bg for inputs */
+  --ring:                213  67%  47%;   /* M blue dark #1c69d4 */
 
-  /* Card surface — slightly lifted dark */
-  --card:                  0   0%   7%;   /* #111111 */
-  --card-foreground:       0   0%  95%;
-  --card-border:           0   0%  12%;
+  /* Card — surface-card #1a1a1a */
+  --card:                  0   0%  10%;
+  --card-foreground:       0   0% 100%;
+  --card-border:           0   0%  24%;   /* hairline */
 
-  /* Popover — same as card */
-  --popover:               0   0%   8%;
-  --popover-foreground:    0   0%  95%;
-  --popover-border:        0   0%  13%;
+  /* Popover — surface-elevated #262626 */
+  --popover:               0   0%  15%;
+  --popover-foreground:    0   0% 100%;
+  --popover-border:        0   0%  24%;
 
-  /* Primary — vibrant purple */
-  --primary:             262  80%  58%;   /* #7C3AED */
-  --primary-foreground:    0   0% 100%;
+  /* Primary — white (BMW M primary IS white type on black) */
+  --primary:               0   0% 100%;
+  --primary-foreground:    0   0%   0%;   /* on-primary = black */
 
-  /* Secondary — dark surface */
-  --secondary:             0   0%  11%;
-  --secondary-foreground:  0   0%  90%;
+  /* Secondary — surface-elevated #262626 */
+  --secondary:             0   0%  15%;
+  --secondary-foreground:  0   0%  90%;   /* body-strong #e6e6e6 */
 
-  /* Muted */
-  --muted:                 0   0%  10%;
-  --muted-foreground:      0   0%  52%;   /* #848484 */
+  /* Muted — surface-soft #0d0d0d */
+  --muted:                 0   0%   5%;
+  --muted-foreground:      0   0%  49%;   /* muted #7e7e7e */
 
-  /* Accent — hover surface */
-  --accent:                0   0%  13%;
-  --accent-foreground:     0   0%  95%;
+  /* Accent — carbon-gray #2b2b2b hover surface */
+  --accent:                0   0%  17%;
+  --accent-foreground:     0   0%  90%;
 
-  /* Destructive */
-  --destructive:           0  72%  51%;
+  /* Destructive — M-red #e22718 (also used for errors) */
+  --destructive:           6  77%  49%;
   --destructive-foreground:0   0% 100%;
 
-  /* Sidebar — deepest dark */
-  --sidebar:               0   0%   5%;   /* #0D0D0D */
-  --sidebar-foreground:    0   0%  80%;
-  --sidebar-border:        0   0%  10%;
-  --sidebar-primary:     262  80%  58%;   /* purple active */
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent:        0   0%  10%;
+  /* Sidebar — surface-soft #0d0d0d */
+  --sidebar:               0   0%   5%;
+  --sidebar-foreground:    0   0%  73%;   /* body #bbbbbb */
+  --sidebar-border:        0   0%  24%;   /* hairline #3c3c3c */
+  --sidebar-primary:       0   0% 100%;   /* white — active item text */
+  --sidebar-primary-foreground: 0 0% 0%;
+  --sidebar-accent:        0   0%  10%;   /* surface-card hover */
   --sidebar-accent-foreground:  0 0%  90%;
-  --sidebar-ring:        262  80%  58%;
+  --sidebar-ring:          213 67%  47%;  /* M blue dark */
 
-  /* Charts — bento accent palette */
-  --chart-1:             262  80%  58%;   /* purple  #7C3AED */
-  --chart-2:              24  95%  53%;   /* orange  #F97316 */
-  --chart-3:              84  81%  54%;   /* lime    #A3E635 */
-  --chart-4:              43  96%  53%;   /* yellow  #FACC15 */
-  --chart-5:             214  89%  68%;   /* blue    #60A5FA */
+  /* Charts — M palette */
+  --chart-1:             213  67%  47%;   /* M blue dark  #1c69d4 */
+  --chart-2:               6  77%  49%;   /* M red        #e22718 */
+  --chart-3:             205 100%  35%;   /* M blue light #0066b1 */
+  --chart-4:              44 100%  48%;   /* warning      #f4b400 */
+  --chart-5:             132  84%  35%;   /* success      #0fa336 */
 
-  --app-font-sans: 'Inter', 'Plus Jakarta Sans', 'ui-sans-serif', system-ui, sans-serif;
+  /* Font: Inter 700/300 as BMW Type Next Latin substitute */
+  --app-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: 'Menlo', 'Courier New', monospace;
 
-  /* 16px base radius — bento rounded-2xl feel */
-  --radius: 1rem;
+  /* BMW M: radius hierarchy = 0px dominant */
+  --radius: 0px;
 }
 
 .dark {
-  --background:            0   0%   4%;
-  --foreground:            0   0%  95%;
-  --border:                0   0%  12%;
-  --input:                 0   0%  12%;
-  --ring:                262  80%  58%;
-  --card:                  0   0%   7%;
-  --card-foreground:       0   0%  95%;
-  --card-border:           0   0%  12%;
-  --popover:               0   0%   8%;
-  --popover-foreground:    0   0%  95%;
-  --popover-border:        0   0%  13%;
-  --primary:             262  80%  58%;
-  --primary-foreground:    0   0% 100%;
-  --secondary:             0   0%  11%;
+  --background:            0   0%   0%;
+  --foreground:            0   0% 100%;
+  --border:                0   0%  24%;
+  --input:                 0   0%  10%;
+  --ring:                213  67%  47%;
+  --card:                  0   0%  10%;
+  --card-foreground:       0   0% 100%;
+  --card-border:           0   0%  24%;
+  --popover:               0   0%  15%;
+  --popover-foreground:    0   0% 100%;
+  --popover-border:        0   0%  24%;
+  --primary:               0   0% 100%;
+  --primary-foreground:    0   0%   0%;
+  --secondary:             0   0%  15%;
   --secondary-foreground:  0   0%  90%;
-  --muted:                 0   0%  10%;
-  --muted-foreground:      0   0%  52%;
-  --accent:                0   0%  13%;
-  --accent-foreground:     0   0%  95%;
-  --destructive:           0  72%  51%;
+  --muted:                 0   0%   5%;
+  --muted-foreground:      0   0%  49%;
+  --accent:                0   0%  17%;
+  --accent-foreground:     0   0%  90%;
+  --destructive:           6  77%  49%;
   --destructive-foreground:0   0% 100%;
   --sidebar:               0   0%   5%;
-  --sidebar-foreground:    0   0%  80%;
-  --sidebar-border:        0   0%  10%;
-  --sidebar-primary:     262  80%  58%;
-  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-foreground:    0   0%  73%;
+  --sidebar-border:        0   0%  24%;
+  --sidebar-primary:       0   0% 100%;
+  --sidebar-primary-foreground: 0 0% 0%;
   --sidebar-accent:        0   0%  10%;
   --sidebar-accent-foreground:  0 0%  90%;
-  --sidebar-ring:        262  80%  58%;
-  --chart-1:             262  80%  58%;
-  --chart-2:              24  95%  53%;
-  --chart-3:              84  81%  54%;
-  --chart-4:              43  96%  53%;
-  --chart-5:             214  89%  68%;
+  --sidebar-ring:          213 67%  47%;
+  --chart-1:             213  67%  47%;
+  --chart-2:               6  77%  49%;
+  --chart-3:             205 100%  35%;
+  --chart-4:              44 100%  48%;
+  --chart-5:             132  84%  35%;
 }
 
 @layer base {
@@ -187,31 +191,36 @@
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    font-weight: 300;
+  }
+  h1, h2, h3, h4 {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0;
   }
 }
 
-/* ── Bento accent utility classes ───────────────────────────────────────── */
+/* ── BMW M utility classes ───────────────────────────────────────────────── */
 @layer utilities {
-  .bento-purple {
-    background: linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%);
+  /* M tricolor stripe — 4px brand divider, never a fill */
+  .m-stripe {
+    height: 4px;
+    background: linear-gradient(to right, #0066b1 0%, #1c69d4 50%, #e22718 100%);
+    border: none;
   }
-  .bento-orange {
-    background: linear-gradient(135deg, #F97316 0%, #FACC15 100%);
+  /* Label uppercase — "machined" letterspacing */
+  .label-uppercase {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
   }
-  .bento-lime {
-    background-color: #A3E635;
-    color: #0A0A0A;
-  }
-  .text-bento-lime {
-    color: #A3E635;
-  }
-  .text-bento-orange {
-    color: #F97316;
-  }
-  .text-bento-purple {
-    color: #7C3AED;
-  }
-  .border-bento {
-    border-color: #1E1E1E;
+  /* Button label style */
+  .btn-label {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    line-height: 1;
   }
 }

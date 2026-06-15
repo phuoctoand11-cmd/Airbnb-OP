@@ -99,31 +99,32 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
     <div className="flex h-screen overflow-hidden bg-background">
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-border bg-sidebar transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Logo */}
-        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-xl"
-            style={{ background: "linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%)" }}
-          >
-            <Building2 className="h-4 w-4 text-white" />
-          </div>
-          <div>
-            <div className="text-sm font-bold leading-none tracking-tight text-white">
-              Airbnb Ops
+        {/* Logo — M stripe + wordmark */}
+        <div className="shrink-0 border-b border-border">
+          {/* M tricolor stripe brand signature */}
+          <div className="m-stripe" />
+          <div className="flex h-14 items-center gap-3 px-4">
+            <div className="flex h-7 w-7 items-center justify-center bg-white">
+              <Building2 className="h-4 w-4 text-black" />
             </div>
-            <div className="mt-0.5 text-[10px] font-medium tracking-widest text-white/30 uppercase">
-              {t.nav.operationsCockpit}
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest text-white leading-none">
+                Airbnb Ops
+              </div>
+              <div className="mt-0.5 text-[9px] font-medium tracking-widest text-white/30 uppercase">
+                {t.nav.operationsCockpit}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-2 py-3">
-          <ul className="space-y-0.5">
+        <nav className="flex-1 overflow-y-auto py-2">
+          <ul>
             {visibleNav.map((item) => {
               const isActive =
                 location === item.href ||
@@ -132,14 +133,20 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
                 <li key={item.href}>
                   <Link href={item.href} onClick={() => setMobileMenuOpen(false)}>
                     <div
-                      className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150 ${
+                      className={`relative flex cursor-pointer items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-all duration-100 ${
                         isActive
-                          ? "text-white shadow-lg"
-                          : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                          ? "bg-[#1a1a1a] text-white"
+                          : "text-[#7e7e7e] hover:bg-[#111111] hover:text-[#bbbbbb]"
                       }`}
-                      style={isActive ? { background: "linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%)" } : {}}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
+                      {/* M-blue left accent for active item */}
+                      {isActive && (
+                        <span
+                          className="absolute inset-y-0 left-0 w-0.5"
+                          style={{ background: "#1c69d4" }}
+                        />
+                      )}
+                      <item.icon className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{item.label}</span>
                     </div>
                   </Link>
@@ -150,23 +157,22 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
         </nav>
 
         {/* Footer controls */}
-        <div className="border-t border-sidebar-border p-2 space-y-1">
+        <div className="border-t border-border">
           {/* Currency toggle */}
-          <div className="px-1 flex items-center gap-2 py-1">
-            <span className="text-[10px] font-medium text-white/30 flex-1 uppercase tracking-widest">
+          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-white/30">
               Currency
             </span>
-            <div className="flex overflow-hidden rounded-lg border border-white/10 text-[11px] font-bold">
+            <div className="flex border border-border text-[10px] font-bold">
               {(["VND", "USD"] as Currency[]).map((c) => (
                 <button
                   key={c}
                   onClick={() => setCurrency(c)}
-                  className={`px-2.5 py-1 transition-colors ${
+                  className={`px-2.5 py-1 uppercase tracking-widest transition-colors ${
                     currency === c
-                      ? "text-white"
-                      : "text-white/40 hover:text-white/70"
+                      ? "bg-white text-black"
+                      : "text-[#7e7e7e] hover:text-[#bbbbbb]"
                   }`}
-                  style={currency === c ? { background: "linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%)" } : {}}
                 >
                   {c}
                 </button>
@@ -180,20 +186,20 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-start px-3 text-white/50 hover:bg-white/5 hover:text-white/80 rounded-xl"
+                className="w-full justify-start rounded-none px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#7e7e7e] hover:bg-[#111111] hover:text-[#bbbbbb] border-b border-border h-auto"
               >
-                <span className="mr-2 text-base">{currentLangOption.flag}</span>
+                <span className="mr-2 text-sm">{currentLangOption.flag}</span>
                 {currentLangOption.label}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuContent align="end" className="w-44 rounded-none">
               {LANG_OPTIONS.map((opt) => (
                 <DropdownMenuItem
                   key={opt.value}
                   onClick={() => setLang(opt.value)}
-                  className={lang === opt.value ? "font-semibold" : ""}
+                  className={`rounded-none uppercase tracking-widest text-[11px] ${lang === opt.value ? "font-bold" : ""}`}
                 >
-                  <span className="mr-2 text-base">{opt.flag}</span>
+                  <span className="mr-2 text-sm">{opt.flag}</span>
                   {opt.label}
                 </DropdownMenuItem>
               ))}
@@ -205,26 +211,23 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                className="h-auto w-full justify-start px-3 py-2 rounded-xl hover:bg-white/5"
+                className="h-auto w-full justify-start rounded-none px-4 py-3 hover:bg-[#111111]"
               >
                 <div className="flex w-full items-center gap-3 overflow-hidden text-left">
-                  <Avatar className="h-7 w-7 border border-white/10">
+                  <Avatar className="h-7 w-7 rounded-none border border-border">
                     <AvatarImage src={profile?.avatar_url ?? ""} />
-                    <AvatarFallback
-                      className="text-white text-xs font-bold"
-                      style={{ background: "linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%)" }}
-                    >
+                    <AvatarFallback className="rounded-none bg-[#1a1a1a] text-white text-xs font-bold">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-white/80">
+                    <p className="truncate text-[11px] font-bold uppercase tracking-widest text-[#bbbbbb]">
                       {profile?.full_name ?? profile?.email ?? "User"}
                     </p>
                     {role && (
                       <Badge
                         variant="outline"
-                        className="mt-0.5 px-1.5 py-0 text-[10px] font-medium capitalize border-white/10 text-white/30"
+                        className="mt-0.5 rounded-none px-1.5 py-0 text-[9px] font-bold uppercase tracking-widest border-[#3c3c3c] text-[#7e7e7e]"
                       >
                         {ROLE_LABELS[role] ?? role}
                       </Badge>
@@ -233,13 +236,13 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
                 </div>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+            <DropdownMenuContent align="end" className="w-56 rounded-none">
+              <DropdownMenuLabel className="rounded-none text-xs text-muted-foreground font-normal">
                 {profile?.email}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                className="cursor-pointer text-destructive focus:text-destructive"
+                className="cursor-pointer rounded-none text-destructive focus:text-destructive uppercase tracking-widest text-[11px] font-bold"
                 onClick={() => signOut()}
               >
                 <LogOut className="mr-2 h-4 w-4" />
@@ -254,28 +257,28 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden rounded-xl text-white/60 hover:text-white hover:bg-white/5"
+              className="md:hidden rounded-none text-[#bbbbbb] hover:text-white hover:bg-[#111111]"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-sm font-bold tracking-tight text-foreground">{title}</h1>
+            <h1 className="text-[11px] font-bold uppercase tracking-widest text-white">{title}</h1>
           </div>
           {action && <div className="ml-4">{action}</div>}
         </header>
 
         {/* Block-error banner */}
         {blockError && !warningDismissed && (
-          <div className="flex items-center gap-3 border-b border-amber-900/40 bg-amber-950/60 px-4 py-2 text-sm text-amber-200">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+          <div className="flex items-center gap-3 border-b border-[#f4b400]/30 bg-[#f4b400]/10 px-4 py-2 text-sm text-[#f4b400]">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
             <span className="flex-1">{blockError}</span>
             <button
               onClick={() => setWarningDismissed(true)}
-              className="ml-auto rounded-lg p-0.5 hover:bg-amber-900/40"
+              className="ml-auto p-0.5 hover:text-white"
               aria-label="Dismiss"
             >
               <X className="h-4 w-4" />
@@ -298,7 +301,7 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
       {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          className="fixed inset-0 z-40 bg-black/70 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
@@ -306,14 +309,14 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
       {/* ── Auth debug panel ─────────────────────────────────────────────── */}
       <div className="fixed bottom-3 right-3 z-50">
         {debugOpen ? (
-          <div className="w-72 rounded-2xl border border-border bg-card shadow-xl">
+          <div className="w-72 border border-border bg-card shadow-xl">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
                 Auth Debug
               </span>
               <button
                 onClick={() => setDebugOpen(false)}
-                className="rounded-lg p-0.5 text-muted-foreground hover:text-foreground"
+                className="p-0.5 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -329,7 +332,7 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
         ) : (
           <button
             onClick={() => setDebugOpen(true)}
-            className="rounded-full border border-border bg-card px-2.5 py-1 text-[10px] font-semibold text-muted-foreground shadow-sm hover:bg-accent"
+            className="border border-border bg-card px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:bg-accent"
           >
             debug
           </button>
