@@ -7,7 +7,6 @@ import {
   startOfMonth,
   startOfQuarter,
   startOfYear,
-  subDays,
   subMonths,
   subQuarters,
 } from "date-fns";
@@ -144,22 +143,19 @@ export function DateRangePicker({
 
   // ── Display helpers ────────────────────────────────────────────────────────
 
-  // Trigger — shows committed (applied) range
   const triggerLabel = `${format(startDate, "dd/MM/yyyy")} – ${format(endDate, "dd/MM/yyyy")}`;
 
-  // Footer selection indicator
   let selectionLine: string;
   if (phase === 1 && pendingFrom) {
     selectionLine = `${format(pendingFrom, "dd/MM/yyyy")} → chọn ngày kết thúc`;
   } else if (phase === 2 && pendingFrom && pendingTo) {
     selectionLine = `${format(pendingFrom, "dd/MM/yyyy")} – ${format(pendingTo, "dd/MM/yyyy")}`;
   } else {
-    selectionLine = "Nhấn vào ngày bắt đầu trên lịch";
+    selectionLine = "Nhấn vào ngày bắt đầu";
   }
 
   const canApply = phase !== 0 && !!pendingFrom;
 
-  // Calendar `selected` prop — drives visual range highlight
   const calendarSelected =
     pendingFrom && pendingTo
       ? { from: pendingFrom, to: pendingTo }
@@ -190,28 +186,49 @@ export function DateRangePicker({
         align="start"
         sideOffset={8}
         className={cn(
-          "w-auto p-0",
-          "rounded-xl border border-border/40 shadow-2xl",
-          "bg-background overflow-hidden",
-          // Prevent overflow on small screens
-          "max-h-[calc(100vh-4rem)] overflow-y-auto"
+          "p-0 rounded-xl border border-border/40 shadow-2xl bg-background overflow-hidden",
+          // Mobile: nearly full viewport width; desktop: auto
+          "w-[calc(100vw-1rem)] sm:w-auto",
+          "max-h-[calc(100dvh-5rem)] overflow-y-auto"
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
+        {/* ── Mobile: horizontal preset scroll strip ────────────────────────── */}
+        <div className="sm:hidden border-b border-border/40 bg-muted/20 px-3 py-2">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {PRESETS.map((p) => {
+              const isActive = activePreset === p.label;
+              return (
+                <button
+                  key={p.label}
+                  onClick={() => applyPreset(p.label, p.getRange)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all",
+                    isActive
+                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                      : "border-border/60 text-foreground/70 hover:border-primary/50 hover:text-primary"
+                  )}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Main layout: sidebar (desktop) + calendar ─────────────────────── */}
         <div className="flex flex-col sm:flex-row">
-          {/* ── Preset sidebar ──────────────────────────────────────────────── */}
+
+          {/* ── Desktop preset sidebar (hidden on mobile) ─────────────────── */}
           <div
-            className="flex flex-col border-b sm:border-b-0 sm:border-r border-border/40 bg-muted/25"
-            style={{ minWidth: 180 }}
+            className="hidden sm:flex flex-col border-r border-border/40 bg-muted/25"
+            style={{ minWidth: 160 }}
           >
-            {/* Sidebar header */}
             <div className="px-4 py-3 border-b border-border/30">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Khoảng thời gian
+                Nhanh
               </p>
             </div>
-
-            {/* Preset buttons */}
             <div className="flex flex-col gap-px p-2">
               {PRESETS.map((p) => {
                 const isActive = activePreset === p.label;
@@ -227,9 +244,7 @@ export function DateRangePicker({
                     )}
                   >
                     <span>{p.label}</span>
-                    {isActive && (
-                      <ChevronRight className="h-3.5 w-3.5 opacity-70" />
-                    )}
+                    {isActive && <ChevronRight className="h-3.5 w-3.5 opacity-70" />}
                   </button>
                 );
               })}
@@ -237,24 +252,52 @@ export function DateRangePicker({
           </div>
 
           {/* ── Calendar + footer ───────────────────────────────────────────── */}
-          <div className="flex flex-col min-w-0">
-            {/* Calendar */}
+          <div className="flex flex-col min-w-0 flex-1">
+            {/* Calendar
+                Mobile: 1 month, larger touch targets via classNames override
+                Desktop: 2 months side by side */}
             <div className="p-1">
-              <Calendar
-                mode="range"
-                selected={calendarSelected}
-                onDayClick={handleDayClick}
-                onSelect={() => {}}
-                numberOfMonths={2}
-                className="p-3"
-              />
+              {/* Mobile calendar — 1 month, 44px touch targets */}
+              <div className="sm:hidden">
+                <Calendar
+                  mode="range"
+                  selected={calendarSelected}
+                  onDayClick={handleDayClick}
+                  onSelect={() => {}}
+                  numberOfMonths={1}
+                  className="p-2"
+                  classNames={{
+                    day: "h-11 w-11 text-sm font-normal aria-selected:opacity-100",
+                    day_selected:
+                      "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+                    day_range_middle:
+                      "aria-selected:bg-primary/15 aria-selected:text-foreground aria-selected:rounded-none",
+                    day_range_start: "rounded-l-full",
+                    day_range_end: "rounded-r-full",
+                    head_cell: "w-11 text-xs font-semibold text-muted-foreground",
+                    cell: "p-0",
+                    nav_button: "h-10 w-10",
+                  }}
+                />
+              </div>
+              {/* Desktop calendar — 2 months */}
+              <div className="hidden sm:block">
+                <Calendar
+                  mode="range"
+                  selected={calendarSelected}
+                  onDayClick={handleDayClick}
+                  onSelect={() => {}}
+                  numberOfMonths={2}
+                  className="p-3"
+                />
+              </div>
             </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-between gap-4 border-t border-border/40 bg-muted/20 px-4 py-3">
+            {/* Footer — stacked full-width on mobile, inline on desktop */}
+            <div className="border-t border-border/40 bg-muted/20">
               {/* Selection indicator */}
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="px-4 pt-3 pb-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">
                   Đang chọn
                 </p>
                 <p
@@ -272,7 +315,27 @@ export function DateRangePicker({
               </div>
 
               {/* Action buttons */}
-              <div className="flex shrink-0 items-center gap-2">
+              {/* Mobile: full-width stacked, 48px height */}
+              <div className="flex flex-col gap-2 px-3 pb-3 pt-2 sm:hidden">
+                <Button
+                  size="lg"
+                  className="w-full h-12 rounded-xl text-base shadow-sm"
+                  disabled={!canApply}
+                  onClick={handleApply}
+                >
+                  Áp dụng
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  className="w-full h-12 rounded-xl text-base text-muted-foreground"
+                  onClick={handleCancel}
+                >
+                  Hủy
+                </Button>
+              </div>
+              {/* Desktop: inline right-aligned */}
+              <div className="hidden sm:flex items-center justify-end gap-2 px-4 pb-3 pt-1">
                 <Button
                   variant="ghost"
                   size="sm"
