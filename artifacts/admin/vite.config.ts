@@ -14,8 +14,8 @@ if (Number.isNaN(port) || port <= 0) {
 
 const basePath = process.env.BASE_PATH ?? "/";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "https://ravcgwnshziipdngquop.supabase.co";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || "sb_publishable__i7753Yx50dNJFDKYSmOyA_d-9TzpG_";
 
 export default defineConfig({
   base: basePath,
