@@ -1,0 +1,11 @@
+{
+  "name": "Anvi Villa Ops",
+  "short_name": "Anvi Ops",
+  "icons": [
+    { "src": "/app-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "theme_color": "#ED2A2A",
+  "background_color": "#ED2A2A",
+  "display": "standalone",
+  "start_url": "/"
+}
