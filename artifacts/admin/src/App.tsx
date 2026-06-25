@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider, useAuth, getDefaultRouteByRole } from "@/lib/auth-context";
+import { AuthProvider, useAuth, getDefaultRouteByRole, hasPermission } from "@/lib/auth-context";
 import { I18nProvider } from "@/i18n";
 import { CurrencyProvider } from "@/lib/currency";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
@@ -128,13 +128,13 @@ function Router() {
       </Route>
 
       <Route path="/chat">
-        <ProtectedRoute>
+        <ProtectedRoute require={(r) => r !== "collaborator"}>
           <ChatPage />
         </ProtectedRoute>
       </Route>
 
       <Route path="/calendar">
-        <ProtectedRoute permission="manageCalendar">
+        <ProtectedRoute require={(r) => hasPermission(r, "manageCalendar") || r === "collaborator"}>
           <AvailabilityCalendar />
         </ProtectedRoute>
       </Route>

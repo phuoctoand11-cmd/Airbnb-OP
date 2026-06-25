@@ -1,0 +1,20 @@
+Thêm vai trò mới "collaborator" (Cộng tác viên) vào app. Đây là vai trò HẠN CHẾ NHẤT. CHỈ thêm vai trò này, TUYỆT ĐỐI KHÔNG thay đổi quyền/hành vi của các vai trò hiện có, KHÔNG refactor, KHÔNG xóa các giá trị cũ (kể cả cleaningstaff/staff). Cuối cùng liệt kê các file đã sửa.
+
+ĐẶC TẢ vai trò collaborator (nhãn tiếng Việt: "Cộng tác viên"):
+- Là cộng tác viên xem villa, quyền hẹp hơn cả sales.
+- CHỈ được xem: trang Danh sách villa (listings) và trang Lịch trống phòng (availability-calendar). Được mở trang chi tiết villa để xem thông tin + lịch.
+- KHÔNG được xem giá phòng (base_price, cleaning_fee, mọi số tiền) — xếp cùng nhóm bị ẩn giá như sales/cleaner/maintenance.
+- KHÔNG được đặt phòng, KHÔNG sửa gì.
+- KHÔNG có Trò chuyện (Chat).
+- KHÔNG thấy: Tổng quan, Đặt phòng, Công việc, Báo cáo, Doanh thu, Chi phí, Nhân sự, Nhập báo cáo Airbnb, Hiệu suất, Nhật ký hoạt động.
+
+CẦN LÀM:
+1. src/lib/supabase.ts: thêm "collaborator" vào type AppRole và mảng ROLES; thêm ROLE_LABELS.collaborator = "Cộng tác viên".
+2. src/lib/role-permissions.ts: KHÔNG thêm collaborator vào bất kỳ quyền nào trong ROLE_PERMISSIONS (vì CTV không quản lý gì). Giữ nguyên mọi vai trò khác.
+3. Tìm nơi quyết định "được xem giá" (hàm kiểu canViewPrices, hoặc danh sách vai trò ẩn giá). Đảm bảo collaborator KHÔNG xem được giá — thêm vào đúng nhóm bị ẩn giá giống sales.
+4. Tìm nơi định nghĩa MENU/sidebar (các mục điều hướng bên trái). Với vai trò collaborator, chỉ hiển thị đúng 2 mục: "Danh sách" (listings) và "Lịch trống phòng" (availability-calendar). Ẩn tất cả mục khác.
+5. Tìm nơi điều hướng sau đăng nhập và route guard. Với collaborator: sau đăng nhập vào thẳng trang listings (không phải dashboard). Nếu collaborator truy cập bất kỳ route nào ngoài listings, availability-calendar và trang chi tiết villa thì tự chuyển hướng về listings.
+6. Trên trang Danh sách và Chi tiết villa: với collaborator, ẩn mọi nút sửa/thêm/đặt phòng và mọi thông tin giá; chỉ để xem.
+7. Trang tạo nhân viên (src/pages/hr.tsx): thêm "Cộng tác viên" (giá trị collaborator) vào dropdown chọn vai trò.
+
+Chỉ thêm vai trò collaborator theo đặc tả trên. KHÔNG đụng logic vai trò khác.

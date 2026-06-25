@@ -46,7 +46,8 @@ export type AppRole =
   | "maintenance"
   | "cleaner"
   | "cleaningstaff"
-  | "staff";
+  | "staff"
+  | "collaborator";
 
 export const ROLES: AppRole[] = [
   "admin",
@@ -57,6 +58,7 @@ export const ROLES: AppRole[] = [
   "cleaner",
   "cleaningstaff",
   "staff",
+  "collaborator",
 ];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
@@ -68,6 +70,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   cleaner: "Cleaner",
   cleaningstaff: "Cleaning Staff",
   staff: "Staff",
+  collaborator: "Cộng tác viên",
 };
 
 export interface UserProfile {

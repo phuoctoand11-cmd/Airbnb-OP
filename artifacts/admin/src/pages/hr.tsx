@@ -1122,6 +1122,7 @@ function EmployeeFormDialog({
                         <SelectItem value="cleaner">Dọn dẹp (cleaner)</SelectItem>
                         <SelectItem value="maintenance">Bảo trì (maintenance)</SelectItem>
                         <SelectItem value="accountant">Kế toán (accountant)</SelectItem>
+                        <SelectItem value="collaborator">Cộng tác viên (collaborator)</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
