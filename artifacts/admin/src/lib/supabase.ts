@@ -105,12 +105,21 @@ export interface Listing {
   airbnb_listing_name?: string | null;
 }
 
+export interface ListingRoom {
+  id: string;
+  listing_id: string;
+  name: string;
+  position: number;
+  created_at: string;
+}
+
 export interface ListingImage {
   id: string;
   listing_id: string;
   url: string;
   storage_path: string;
   position: number;
+  room_id: string | null;
   created_at: string;
 }
 

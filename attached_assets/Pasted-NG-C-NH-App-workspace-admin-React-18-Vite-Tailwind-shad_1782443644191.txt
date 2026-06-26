@@ -1,0 +1,34 @@
+NGỮ CẢNH: App @workspace/admin (React 18 + Vite + Tailwind + shadcn + Supabase).
+Chỉ sửa phần quản lý HÌNH ẢNH trong trang chỉnh sửa/chi tiết VILLA (listing).
+TUYỆT ĐỐI KHÔNG refactor, KHÔNG đổi file khác ngoài phạm vi này, KHÔNG đổi luồng upload Storage hiện có.
+
+DB ĐÃ CÓ SẴN (không cần tạo, chỉ dùng):
+- Bảng mới: listing_rooms(id uuid, listing_id uuid, name text, position int, created_at)
+  -> mỗi villa có danh sách phòng riêng. UNIQUE(listing_id, name).
+- Cột mới: listing_images.room_id uuid (nullable, FK -> listing_rooms, ON DELETE SET NULL)
+  -> room_id = NULL nghĩa là ảnh "Chưa phân loại".
+
+YÊU CẦU GIAO DIỆN (trong section ảnh của trang sửa villa):
+
+1) Khu "Quản lý phòng":
+   - Ô nhập "Tên phòng" + nút "Thêm phòng" -> insert listing_rooms (listing_id hiện tại, name, position = max+1).
+   - Liệt kê các phòng của villa này (sắp theo position rồi name).
+   - Mỗi phòng có nút xóa (X) -> mở dialog xác nhận: "Xóa phòng [tên]? Ảnh trong phòng sẽ chuyển về 'Chưa phân loại', không bị mất." -> delete listing_rooms (DB tự set room_id=NULL).
+
+2) Hiển thị ảnh NHÓM THEO PHÒNG:
+   - Mỗi phòng là 1 nhóm hiển thị ảnh có room_id = phòng đó.
+   - Thêm nhóm "Chưa phân loại" cho ảnh room_id IS NULL.
+   - Giữ nguyên logic position/ thứ tự ảnh hiện tại; chỉ thay đổi cách GOM NHÓM hiển thị.
+
+3) Upload vào đúng phòng:
+   - Mỗi nhóm phòng (và nhóm "Chưa phân loại") có nút upload riêng; ảnh upload trong nhóm nào thì set room_id = phòng đó (nhóm Chưa phân loại set room_id = NULL).
+   - Dùng đúng luồng upload Supabase Storage đang có, chỉ bổ sung trường room_id khi insert listing_images.
+
+4) Chuyển ảnh sang phòng khác:
+   - Mỗi ảnh có 1 dropdown nhỏ "Phòng" (danh sách phòng của villa + lựa chọn "Chưa phân loại") -> đổi room_id của ảnh đó.
+
+QUYỀN: phần thêm/xóa phòng & gán ảnh chỉ admin/manager mới làm (RLS đã chặn sẵn ở DB; UI cũng nên ẩn nút sửa với vai trò không có quyền, dùng đúng helper phân quyền hiện có như isAdmin/canManage trong code).
+
+RÀNG BUỘC:
+- Không tạo bảng/cột mới. Không sửa RLS. Không đổi tên file/biến ngoài phạm vi.
+- Sau khi xong, build phải pass, không phá các tính năng ảnh hiện có.
