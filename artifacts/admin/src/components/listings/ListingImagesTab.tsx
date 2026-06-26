@@ -146,7 +146,12 @@ export function ListingImagesTab({ listing, canManage }: Props) {
 
   const removeMutation = useMutation({
     mutationFn: async (img: ListingImage) => {
-      await supabase.storage.from(LISTINGS_BUCKET).remove([img.storage_path]);
+      if (img.storage_path) {
+        const { error: storageErr } = await supabase.storage
+          .from(LISTINGS_BUCKET)
+          .remove([img.storage_path]);
+        if (storageErr) console.warn("Storage remove failed:", storageErr.message);
+      }
       const { error } = await supabase.from("listing_images").delete().eq("id", img.id);
       if (error) throw error;
     },
