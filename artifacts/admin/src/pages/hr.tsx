@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -795,6 +795,17 @@ function EmployeeFormDialog({
       avatar_url: emp?.avatar_url ?? "",
     });
   };
+
+  // Radix controlled Dialog does NOT call onOpenChange(true) when `open` prop is
+  // set externally — so we use an effect to reliably populate the form on open.
+  useEffect(() => {
+    if (open) {
+      resetForm(employee);
+    } else {
+      resetForm(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, employee]);
 
   const saveMutation = useMutation({
     mutationFn: async (v: EmployeeFormValues) => {
