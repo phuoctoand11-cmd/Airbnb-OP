@@ -766,7 +766,7 @@ function EmployeeFormDialog({
       status: "candidate",
       role: "",
       notes: "",
-      team_id: "",
+      team_id: "none",
       avatar_url: "",
     },
   });
@@ -791,7 +791,7 @@ function EmployeeFormDialog({
       status: emp?.status ?? "candidate",
       role: emp?.role ?? "",
       notes: emp?.notes ?? "",
-      team_id: emp?.team_id ?? "",
+      team_id: emp?.team_id ?? "none",
       avatar_url: emp?.avatar_url ?? "",
     });
   };
@@ -808,7 +808,7 @@ function EmployeeFormDialog({
           p_position_id: v.position_id,
           p_employment_type: v.employment_type,
           p_status: v.status,
-          p_team_id: v.team_id || null,
+          p_team_id: (v.team_id === "none" || !v.team_id) ? null : v.team_id,
           p_phone: v.phone || null,
           p_date_of_birth: v.date_of_birth || null,
           p_gender: v.gender === "__none__" ? null : v.gender,
@@ -1220,7 +1220,7 @@ function EmployeeFormDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">Không có nhóm</SelectItem>
+                      <SelectItem value="none">Không có nhóm</SelectItem>
                       {(teamsQuery.data ?? []).map((tm) => (
                         <SelectItem key={tm.id} value={tm.id}>
                           {tm.name}
