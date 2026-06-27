@@ -1,0 +1,51 @@
+NGỮ CẢNH: App @workspace/admin (React + Supabase JS). Chỉ sửa trang Nhân sự: src/pages/hr.tsx.
+KHÔNG refactor, KHÔNG sửa file khác, KHÔNG đụng luồng TẠO nhân viên đang chạy.
+
+MỤC TIÊU: Thêm chức năng ADMIN sửa nhân viên. Mỗi dòng nhân viên có nút "Sửa";
+bấm vào mở form sửa được TẤT CẢ thông tin, lưu bằng RPC admin_update_employee đã có trong DB.
+
+QUYỀN HIỂN THỊ:
+- Nút "Sửa" CHỈ hiện với vai trò admin. Dùng đúng helper phân quyền hiện có trong code
+  (vd isAdmin / current role === 'admin'). Vai trò khác KHÔNG thấy nút này.
+
+FORM SỬA (mở dialog, điền sẵn dữ liệu hiện tại của nhân viên đó):
+Tái sử dụng đúng bộ field + các dropdown (phòng ban, chức vụ, nhóm, vai trò, loại hợp đồng,
+giới tính, trạng thái) y như form TẠO nhân viên đang có, gồm:
+- Email (text)
+- Vai trò (dropdown 7 vai trò, dùng ROLES/ROLE_LABELS hiện có, gồm cả collaborator)
+- Họ tên, SĐT, Phòng ban, Chức vụ, Nhóm (team), Loại hợp đồng, Trạng thái,
+  Ngày sinh, Giới tính, Địa chỉ, Liên hệ khẩn cấp, Ngày bắt đầu, Ngày kết thúc,
+  Lương cơ bản, Ghi chú, Avatar URL.
+- Mật khẩu mới (text, KHÔNG bắt buộc) — placeholder "Để trống nếu không đổi".
+
+LƯU (onClick nút Lưu) -> gọi RPC, TÊN THAM SỐ phải khớp tuyệt đối:
+await supabase.rpc("admin_update_employee", {
+  p_employee_id: <id nhân viên>,
+  p_email: email,
+  p_role_name: role,           // giá trị kỹ thuật: admin/manager/sales/cleaner/maintenance/accountant/collaborator
+  p_full_name: fullName,
+  p_department_id: departmentId,
+  p_position_id: positionId,
+  p_employment_type: employmentType,
+  p_status: status,
+  p_team_id: teamId || null,
+  p_phone: phone || null,
+  p_date_of_birth: dateOfBirth || null,
+  p_gender: gender || null,
+  p_address: address || null,
+  p_emergency_contact: emergencyContact || null,
+  p_start_date: startDate || null,
+  p_end_date: endDate || null,
+  p_salary_base: salaryBase === "" ? null : Number(salaryBase),
+  p_notes: notes || null,
+  p_avatar_url: avatarUrl || null,
+  p_password: password ? password : null
+});
+
+XỬ LÝ KẾT QUẢ:
+- Các ô ngày/để trống phải gửi null (KHÔNG gửi chuỗi rỗng "").
+- Nếu RPC trả error: hiện đúng message lỗi cho admin (vd "Email đã tồn tại",
+  "Không thể tự đổi vai trò của chính mình khỏi admin"). Dùng toast/thông báo hiện có.
+- Lưu thành công: đóng dialog + refetch lại danh sách nhân viên để cập nhật ngay.
+
+RÀNG BUỘC: không tạo bảng/RPC mới (đã có sẵn), không sửa RLS, build phải pass.

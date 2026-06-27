@@ -145,6 +145,8 @@ const employeeSchema = z.object({
   ]),
   role: z.string().optional(),
   notes: z.string().optional(),
+  team_id: z.string().optional(),
+  avatar_url: z.string().optional(),
 });
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
 
@@ -611,13 +613,15 @@ function EmployeesTab({
                   {canManage && (
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openEdit(emp)}
-                        >
-                          {t.common.edit}
-                        </Button>
+                        {isAdmin && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openEdit(emp)}
+                          >
+                            {t.common.edit}
+                          </Button>
+                        )}
                         <Select
                           value={emp.status}
                           onValueChange={(v) =>
@@ -762,6 +766,8 @@ function EmployeeFormDialog({
       status: "candidate",
       role: "",
       notes: "",
+      team_id: "",
+      avatar_url: "",
     },
   });
 
@@ -785,29 +791,36 @@ function EmployeeFormDialog({
       status: emp?.status ?? "candidate",
       role: emp?.role ?? "",
       notes: emp?.notes ?? "",
+      team_id: emp?.team_id ?? "",
+      avatar_url: emp?.avatar_url ?? "",
     });
   };
 
   const saveMutation = useMutation({
     mutationFn: async (v: EmployeeFormValues) => {
       if (isEdit && employee) {
-        const updatePayload = {
-          full_name: v.full_name,
-          phone: v.phone || null,
-          date_of_birth: v.date_of_birth || null,
-          gender: (v.gender === "__none__" ? null : v.gender) as GenderType | null,
-          address: v.address || null,
-          emergency_contact: v.emergency_contact || null,
-          department_id: v.department_id,
-          position_id: v.position_id,
-          employment_type: v.employment_type,
-          start_date: v.start_date || null,
-          end_date: v.end_date || null,
-          salary_base: v.salary_base ? parseFloat(v.salary_base) : null,
-          status: v.status,
-          notes: v.notes || null,
-        };
-        const { error } = await supabase.from("employees").update(updatePayload).eq("id", employee.id);
+        const { error } = await supabase.rpc("admin_update_employee", {
+          p_employee_id: employee.id,
+          p_email: v.email,
+          p_role_name: v.role ?? "",
+          p_full_name: v.full_name,
+          p_department_id: v.department_id,
+          p_position_id: v.position_id,
+          p_employment_type: v.employment_type,
+          p_status: v.status,
+          p_team_id: v.team_id || null,
+          p_phone: v.phone || null,
+          p_date_of_birth: v.date_of_birth || null,
+          p_gender: v.gender === "__none__" ? null : v.gender,
+          p_address: v.address || null,
+          p_emergency_contact: v.emergency_contact || null,
+          p_start_date: v.start_date || null,
+          p_end_date: v.end_date || null,
+          p_salary_base: v.salary_base === "" ? null : Number(v.salary_base),
+          p_notes: v.notes || null,
+          p_avatar_url: v.avatar_url || null,
+          p_password: v.password ? v.password : null,
+        });
         if (error) throw error;
       } else {
         if (!v.password || v.password.length < 8) throw new Error("Mật khẩu tối thiểu 8 ký tự");
@@ -864,6 +877,15 @@ function EmployeeFormDialog({
       }),
   });
 
+  const teamsQuery = useQuery({
+    queryKey: ["teams"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("teams").select("id, name").order("name");
+      if (error) throw error;
+      return (data ?? []) as { id: string; name: string }[];
+    },
+  });
+
   const activeDepts = departments.filter((d) => d.is_active);
   const activePositions = positions.filter((p) => p.is_active);
 
@@ -915,15 +937,19 @@ function EmployeeFormDialog({
                   </FormItem>
                 )}
               />
-              {!isEdit && (
-                <FormField control={form.control} name="password" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Mật khẩu đăng nhập *</FormLabel>
-                    <FormControl><Input type="password" placeholder="Tối thiểu 8 ký tự" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              )}
+              <FormField control={form.control} name="password" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{isEdit ? "Mật khẩu mới" : "Mật khẩu đăng nhập *"}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="password"
+                      placeholder={isEdit ? "Để trống nếu không đổi" : "Tối thiểu 8 ký tự"}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField
                 control={form.control}
                 name="phone"
@@ -1113,7 +1139,7 @@ function EmployeeFormDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t.common.role} *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={isEdit}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger><SelectValue placeholder="Chọn vai trò" /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="admin">Chủ (admin)</SelectItem>
@@ -1179,6 +1205,48 @@ function EmployeeFormDialog({
                 )}
               />
             )}
+
+            {/* Team */}
+            <FormField
+              control={form.control}
+              name="team_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nhóm (Team)</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Không có nhóm" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="">Không có nhóm</SelectItem>
+                      {(teamsQuery.data ?? []).map((tm) => (
+                        <SelectItem key={tm.id} value={tm.id}>
+                          {tm.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Avatar URL */}
+            <FormField
+              control={form.control}
+              name="avatar_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Avatar URL</FormLabel>
+                  <FormControl>
+                    <Input placeholder="https://..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
