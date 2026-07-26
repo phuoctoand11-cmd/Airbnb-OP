@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -78,15 +78,21 @@ import {
 } from "@/lib/supabase";
 import { useCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { useI18n, type Lang } from "@/i18n";
+import { vi as viLocale, enUS as enLocale } from "date-fns/locale";
+
+/** date-fns locale matching the app language, so weekday/month names in the
+ *  timeline header are not stuck in English. */
+const DF_LOCALES: Record<Lang, typeof enLocale> = { vi: viLocale, en: enLocale };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 type CalendarView = "timeline" | "month" | "week";
 
-const CELL_W = 40;    // px per day column in timeline
-const ROW_H  = 54;    // px per listing row
-const HEADER_H = 44;  // px for date/day-name header
-const SIDEBAR_W = 210; // px for listing name sidebar
+const CELL_W = 44;    // px per day column in timeline
+const ROW_H  = 56;    // px per listing row
+const HEADER_H = 48;  // px for date/day-name header
+const SIDEBAR_W = 248; // px for listing name sidebar
 
 const ALL_STATUSES: Booking["status"][] = [
   "pending",
@@ -453,6 +459,7 @@ function AddBlockModal({
   onSave: (block: Omit<ListingBlock, "id" | "created_at">) => void;
   isSaving: boolean;
 }) {
+  const { t } = useI18n();
   const [listingId, setListingId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -485,7 +492,7 @@ function AddBlockModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-4 w-4 text-muted-foreground" />
-            Thêm bảo trì / Khóa phòng
+            {t.calendar.addBlockLong}
           </DialogTitle>
         </DialogHeader>
 
@@ -578,6 +585,8 @@ function TimelineView({
   periodDays: number;
   onBookingClick: (b: Booking) => void;
 }) {
+  const { t, lang } = useI18n();
+  const dfLocale = DF_LOCALES[lang];
   const dates = useMemo(
     () => Array.from({ length: periodDays }, (_, i) => addDays(periodStart, i)),
     [periodStart, periodDays],
@@ -718,7 +727,7 @@ function TimelineView({
             style={{ height: HEADER_H }}
           >
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Căn hộ
+              {t.calendar.listingCol}
             </span>
           </div>
 
@@ -730,7 +739,10 @@ function TimelineView({
               style={{ height: ROW_H }}
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium leading-tight">
+                <p
+                  className="truncate text-sm font-medium leading-tight"
+                  title={listing.title}
+                >
                   {listing.title}
                 </p>
                 <div className="mt-1 flex items-center gap-2">
@@ -788,7 +800,7 @@ function TimelineView({
                   >
                     {isMonth && (
                       <span className="absolute -top-px left-1 text-[9px] font-bold uppercase text-foreground/40 leading-none">
-                        {format(date, "MMM")}
+                        {format(date, "MMM", { locale: dfLocale })}
                       </span>
                     )}
                     <span
@@ -804,10 +816,10 @@ function TimelineView({
                       {format(date, "d")}
                     </span>
                     <span className={cn(
-                      "mt-0.5 text-[10px] leading-none",
+                      "mt-0.5 max-w-full truncate px-0.5 text-[10px] capitalize leading-none",
                       weekend ? "text-muted-foreground font-medium" : "text-muted-foreground",
                     )}>
-                      {format(date, "EEE")}
+                      {format(date, "EEEEEE", { locale: dfLocale })}
                     </span>
                   </div>
                 );
@@ -1139,6 +1151,7 @@ function OccupancyStrip({
   periodStart: Date;
   periodDays: number;
 }) {
+  const { t } = useI18n();
   const data = useMemo(() => {
     const dates = Array.from({ length: periodDays }, (_, i) =>
       format(addDays(periodStart, i), "yyyy-MM-dd"),
@@ -1185,14 +1198,17 @@ function OccupancyStrip({
             className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-2.5 shadow-sm hover:shadow-md transition-shadow"
           >
             <div className="min-w-0">
-              <p className="text-[11px] text-muted-foreground truncate max-w-28 leading-tight">
+              <p
+                className="max-w-36 truncate text-[11px] leading-tight text-muted-foreground"
+                title={listing.title}
+              >
                 {listing.title}
               </p>
               <p className="text-base font-bold tabular-nums text-foreground leading-tight mt-0.5">
                 {pct}%
               </p>
               <p className="text-[10px] text-muted-foreground tabular-nums">
-                {bookedDays}đêm
+                {bookedDays} {t.calendar.nights}
               </p>
             </div>
             <div className="w-11 h-11 relative shrink-0">
@@ -1238,7 +1254,51 @@ CREATE POLICY "listing_blocks_all" ON listing_blocks
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+/** Diagonally hatched swatch used for the blocked/held cell states. */
+function HatchSwatch({ border, bg, hatch }: { border: string; bg: string; hatch: string }) {
+  return (
+    <span
+      className={cn("h-3 w-3 shrink-0 rounded-sm border", border)}
+      style={{
+        backgroundColor: bg,
+        backgroundImage: `repeating-linear-gradient(-45deg,transparent,transparent 2px,${hatch} 2px,${hatch} 4px)`,
+      }}
+    />
+  );
+}
+
+function LegendItem({
+  swatch,
+  label,
+  tone,
+}: {
+  swatch: ReactNode;
+  label: string;
+  tone?: string;
+}) {
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium">
+      {swatch}
+      <span className={tone ?? "text-muted-foreground"}>{label}</span>
+    </span>
+  );
+}
+
+/** A labelled cluster of legend entries. Grouping with a heading keeps the row
+ *  readable when it wraps, which thin vertical dividers did not. */
+function LegendGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 export default function AvailabilityCalendar() {
+  const { t, lang } = useI18n();
   const { role, profile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1587,8 +1647,12 @@ export default function AvailabilityCalendar() {
       const we = endOfWeek(viewDate, { weekStartsOn: 1 });
       return `${format(ws, "dd/MM")} – ${format(we, "dd/MM/yyyy")}`;
     }
-    return format(viewDate, "MMMM yyyy");
-  }, [view, viewDate]);
+    // date-fns' vi locale renders MMMM as "tháng 07" — spell it the way it is
+    // actually written in Vietnamese instead.
+    return lang === "vi"
+      ? `Tháng ${viewDate.getMonth() + 1}, ${viewDate.getFullYear()}`
+      : format(viewDate, "MMMM yyyy", { locale: DF_LOCALES[lang] });
+  }, [view, viewDate, lang]);
 
   const isLoading = listingsQuery.isLoading || bookingsQuery.isLoading;
 
@@ -1601,12 +1665,12 @@ export default function AvailabilityCalendar() {
 
   return (
     <AppLayout
-      title="Lịch Tình Trạng"
+      title={t.calendar.title}
       action={
         canManage ? (
           <Button size="sm" onClick={() => setBlockModalOpen(true)} className="gap-1.5">
             <Wrench className="h-4 w-4" />
-            <span className="hidden sm:inline">Thêm bảo trì</span>
+            <span className="hidden sm:inline">{t.calendar.addBlock}</span>
           </Button>
         ) : null
       }
@@ -1642,9 +1706,9 @@ export default function AvailabilityCalendar() {
         <div className="flex items-center rounded-lg border overflow-hidden bg-background shadow-sm">
           {(
             [
-              { key: "timeline" as CalendarView, Icon: StretchHorizontal, label: "Timeline" },
-              { key: "month"    as CalendarView, Icon: LayoutGrid,        label: "Tháng"    },
-              { key: "week"     as CalendarView, Icon: CalendarDays,      label: "Tuần"     },
+              { key: "timeline" as CalendarView, Icon: StretchHorizontal, label: t.calendar.viewTimeline },
+              { key: "month"    as CalendarView, Icon: LayoutGrid,        label: t.calendar.viewMonth    },
+              { key: "week"     as CalendarView, Icon: CalendarDays,      label: t.calendar.viewWeek     },
             ] as const
           ).map(({ key, Icon, label }) => (
             <button
@@ -1685,7 +1749,7 @@ export default function AvailabilityCalendar() {
 
         {/* Filters */}
         <MultiSelectFilter
-          label="Căn hộ"
+          label={t.calendar.filterListing}
           options={allListings.map((l) => ({ value: l.id, label: l.title }))}
           selected={listingFilter}
           onToggle={(v) => toggleFilter(listingFilter, setListingFilter, v)}
@@ -1693,7 +1757,7 @@ export default function AvailabilityCalendar() {
           onClear={() => setListingFilter([])}
         />
         <MultiSelectFilter
-          label="Trạng thái"
+          label={t.calendar.filterStatus}
           options={ALL_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
           selected={statusFilter}
           onToggle={(v) => toggleFilter(statusFilter, setStatusFilter, v)}
@@ -1701,7 +1765,7 @@ export default function AvailabilityCalendar() {
           onClear={() => setStatusFilter([])}
         />
         <MultiSelectFilter
-          label="Nguồn"
+          label={t.calendar.filterSource}
           options={ALL_SOURCES.map((s) => ({ value: s, label: s }))}
           selected={sourceFilter}
           onToggle={(v) => toggleFilter(sourceFilter, setSourceFilter, v)}
@@ -1723,97 +1787,78 @@ export default function AvailabilityCalendar() {
       )}
 
       {/* ── Legend ────────────────────────────────────────────────────────── */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border bg-card/60 px-4 py-2.5 text-xs text-muted-foreground">
-        {/* Booking statuses */}
-        {[
-          { color: "#2563EB", label: "Đã xác nhận" },
-          { color: "#F59E0B", label: "Chờ xác nhận" },
-          { color: "#059669", label: "Hoàn thành" },
-          { color: "#DC2626", label: "Đã hủy" },
-        ].map(({ color, label }) => (
-          <span key={label} className="flex items-center gap-1.5 font-medium">
-            <span
-              className="h-3 w-3 shrink-0 rounded-sm shadow-sm"
-              style={{ backgroundColor: color }}
+      <div className="mb-4 rounded-xl border border-border bg-card/60 px-4 py-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:gap-x-10 lg:gap-y-3">
+          <LegendGroup label={t.calendar.legendBooking}>
+            {[
+              { color: "#2563EB", label: t.status.confirmed },
+              { color: "#F59E0B", label: t.status.pending },
+              { color: "#059669", label: t.status.completed },
+              { color: "#DC2626", label: t.status.cancelled },
+            ].map(({ color, label }) => (
+              <LegendItem
+                key={label}
+                label={label}
+                swatch={
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-sm shadow-sm"
+                    style={{ backgroundColor: color }}
+                  />
+                }
+              />
+            ))}
+          </LegendGroup>
+
+          <LegendGroup label={t.calendar.legendCell}>
+            <LegendItem
+              label={t.calendar.checkIn}
+              swatch={
+                <span className="relative h-3 w-3 shrink-0 rounded-sm border border-emerald-300 bg-emerald-50">
+                  <span className="absolute left-0 top-0 bottom-0 w-0.5 rounded-l-sm bg-emerald-500" />
+                </span>
+              }
             />
-            {label}
-          </span>
-        ))}
+            <LegendItem
+              label={t.calendar.checkOut}
+              swatch={
+                <span className="relative h-3 w-3 shrink-0 rounded-sm border border-blue-200 bg-blue-50">
+                  <span className="absolute right-0 top-0 bottom-0 w-0.5 rounded-r-sm bg-orange-400" />
+                </span>
+              }
+            />
+            <LegendItem
+              label={t.calendar.blockMaintenance}
+              swatch={<HatchSwatch border="border-orange-400/70" bg={BLOCK_BG_STYLE} hatch="rgba(234,88,12,0.12)" />}
+            />
+            <LegendItem
+              label={t.calendar.weekend}
+              swatch={<span className="h-3 w-3 shrink-0 rounded-sm border border-amber-200 bg-amber-50" />}
+            />
+          </LegendGroup>
 
-        <span className="w-px h-4 bg-border mx-1" />
-
-        {/* Cell states */}
-        <span className="flex items-center gap-1.5">
-          <span className="relative h-3 w-3 shrink-0 rounded-sm border border-emerald-300 bg-emerald-50">
-            <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-emerald-500 rounded-l-sm" />
-          </span>
-          Check-in
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="relative h-3 w-3 shrink-0 rounded-sm border border-blue-200 bg-blue-50">
-            <span className="absolute right-0 top-0 bottom-0 w-0.5 bg-orange-400 rounded-r-sm" />
-          </span>
-          Check-out
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span
-            className="h-3 w-3 shrink-0 rounded-sm border border-orange-400/70"
-            style={{
-              backgroundColor: BLOCK_BG_STYLE,
-              backgroundImage:
-                "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(234,88,12,0.12) 2px,rgba(234,88,12,0.12) 4px)",
-            }}
-          />
-          Bảo trì (khối)
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 shrink-0 rounded-sm bg-amber-50 border border-amber-200" />
-          Cuối tuần
-        </span>
-
-        <span className="w-px h-4 bg-border mx-1" />
-
-        {/* listing_calendar statuses */}
-        <span className="flex items-center gap-1.5 font-medium">
-          <span
-            className="h-3 w-3 shrink-0 rounded-sm border border-orange-400/70"
-            style={{
-              backgroundColor: "rgba(234,88,12,0.10)",
-              backgroundImage: "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(234,88,12,0.08) 2px,rgba(234,88,12,0.08) 4px)",
-            }}
-          />
-          <span className="text-orange-700">Bảo trì</span>
-        </span>
-        <span className="flex items-center gap-1.5 font-medium">
-          <span
-            className="h-3 w-3 shrink-0 rounded-sm border border-gray-500/60"
-            style={{
-              backgroundColor: "rgba(55,65,81,0.10)",
-              backgroundImage: "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(55,65,81,0.08) 2px,rgba(55,65,81,0.08) 4px)",
-            }}
-          />
-          <span className="text-gray-600">Đã khóa</span>
-        </span>
-        <span className="flex items-center gap-1.5 font-medium">
-          <span
-            className="h-3 w-3 shrink-0 rounded-sm border border-purple-400/60"
-            style={{
-              backgroundColor: "rgba(147,51,234,0.10)",
-              backgroundImage: "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(147,51,234,0.08) 2px,rgba(147,51,234,0.08) 4px)",
-            }}
-          />
-          <span className="text-purple-700">Chủ nhà ở</span>
-        </span>
-        <span className="flex items-center gap-1.5 font-medium">
-          <span
-            className="h-3 w-3 shrink-0 rounded-sm border border-amber-400/60"
-            style={{
-              backgroundColor: "rgba(245,158,11,0.12)",
-              backgroundImage: "repeating-linear-gradient(-45deg,transparent,transparent 2px,rgba(245,158,11,0.08) 2px,rgba(245,158,11,0.08) 4px)",
-            }}
-          />
-          <span className="text-amber-700">Đang dọn</span>
-        </span>
+          <LegendGroup label={t.calendar.legendBlock}>
+            <LegendItem
+              label={t.calendar.maintenance}
+              tone="text-orange-700"
+              swatch={<HatchSwatch border="border-orange-400/70" bg="rgba(234,88,12,0.10)" hatch="rgba(234,88,12,0.08)" />}
+            />
+            <LegendItem
+              label={t.calendar.blocked}
+              tone="text-gray-600"
+              swatch={<HatchSwatch border="border-gray-500/60" bg="rgba(55,65,81,0.10)" hatch="rgba(55,65,81,0.08)" />}
+            />
+            <LegendItem
+              label={t.calendar.ownerStay}
+              tone="text-purple-700"
+              swatch={<HatchSwatch border="border-purple-400/60" bg="rgba(147,51,234,0.10)" hatch="rgba(147,51,234,0.08)" />}
+            />
+            <LegendItem
+              label={t.calendar.cleaning}
+              tone="text-amber-700"
+              swatch={<HatchSwatch border="border-amber-400/60" bg="rgba(245,158,11,0.12)" hatch="rgba(245,158,11,0.08)" />}
+            />
+          </LegendGroup>
+        </div>
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
@@ -1826,7 +1871,7 @@ export default function AvailabilityCalendar() {
       ) : listings.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <CalendarRange className="mb-3 h-10 w-10 opacity-25" />
-          <p className="text-sm">Không có căn hộ nào để hiển thị</p>
+          <p className="text-sm">{t.calendar.noListings}</p>
           {listingFilter.length > 0 && (
             <Button
               variant="link"
