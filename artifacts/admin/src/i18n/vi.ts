@@ -240,6 +240,8 @@ export const vi: Translations = {
     icalDeleteFailed: "Không xóa được",
     icalSyncFailed: "Đồng bộ lỗi",
     icalSynced: "Đã đồng bộ lịch",
+    icalSyncNow: "Đồng bộ ngay",
+    icalSyncedAt: "Đồng bộ",
   },
   bookings: {
     title: "Đặt phòng",

@@ -341,7 +341,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
                       ) : (
                         <Upload className="mr-1 h-3.5 w-3.5" />
                       )}
-                      Tải ảnh lên
+                      {t.listingDetail.uploadImages}
                     </Button>
                   </div>
                 )}

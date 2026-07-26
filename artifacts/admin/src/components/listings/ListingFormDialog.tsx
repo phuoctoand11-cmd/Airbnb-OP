@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Listing } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 const schema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -63,6 +64,7 @@ export function ListingFormDialog({
   onSubmit,
   submitting,
 }: Props) {
+  const { t } = useI18n();
   const form = useForm<ListingFormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -233,7 +235,7 @@ export function ListingFormDialog({
                 name="base_price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Giá cơ bản / đêm (VND)</FormLabel>
+                    <FormLabel>{t.listings.basePriceVnd}</FormLabel>
                     <FormControl>
                       <Input type="number" min={0} step="1" {...field} />
                     </FormControl>

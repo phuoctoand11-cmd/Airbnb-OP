@@ -238,6 +238,8 @@ export const en = {
     icalDeleteFailed: "Could not delete",
     icalSyncFailed: "Sync error",
     icalSynced: "Calendar synced",
+    icalSyncNow: "Sync now",
+    icalSyncedAt: "Synced",
   },
   bookings: {
     title: "Bookings",

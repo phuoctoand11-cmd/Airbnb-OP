@@ -29,7 +29,7 @@ type Feed = {
 };
 
 export function IcalSyncPanel({ listingId, canManage }: { listingId: string; canManage: boolean }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const [token, setToken] = useState<string | null>(null);
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -120,7 +120,7 @@ export function IcalSyncPanel({ listingId, canManage }: { listingId: string; can
           <CardTitle className="text-base">{t.listingDetail.icalImportTitle}</CardTitle>
           <Button size="sm" variant="outline" onClick={syncNow} disabled={syncing || feeds.length === 0}>
             {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Đồng bộ ngay
+            {t.listingDetail.icalSyncNow}
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -135,9 +135,13 @@ export function IcalSyncPanel({ listingId, canManage }: { listingId: string; can
                     <div className="truncate font-mono text-xs">{f.import_url}</div>
                     <div className="text-xs text-muted-foreground">
                       {f.last_synced_at
-                        ? `Đồng bộ: ${new Date(f.last_synced_at).toLocaleString("vi-VN")}`
+                        ? `${t.listingDetail.icalSyncedAt}: ${new Date(f.last_synced_at).toLocaleString(
+                            lang === "vi" ? "vi-VN" : "en-US"
+                          )}`
                         : t.listingDetail.icalNeverSynced}
-                      {f.last_status && f.last_status !== "ok" ? ` · Lỗi: ${f.last_status}` : ""}
+                      {f.last_status && f.last_status !== "ok"
+                        ? ` · ${t.common.error}: ${f.last_status}`
+                        : ""}
                     </div>
                   </div>
                   {canManage && (
