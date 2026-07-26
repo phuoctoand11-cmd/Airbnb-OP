@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, MapPin, Loader2 } from "lucide-react";
+import { useI18n } from "@/i18n";
 
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,6 +22,7 @@ import { ListingCalendarTab } from "@/components/listings/ListingCalendarTab";
 import { ListingPricingTab } from "@/components/listings/ListingPricingTab";
 
 export default function ListingDetail() {
+  const { t } = useI18n();
   const [, params] = useRoute("/listings/:id");
   const id = params?.id;
   const { role } = useAuth();
@@ -63,19 +65,19 @@ export default function ListingDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["listing", id] });
       queryClient.invalidateQueries({ queryKey: ["listings"] });
-      toast({ title: "Listing updated" });
+      toast({ title: t.listings.updated });
     },
     onError: (err: Error) =>
       toast({
         variant: "destructive",
-        title: "Update failed",
+        title: t.listingDetail.updateFailed,
         description: err.message,
       }),
   });
 
   const subtitle = useMemo(() => {
     if (!listing) return "";
-    return [listing.city, listing.country].filter(Boolean).join(", ") || "Location not set";
+    return [listing.city, listing.country].filter(Boolean).join(", ") || t.listingDetail.locationNotSet;
   }, [listing]);
 
   return (
@@ -85,14 +87,14 @@ export default function ListingDetail() {
         <Button variant="ghost" asChild>
           <Link href="/listings">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            All listings
+            {t.listingDetail.allListings}
           </Link>
         </Button>
       }
     >
       {error ? (
         <Alert variant="destructive">
-          <AlertTitle>Could not load listing</AlertTitle>
+          <AlertTitle>{t.listingDetail.couldNotLoadListing}</AlertTitle>
           <AlertDescription>{(error as Error).message}</AlertDescription>
         </Alert>
       ) : isLoading || !listing ? (
@@ -132,14 +134,14 @@ export default function ListingDetail() {
                   </Badge>
                 </div>
                 <p className="mb-4 text-sm text-muted-foreground">
-                  {listing.description ?? "No description yet."}
+                  {listing.description ?? t.listingDetail.noDescription}
                 </p>
                 <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
                   <Stat label="Bedrooms" value={listing.bedrooms} />
                   <Stat label="Bathrooms" value={listing.bathrooms} />
                   <Stat label="Max guests" value={listing.max_guests} />
                   {!showPrices ? (
-                    <Stat label="Price" value={<span className="italic text-muted-foreground text-sm">Contact manager</span>} />
+                    <Stat label="Price" value={<span className="italic text-muted-foreground text-sm">{t.listings.contactManager}</span>} />
                   ) : (
                     <Stat label="Base / night" value={fmt(Number(listing.base_price))} />
                   )}
@@ -150,11 +152,11 @@ export default function ListingDetail() {
 
           <Tabs defaultValue={!showPrices ? "images" : "overview"}>
             <TabsList className="mb-4 flex flex-wrap">
-              {showPrices && <TabsTrigger value="overview">Overview</TabsTrigger>}
-              <TabsTrigger value="images">Images</TabsTrigger>
-              <TabsTrigger value="amenities">Amenities</TabsTrigger>
-              <TabsTrigger value="calendar">Calendar</TabsTrigger>
-              {showPrices && <TabsTrigger value="pricing">Pricing</TabsTrigger>}
+              {showPrices && <TabsTrigger value="overview">{t.listingDetail.tabOverview}</TabsTrigger>}
+              <TabsTrigger value="images">{t.listingDetail.tabImages}</TabsTrigger>
+              <TabsTrigger value="amenities">{t.listingDetail.tabAmenities}</TabsTrigger>
+              <TabsTrigger value="calendar">{t.listingDetail.tabCalendar}</TabsTrigger>
+              {showPrices && <TabsTrigger value="pricing">{t.listingDetail.tabPricing}</TabsTrigger>}
             </TabsList>
 
             {showPrices && (

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImageIcon, Loader2, Star, Trash2, Upload, X, Plus } from "lucide-react";
+import { useI18n } from "@/i18n";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +41,7 @@ interface Props {
 }
 
 export function ListingImagesTab({ listing, canManage }: Props) {
+  const { t } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [newRoomName, setNewRoomName] = useState("");
@@ -88,10 +90,10 @@ export function ListingImagesTab({ listing, canManage }: Props) {
     onSuccess: () => {
       setNewRoomName("");
       queryClient.invalidateQueries({ queryKey: ["listing-rooms", listing.id] });
-      toast({ title: "Đã thêm phòng" });
+      toast({ title: t.listingDetail.roomAdded });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Không thể thêm phòng", description: err.message }),
+      toast({ variant: "destructive", title: t.listingDetail.roomAddFailed, description: err.message }),
   });
 
   const deleteRoomMutation = useMutation({
@@ -103,10 +105,10 @@ export function ListingImagesTab({ listing, canManage }: Props) {
       setRoomToDelete(null);
       queryClient.invalidateQueries({ queryKey: ["listing-rooms", listing.id] });
       queryClient.invalidateQueries({ queryKey: ["listing-images", listing.id] });
-      toast({ title: "Đã xóa phòng" });
+      toast({ title: t.listingDetail.roomDeleted });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Không thể xóa phòng", description: err.message }),
+      toast({ variant: "destructive", title: t.listingDetail.roomDeleteFailed, description: err.message }),
   });
 
   const handleUpload = async (files: FileList | null, roomId: string | null) => {
@@ -133,10 +135,10 @@ export function ListingImagesTab({ listing, canManage }: Props) {
         if (insErr) throw insErr;
         i += 1;
       }
-      toast({ title: "Đã tải ảnh lên" });
+      toast({ title: t.listingDetail.imageUploaded });
       queryClient.invalidateQueries({ queryKey: ["listing-images", listing.id] });
     } catch (err) {
-      toast({ variant: "destructive", title: "Upload thất bại", description: (err as Error).message });
+      toast({ variant: "destructive", title: t.listingDetail.uploadFailed, description: (err as Error).message });
     } finally {
       setUploadingRoom(undefined);
       const key = roomId ?? "__null__";
@@ -156,11 +158,11 @@ export function ListingImagesTab({ listing, canManage }: Props) {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({ title: "Đã xóa ảnh" });
+      toast({ title: t.listingDetail.imageDeleted });
       queryClient.invalidateQueries({ queryKey: ["listing-images", listing.id] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Không thể xóa ảnh", description: err.message }),
+      toast({ variant: "destructive", title: t.listingDetail.imageDeleteFailed, description: err.message }),
   });
 
   const setCoverMutation = useMutation({
@@ -186,13 +188,13 @@ export function ListingImagesTab({ listing, canManage }: Props) {
       if (e3) throw e3;
     },
     onSuccess: () => {
-      toast({ title: "Đã đặt ảnh bìa" });
+      toast({ title: t.listingDetail.coverSet });
       queryClient.invalidateQueries({ queryKey: ["listing-images", listing.id] });
       queryClient.invalidateQueries({ queryKey: ["listing", listing.id] });
       queryClient.invalidateQueries({ queryKey: ["listings"] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Không thể đặt ảnh bìa", description: err.message }),
+      toast({ variant: "destructive", title: t.listingDetail.coverSetFailed, description: err.message }),
   });
 
   const assignRoomMutation = useMutation({
@@ -207,7 +209,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
       queryClient.invalidateQueries({ queryKey: ["listing-images", listing.id] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Không thể chuyển phòng", description: err.message }),
+      toast({ variant: "destructive", title: t.listingDetail.moveRoomFailed, description: err.message }),
   });
 
   const isLoading = roomsLoading || imagesLoading;
@@ -222,7 +224,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
     {
       room: null,
       groupKey: "__null__",
-      groupLabel: "Chưa phân loại",
+      groupLabel: t.listingDetail.uncategorized,
       imgs: (images ?? []).filter((i) => i.room_id == null),
     },
   ];
@@ -233,12 +235,12 @@ export function ListingImagesTab({ listing, canManage }: Props) {
       {canManage && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Quản lý phòng</CardTitle>
+            <CardTitle className="text-base">{t.listingDetail.manageRooms}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
               <Input
-                placeholder="Tên phòng (vd: Phòng ngủ 1, Phòng khách…)"
+                placeholder={t.listingDetail.roomNamePlaceholder}
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
                 onKeyDown={(e) => {
@@ -256,7 +258,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
                 ) : (
                   <Plus className="mr-1 h-4 w-4" />
                 )}
-                Thêm phòng
+                {t.listingDetail.addRoom}
               </Button>
             </div>
             {roomsLoading ? (
@@ -276,7 +278,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
                       type="button"
                       onClick={() => setRoomToDelete(room)}
                       className="ml-1 rounded-full text-muted-foreground hover:text-destructive"
-                      aria-label={`Xóa phòng ${room.name}`}
+                      aria-label={`${t.listingDetail.deleteRoom} ${room.name}`}
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -285,7 +287,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Chưa có phòng nào. Thêm phòng để phân loại ảnh.
+                {t.listingDetail.noRoomsYet}
               </p>
             )}
           </CardContent>
@@ -295,7 +297,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
       {/* Images grouped by room */}
       {imagesError ? (
         <Alert variant="destructive">
-          <AlertTitle>Không thể tải ảnh</AlertTitle>
+          <AlertTitle>{t.listingDetail.couldNotLoadImages}</AlertTitle>
           <AlertDescription>{(imagesError as Error).message}</AlertDescription>
         </Alert>
       ) : isLoading ? (
@@ -348,7 +350,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
                 {imgs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center text-muted-foreground">
                     <ImageIcon className="mb-2 h-6 w-6" />
-                    <p className="text-sm">Chưa có ảnh</p>
+                    <p className="text-sm">{t.listingDetail.noImages}</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -379,7 +381,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
                                 onClick={() => removeMutation.mutate(img)}
                                 disabled={removeMutation.isPending || setCoverMutation.isPending}
                                 className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-background/90 text-destructive opacity-0 shadow-sm transition-opacity hover:bg-background group-hover:opacity-100 disabled:opacity-50"
-                                aria-label="Xóa ảnh"
+                                aria-label={t.listingDetail.deleteImage}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -390,14 +392,14 @@ export function ListingImagesTab({ listing, canManage }: Props) {
                                   onClick={() => setCoverMutation.mutate(img)}
                                   disabled={setCoverMutation.isPending || removeMutation.isPending}
                                   className="absolute bottom-2 left-2 inline-flex h-7 items-center gap-1 rounded-md bg-background/90 px-2 text-xs font-medium opacity-0 shadow-sm transition-opacity hover:bg-background group-hover:opacity-100 disabled:opacity-50"
-                                  aria-label="Đặt làm ảnh bìa"
+                                  aria-label={t.listingDetail.setAsCover}
                                 >
                                   {isSettingCover ? (
                                     <Loader2 className="h-3 w-3 animate-spin" />
                                   ) : (
                                     <Star className="h-3 w-3" />
                                   )}
-                                  Set as cover
+                                  {t.listingDetail.setAsCover}
                                 </button>
                               )}
 
@@ -413,10 +415,10 @@ export function ListingImagesTab({ listing, canManage }: Props) {
                                   disabled={assignRoomMutation.isPending}
                                 >
                                   <SelectTrigger className="h-7 w-auto max-w-[110px] border-0 bg-background/90 px-2 text-xs shadow-sm">
-                                    <SelectValue placeholder="Phòng" />
+                                    <SelectValue placeholder={t.listingDetail.room} />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="__null__">Chưa phân loại</SelectItem>
+                                    <SelectItem value="__null__">{t.listingDetail.uncategorized}</SelectItem>
                                     {(rooms ?? []).map((r) => (
                                       <SelectItem key={r.id} value={r.id}>
                                         {r.name}
@@ -442,13 +444,15 @@ export function ListingImagesTab({ listing, canManage }: Props) {
       <AlertDialog open={!!roomToDelete} onOpenChange={(o) => !o && setRoomToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xóa phòng "{roomToDelete?.name}"?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t.listingDetail.deleteRoom} "{roomToDelete?.name}"?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Ảnh trong phòng sẽ chuyển về "Chưa phân loại", không bị mất.
+              {t.listingDetail.deleteRoomNote}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => roomToDelete && deleteRoomMutation.mutate(roomToDelete)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -456,7 +460,7 @@ export function ListingImagesTab({ listing, canManage }: Props) {
               {deleteRoomMutation.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              Xóa phòng
+              {t.listingDetail.deleteRoom}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

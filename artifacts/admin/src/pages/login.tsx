@@ -7,8 +7,8 @@ import { AlertTriangle, Building2, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { AppRole } from "@/lib/supabase";
-import { ROLES, ROLE_LABELS } from "@/lib/supabase";
-import { useI18n } from "@/i18n";
+import { ROLES } from "@/lib/supabase";
+import { useI18n, type Lang } from "@/i18n";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,11 +43,17 @@ const DEBUG_ANON_KEY_LOADED = Boolean(
   import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined,
 );
 
+/** Mirrors the sidebar switcher so signed-out users can pick a language too. */
+const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
+  { value: "en", label: "English", flag: "🇺🇸" },
+  { value: "vi", label: "Tiếng Việt", flag: "🇻🇳" },
+];
+
 export default function Login() {
   const [, setLocation] = useLocation();
   const { signIn, signUp, blockError } = useAuth();
   const { toast } = useToast();
-  const { t } = useI18n();
+  const { t, lang, setLang } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
 
@@ -115,6 +121,29 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
 
+        {/* Language switcher — signed-out users have no sidebar to reach it from */}
+        <div className="mb-4 flex justify-end gap-1">
+          {LANG_OPTIONS.map((opt) => (
+            <Button
+              key={opt.value}
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={`${t.login.language}: ${opt.label}`}
+              aria-pressed={lang === opt.value}
+              onClick={() => setLang(opt.value)}
+              className={`h-8 rounded-lg px-2.5 text-xs ${
+                lang === opt.value
+                  ? "bg-muted font-semibold text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <span className="mr-1.5 text-sm">{opt.flag}</span>
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+
         {/* Logo + headline */}
         <div className="flex flex-col items-center mb-10">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-foreground text-background shadow-md mb-5">
@@ -129,14 +158,14 @@ export default function Login() {
         {/* Debug banner */}
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <div className="mb-1 font-semibold uppercase tracking-wide text-amber-700 text-[10px]">
-            Debug (temporary)
+            {t.login.debugTitle}
           </div>
           <div className="break-all">
             <span className="font-medium">SUPABASE_URL:</span> {DEBUG_SUPABASE_URL}
           </div>
           <div>
-            <span className="font-medium">anon key loaded:</span>{" "}
-            {DEBUG_ANON_KEY_LOADED ? "yes" : "no"}
+            <span className="font-medium">{t.login.anonKeyLoaded}</span>{" "}
+            {DEBUG_ANON_KEY_LOADED ? t.common.yes : t.common.no}
           </div>
         </div>
 
@@ -314,7 +343,7 @@ export default function Login() {
                             <SelectContent>
                               {ROLES.map((role) => (
                                 <SelectItem key={role} value={role}>
-                                  {ROLE_LABELS[role]}
+                                  {t.roles[role]}
                                 </SelectItem>
                               ))}
                             </SelectContent>

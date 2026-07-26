@@ -35,7 +35,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore
     }
-    return "en";
+    return "vi";
   });
 
   const setLang = useCallback((next: Lang) => {

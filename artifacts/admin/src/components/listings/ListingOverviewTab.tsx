@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Listing } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
 
 const schema = z.object({
   title: z.string().min(2),
@@ -50,6 +51,7 @@ interface Props {
 }
 
 export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props) {
+  const { t } = useI18n();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: defaults(listing),
@@ -80,7 +82,7 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title</FormLabel>
+                  <FormLabel>{t.listings.listingTitle}</FormLabel>
                   <FormControl>
                     <Input disabled={!canManage} {...field} />
                   </FormControl>
@@ -93,7 +95,7 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description</FormLabel>
+                  <FormLabel>{t.listings.descriptionLabel}</FormLabel>
                   <FormControl>
                     <Textarea rows={4} disabled={!canManage} {...field} />
                   </FormControl>
@@ -107,7 +109,7 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
                 name="address"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Address</FormLabel>
+                    <FormLabel>{t.listings.address}</FormLabel>
                     <FormControl>
                       <Input disabled={!canManage} {...field} />
                     </FormControl>
@@ -120,7 +122,7 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
                 name="city"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>City</FormLabel>
+                    <FormLabel>{t.listings.city}</FormLabel>
                     <FormControl>
                       <Input disabled={!canManage} {...field} />
                     </FormControl>
@@ -133,7 +135,7 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
                 name="country"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Country</FormLabel>
+                    <FormLabel>{t.listings.country}</FormLabel>
                     <FormControl>
                       <Input disabled={!canManage} {...field} />
                     </FormControl>
@@ -147,30 +149,30 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
               name="airbnb_listing_name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Tên trên Airbnb</FormLabel>
+                  <FormLabel>{t.listings.airbnbName}</FormLabel>
                   <FormControl>
                     <Input disabled={!canManage} {...field} value={field.value ?? ""} />
                   </FormControl>
                   <p className="text-xs text-muted-foreground">
-                    Dán đúng tên nhà như hiển thị trong file CSV Airbnb để khớp doanh thu khi import.
+                    {t.listings.airbnbNameHint}
                   </p>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-              <NumberField name="bedrooms" label="Bedrooms" form={form} disabled={!canManage} />
-              <NumberField name="bathrooms" label="Bathrooms" form={form} disabled={!canManage} />
-              <NumberField name="max_guests" label="Max guests" form={form} disabled={!canManage} />
-              <NumberField name="base_price" label="Giá cơ bản / đêm (VND)" form={form} disabled={!canManage} step="1" />
-              <NumberField name="cleaning_fee" label="Cleaning fee (VND)" form={form} disabled={!canManage} step="1" />
+              <NumberField name="bedrooms" label={t.listings.bedroomsLabel} form={form} disabled={!canManage} />
+              <NumberField name="bathrooms" label={t.listings.bathroomsLabel} form={form} disabled={!canManage} />
+              <NumberField name="max_guests" label={t.listings.maxGuestsLabel} form={form} disabled={!canManage} />
+              <NumberField name="base_price" label={t.listings.basePriceVnd} form={form} disabled={!canManage} step="1" />
+              <NumberField name="cleaning_fee" label={t.listings.cleaningFeeVnd} form={form} disabled={!canManage} step="1" />
             </div>
             <FormField
               control={form.control}
               name="status"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Status</FormLabel>
+                  <FormLabel>{t.listings.statusLabel}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value} disabled={!canManage}>
                     <FormControl>
                       <SelectTrigger className="sm:w-[220px]">
@@ -178,9 +180,9 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                      <SelectItem value="active">{t.status.active}</SelectItem>
+                      <SelectItem value="inactive">{t.status.inactive}</SelectItem>
+                      <SelectItem value="maintenance">{t.status.maintenance}</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -191,7 +193,7 @@ export function ListingOverviewTab({ listing, canManage, onSave, saving }: Props
               <div className="flex justify-end">
                 <Button type="submit" disabled={saving}>
                   {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save changes
+                  {t.listings.saveChanges}
                 </Button>
               </div>
             )}

@@ -34,7 +34,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { hasPermission, type Permission, useAuth } from "@/lib/auth-context";
-import { ROLE_LABELS } from "@/lib/supabase";
 import { useI18n, type Lang } from "@/i18n";
 import { useCurrency, type Currency } from "@/lib/currency";
 
@@ -75,7 +74,7 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
     { href: "/hr", label: t.nav.hr, icon: Users, permission: "viewHR" },
     { href: "/revenues", label: t.nav.revenues, icon: CreditCard, permission: "manageFinance" },
     { href: "/expenses", label: t.nav.expenses, icon: Receipt, permission: "manageFinance" },
-    { href: "/import-airbnb", label: "Nhập báo cáo Airbnb", icon: Upload, permission: "manageFinance" },
+    { href: "/import-airbnb", label: t.nav.importAirbnb, icon: Upload, permission: "manageFinance" },
     { href: "/performance", label: t.nav.performance, icon: BarChart2, permission: "viewPerformance" },
     { href: "/chat", label: t.nav.chat, icon: MessageSquare },
     { href: "/activity-logs", label: t.nav.activityLogs, icon: History, permission: "viewActivityLogs" },
@@ -230,7 +229,7 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
                         variant="outline"
                         className="mt-0.5 rounded-full px-2 py-0 text-[10px] font-semibold border-[#dddddd] text-[#6a6a6a]"
                       >
-                        {ROLE_LABELS[role] ?? role}
+                        {t.roles[role] ?? role}
                       </Badge>
                     )}
                   </div>

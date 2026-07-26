@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { ROLE_LABELS, ROLES, supabase, type AppRole, type UserProfile } from "@/lib/supabase";
+import { ROLES, supabase, type AppRole, type UserProfile } from "@/lib/supabase";
 import { useI18n } from "@/i18n";
 
 export default function UsersPage() {
@@ -129,7 +129,7 @@ export default function UsersPage() {
                           <SelectContent>
                             {ROLES.map((r) => (
                               <SelectItem key={r} value={r}>
-                                {ROLE_LABELS[r]}
+                                {t.roles[r]}
                               </SelectItem>
                             ))}
                           </SelectContent>

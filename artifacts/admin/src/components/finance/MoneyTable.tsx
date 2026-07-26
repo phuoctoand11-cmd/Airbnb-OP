@@ -91,6 +91,9 @@ export function MoneyTablePage(config: MoneyTableConfig) {
   const canManage = hasPermission(role, "manageFinance");
   const [open, setOpen] = useState(false);
 
+  /** Stored category values stay untouched in the DB; only the label is localized. */
+  const catLabel = (c: string) => t.finance.categories[c] ?? c.replace(/_/g, " ");
+
   const isRevenue = config.table === "revenues";
   const sectionTitle = isRevenue ? t.finance.revenueTitle : t.finance.expenseTitle;
   const newEntryLabel = isRevenue ? t.finance.newRevenue : t.finance.newExpense;
@@ -282,7 +285,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
               <ul className="space-y-2">
                 {categoryBreakdown.slice(0, 6).map(([cat, amt]) => (
                   <li key={cat} className="flex items-center justify-between text-sm">
-                    <span className="capitalize">{cat.replace(/_/g, " ")}</span>
+                    <span className="capitalize">{catLabel(cat)}</span>
                     <span className="font-medium">{fmt(amt)}</span>
                   </li>
                 ))}
@@ -323,7 +326,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   <TableHead>{t.finance.listingCol}</TableHead>
                   <TableHead>{t.finance.categoryCol}</TableHead>
                   {config.showVendor && <TableHead>{t.finance.vendorCol}</TableHead>}
-                  {config.showAttachment && <TableHead>Chứng từ</TableHead>}
+                  {config.showAttachment && <TableHead>{t.finance.attachmentCol}</TableHead>}
                   <TableHead>{t.finance.descriptionCol}</TableHead>
                   <TableHead className="text-right">{t.finance.amountCol}</TableHead>
                   {canManage && <TableHead />}
@@ -334,12 +337,12 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   <TableRow key={r.id}>
                     <TableCell>{format(parseISO(r.date), "MMM d, yyyy")}</TableCell>
                     <TableCell>{listingTitle(r.listing_id)}</TableCell>
-                    <TableCell>{r.category.replace(/_/g, " ")}</TableCell>
+                    <TableCell>{catLabel(r.category)}</TableCell>
                     {config.showVendor && <TableCell>{r.vendor ?? "—"}</TableCell>}
                     {config.showAttachment && (
                       <TableCell>
                         {r.attachment_url
-                          ? <a href={r.attachment_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">Mở</a>
+                          ? <a href={r.attachment_url} target="_blank" rel="noopener noreferrer" className="text-primary underline">{t.finance.openAttachment}</a>
                           : "—"}
                       </TableCell>
                     )}
@@ -418,7 +421,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                         <SelectContent>
                           {categories.map((c) => (
                             <SelectItem key={c} value={c} className="capitalize">
-                              {c.replace(/_/g, " ")}
+                              {catLabel(c)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -477,7 +480,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
                   name="attachment_url"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Link Drive (chứng từ)</FormLabel>
+                      <FormLabel>{t.finance.driveLink}</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="https://..." />
                       </FormControl>

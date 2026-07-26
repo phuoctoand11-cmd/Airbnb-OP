@@ -20,38 +20,44 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n";
 
 // ── Quick presets ──────────────────────────────────────────────────────────────
 
-const PRESETS: { label: string; getRange: () => { from: Date; to: Date } }[] = [
+/** `id` is the stable identity used for the active-preset check; the visible
+ *  label is looked up from the dictionary at render time. */
+const PRESETS: {
+  id: "today" | "thisMonth" | "lastMonth" | "thisQuarter" | "lastQuarter" | "thisYear";
+  getRange: () => { from: Date; to: Date };
+}[] = [
   {
-    label: "Hôm nay",
+    id: "today",
     getRange: () => { const d = new Date(); return { from: d, to: d }; },
   },
   {
-    label: "Tháng này",
+    id: "thisMonth",
     getRange: () => ({ from: startOfMonth(new Date()), to: new Date() }),
   },
   {
-    label: "Tháng trước",
+    id: "lastMonth",
     getRange: () => {
       const lm = subMonths(new Date(), 1);
       return { from: startOfMonth(lm), to: endOfMonth(lm) };
     },
   },
   {
-    label: "Quý này",
+    id: "thisQuarter",
     getRange: () => ({ from: startOfQuarter(new Date()), to: new Date() }),
   },
   {
-    label: "Quý trước",
+    id: "lastQuarter",
     getRange: () => {
       const lq = subQuarters(new Date(), 1);
       return { from: startOfQuarter(lq), to: endOfQuarter(lq) };
     },
   },
   {
-    label: "Năm nay",
+    id: "thisYear",
     getRange: () => ({ from: startOfYear(new Date()), to: new Date() }),
   },
 ];
@@ -78,6 +84,7 @@ export function DateRangePicker({
   onApply,
   className,
 }: DateRangePickerProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
 
   // Pending selection (inside popover — not yet applied)
@@ -147,11 +154,11 @@ export function DateRangePicker({
 
   let selectionLine: string;
   if (phase === 1 && pendingFrom) {
-    selectionLine = `${format(pendingFrom, "dd/MM/yyyy")} → chọn ngày kết thúc`;
+    selectionLine = `${format(pendingFrom, "dd/MM/yyyy")} → ${t.dateRange.pickEndDate}`;
   } else if (phase === 2 && pendingFrom && pendingTo) {
     selectionLine = `${format(pendingFrom, "dd/MM/yyyy")} – ${format(pendingTo, "dd/MM/yyyy")}`;
   } else {
-    selectionLine = "Nhấn vào ngày bắt đầu";
+    selectionLine = t.dateRange.pickStartDate;
   }
 
   const canApply = phase !== 0 && !!pendingFrom;
@@ -197,11 +204,11 @@ export function DateRangePicker({
         <div className="sm:hidden border-b border-border/40 bg-muted/20 px-3 py-2">
           <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
             {PRESETS.map((p) => {
-              const isActive = activePreset === p.label;
+              const isActive = activePreset === p.id;
               return (
                 <button
-                  key={p.label}
-                  onClick={() => applyPreset(p.label, p.getRange)}
+                  key={p.id}
+                  onClick={() => applyPreset(p.id, p.getRange)}
                   className={cn(
                     "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all",
                     isActive
@@ -209,7 +216,7 @@ export function DateRangePicker({
                       : "border-border/60 text-foreground/70 hover:border-primary/50 hover:text-primary"
                   )}
                 >
-                  {p.label}
+                  {t.dateRange[p.id]}
                 </button>
               );
             })}
@@ -226,16 +233,16 @@ export function DateRangePicker({
           >
             <div className="px-4 py-3 border-b border-border/30">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Nhanh
+                {t.dateRange.quick}
               </p>
             </div>
             <div className="flex flex-col gap-px p-2">
               {PRESETS.map((p) => {
-                const isActive = activePreset === p.label;
+                const isActive = activePreset === p.id;
                 return (
                   <button
-                    key={p.label}
-                    onClick={() => applyPreset(p.label, p.getRange)}
+                    key={p.id}
+                    onClick={() => applyPreset(p.id, p.getRange)}
                     className={cn(
                       "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-all",
                       isActive
@@ -243,7 +250,7 @@ export function DateRangePicker({
                         : "text-foreground/80 hover:bg-primary/8 hover:text-primary"
                     )}
                   >
-                    <span>{p.label}</span>
+                    <span>{t.dateRange[p.id]}</span>
                     {isActive && <ChevronRight className="h-3.5 w-3.5 opacity-70" />}
                   </button>
                 );
@@ -298,7 +305,7 @@ export function DateRangePicker({
               {/* Selection indicator */}
               <div className="px-4 pt-3 pb-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">
-                  Đang chọn
+                  {t.dateRange.selecting}
                 </p>
                 <p
                   className={cn(
@@ -323,7 +330,7 @@ export function DateRangePicker({
                   disabled={!canApply}
                   onClick={handleApply}
                 >
-                  Áp dụng
+                  {t.dateRange.apply}
                 </Button>
                 <Button
                   variant="ghost"
@@ -331,7 +338,7 @@ export function DateRangePicker({
                   className="w-full h-12 rounded-xl text-base text-muted-foreground"
                   onClick={handleCancel}
                 >
-                  Hủy
+                  {t.dateRange.cancel}
                 </Button>
               </div>
               {/* Desktop: inline right-aligned */}
@@ -342,7 +349,7 @@ export function DateRangePicker({
                   className="rounded-lg px-4 text-muted-foreground hover:text-foreground"
                   onClick={handleCancel}
                 >
-                  Hủy
+                  {t.dateRange.cancel}
                 </Button>
                 <Button
                   size="sm"
@@ -350,7 +357,7 @@ export function DateRangePicker({
                   disabled={!canApply}
                   onClick={handleApply}
                 >
-                  Áp dụng
+                  {t.dateRange.apply}
                 </Button>
               </div>
             </div>
