@@ -79,6 +79,7 @@ import {
 import { useCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { useI18n, type Lang } from "@/i18n";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { vi as viLocale, enUS as enLocale } from "date-fns/locale";
 
 /** date-fns locale matching the app language, so weekday/month names in the
@@ -92,7 +93,8 @@ type CalendarView = "timeline" | "month" | "week";
 const CELL_W = 44;    // px per day column in timeline
 const ROW_H  = 56;    // px per listing row
 const HEADER_H = 48;  // px for date/day-name header
-const SIDEBAR_W = 248; // px for listing name sidebar
+const SIDEBAR_W = 248;        // px for listing name sidebar (desktop)
+const SIDEBAR_W_MOBILE = 132; // on a phone the grid needs the room more than the name does
 
 const ALL_STATUSES: Booking["status"][] = [
   "pending",
@@ -587,6 +589,8 @@ function TimelineView({
 }) {
   const { t, lang } = useI18n();
   const dfLocale = DF_LOCALES[lang];
+  const isMobile = useIsMobile();
+  const sidebarW = isMobile ? SIDEBAR_W_MOBILE : SIDEBAR_W;
   const dates = useMemo(
     () => Array.from({ length: periodDays }, (_, i) => addDays(periodStart, i)),
     [periodStart, periodDays],
@@ -719,7 +723,7 @@ function TimelineView({
         {/* Sticky listing sidebar */}
         <div
           className="sticky left-0 z-20 flex-none shrink-0 border-r bg-background"
-          style={{ width: SIDEBAR_W }}
+          style={{ width: sidebarW }}
         >
           {/* Header spacer */}
           <div

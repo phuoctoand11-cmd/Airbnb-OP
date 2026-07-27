@@ -395,6 +395,8 @@ export const vi: Translations = {
     } as Record<string, string>,
   },
   reports: {
+    tapForDetail: "Nhấn để xem chi tiết →",
+    cashIn: "Tiền thực thu",
     title: "Báo cáo",
     couldNotLoad: "Không thể tải báo cáo",
     timeRange: "Khoảng thời gian",

@@ -140,9 +140,17 @@ interface DrillData {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function Reports() {
-  const { t } = useI18n();
-  const { fmt } = useCurrency();
+  const { t, lang } = useI18n();
+  const { fmt, fmtCompact } = useCurrency();
   const { role } = useAuth();
+
+  /** Y-axis ticks. Raw VND totals run to nine digits and get clipped on narrow
+   *  viewports; the exact figure stays available in the tooltip. */
+  const axisMoney = (v: number) =>
+    new Intl.NumberFormat(lang === "vi" ? "vi-VN" : "en-US", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(v);
 
   const canExport =
     role === "admin" || role === "manager" || role === "accountant";
@@ -664,32 +672,41 @@ export default function Reports() {
       ) : (
         <>
           {/* ── KPI cards ───────────────────────────────────────────────── */}
-          <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
             <KpiCard
               label={t.reports.totalRevenue}
-              value={fmt(summary.revenue)}
+              value={fmtCompact(summary.revenue)}
+              exact={fmt(summary.revenue)}
+              hint={t.reports.tapForDetail}
               onClick={() => setRevenueModalOpen(true)}
             />
             <KpiCard
               label={t.reports.totalExpenses}
-              value={fmt(summary.expense)}
+              value={fmtCompact(summary.expense)}
+              exact={fmt(summary.expense)}
+              hint={t.reports.tapForDetail}
               onClick={() => setExpenseModalOpen(true)}
             />
             <KpiCard
               label={t.reports.netProfit}
-              value={fmt(summary.profit)}
+              value={fmtCompact(summary.profit)}
+              exact={fmt(summary.profit)}
+              hint={t.reports.tapForDetail}
               accent={summary.profit >= 0 ? "positive" : "negative"}
               onClick={() => setProfitModalOpen(true)}
             />
             <KpiCard
-              label="Tiền thực thu"
-              value={fmt(summary.cashIn)}
+              label={t.reports.cashIn}
+              value={fmtCompact(summary.cashIn)}
+              exact={fmt(summary.cashIn)}
+              hint={t.reports.tapForDetail}
               accent="positive"
               onClick={() => setCashflowModalOpen(true)}
             />
             <KpiCard
               label={t.bookings.title}
               value={summary.completedBookings.toString()}
+              hint={t.reports.tapForDetail}
               onClick={() => setBookingsModalOpen(true)}
             />
           </div>
@@ -713,7 +730,12 @@ export default function Reports() {
                         stroke="hsl(var(--muted-foreground))"
                         fontSize={12}
                       />
-                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      <YAxis
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={11}
+                        width={52}
+                        tickFormatter={axisMoney}
+                      />
                       <Tooltip
                         contentStyle={{
                           background: "hsl(var(--card))",
@@ -810,7 +832,12 @@ export default function Reports() {
                       stroke="hsl(var(--muted-foreground))"
                       fontSize={12}
                     />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <YAxis
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={11}
+                        width={52}
+                        tickFormatter={axisMoney}
+                      />
                     <Tooltip
                       contentStyle={{
                         background: "hsl(var(--card))",
@@ -3288,13 +3315,19 @@ function CashflowDrilldownModal({
 function KpiCard({
   label,
   value,
+  exact,
   accent,
   onClick,
+  hint,
 }: {
   label: string;
+  /** Short form — keep it one line at every breakpoint. */
   value: string;
+  /** Full, unabbreviated figure; surfaced on hover and to screen readers. */
+  exact?: string;
   accent?: "positive" | "negative";
   onClick?: () => void;
+  hint?: string;
 }) {
   return (
     <Card
@@ -3305,14 +3338,15 @@ function KpiCard({
       }
       onClick={onClick}
     >
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+      <CardHeader className="pb-1.5 px-4 pt-4 sm:px-5 sm:pt-5">
+        <CardTitle className="text-[13px] font-medium leading-snug text-muted-foreground">
           {label}
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 pb-4 sm:px-5 sm:pb-5">
         <div
-          className={`text-2xl font-bold ${
+          title={exact}
+          className={`truncate text-xl font-semibold leading-tight tracking-tight sm:text-2xl ${
             accent === "positive"
               ? "text-primary"
               : accent === "negative"
@@ -3322,10 +3356,9 @@ function KpiCard({
         >
           {value}
         </div>
-        {onClick && (
-          <p className="mt-1 text-xs text-muted-foreground">
-            Nhấn để xem chi tiết →
-          </p>
+        {exact && <span className="sr-only">{exact}</span>}
+        {onClick && hint && (
+          <p className="mt-1 truncate text-[11px] text-muted-foreground">{hint}</p>
         )}
       </CardContent>
     </Card>

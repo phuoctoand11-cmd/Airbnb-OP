@@ -395,6 +395,8 @@ export const en = {
     } as Record<string, string>,
   },
   reports: {
+    tapForDetail: "Tap for detail →",
+    cashIn: "Cash received",
     title: "Reports",
     couldNotLoad: "Could not load reports",
     timeRange: "Time range",

@@ -86,7 +86,7 @@ export function MoneyTablePage(config: MoneyTableConfig) {
   const { role } = useAuth();
   const { toast } = useToast();
   const { t } = useI18n();
-  const { fmt } = useCurrency();
+  const { fmt, fmtCompact } = useCurrency();
   const queryClient = useQueryClient();
   const canManage = hasPermission(role, "manageFinance");
   const [open, setOpen] = useState(false);
@@ -227,22 +227,38 @@ export function MoneyTablePage(config: MoneyTableConfig) {
         ) : null
       }
     >
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{t.finance.allTimeTotal}</CardTitle>
+          <CardHeader className="px-4 pt-4 pb-1.5 sm:px-5 sm:pt-5">
+            <CardTitle className="text-[13px] font-medium leading-snug text-muted-foreground">
+              {t.finance.allTimeTotal}
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{fmt(total)}</div>
+          <CardContent className="px-4 pb-4 sm:px-5 sm:pb-5">
+            <div
+              title={fmt(total)}
+              className="truncate text-xl font-semibold leading-tight tracking-tight sm:text-2xl"
+            >
+              {fmtCompact(total)}
+              <span className="sr-only"> {fmt(total)}</span>
+            </div>
           </CardContent>
         </Card>
         {monthBuckets.slice(-3).map((m) => (
           <Card key={m.label}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{m.label}</CardTitle>
+            <CardHeader className="px-4 pt-4 pb-1.5 sm:px-5 sm:pt-5">
+              <CardTitle className="text-[13px] font-medium leading-snug text-muted-foreground">
+                {m.label}
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{fmt(m.total)}</div>
+            <CardContent className="px-4 pb-4 sm:px-5 sm:pb-5">
+              <div
+                title={fmt(m.total)}
+                className="truncate text-xl font-semibold leading-tight tracking-tight sm:text-2xl"
+              >
+                {fmtCompact(m.total)}
+                <span className="sr-only"> {fmt(m.total)}</span>
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -254,20 +270,24 @@ export function MoneyTablePage(config: MoneyTableConfig) {
             <CardTitle className="text-base">{t.finance.last6Months}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex h-40 items-end gap-3">
+            <div className="flex h-40 gap-2 sm:gap-3">
               {monthBuckets.map((m) => {
                 const max = Math.max(...monthBuckets.map((x) => x.total), 1);
                 const heightPct = (m.total / max) * 100;
                 return (
-                  <div key={m.label} className="flex flex-1 flex-col items-center gap-2">
-                    <div className="flex h-full w-full items-end">
+                  <div key={m.label} className="flex h-full flex-1 flex-col items-center gap-2">
+                    {/* min-h-0 lets the bar track actually claim the leftover
+                        height — without it the track collapsed and no bar drew. */}
+                    <div className="flex min-h-0 w-full flex-1 items-end">
                       <div
                         className="w-full rounded-t-md bg-primary"
                         style={{ height: `${Math.max(heightPct, 2)}%` }}
-                        title={fmt(m.total)}
+                        title={`${m.label}: ${fmt(m.total)}`}
                       />
                     </div>
-                    <span className="text-xs text-muted-foreground">{m.label}</span>
+                    <span className="shrink-0 text-center text-[11px] leading-tight text-muted-foreground">
+                      {m.label}
+                    </span>
                   </div>
                 );
               })}
@@ -319,7 +339,10 @@ export function MoneyTablePage(config: MoneyTableConfig) {
               </p>
             </div>
           ) : (
-            <Table>
+            // Table already ships an overflow-auto wrapper; the min-width is what
+            // makes it scroll on a phone instead of squeezing every column into
+            // an unreadable sliver.
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>{t.finance.dateCol}</TableHead>

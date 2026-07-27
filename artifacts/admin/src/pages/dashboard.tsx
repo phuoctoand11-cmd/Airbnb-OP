@@ -55,8 +55,15 @@ import { useCurrency } from "@/lib/currency";
 const RECOGNIZED_REVENUE_CATEGORIES = ["booking_revenue", "cancellation_revenue"];
 
 export default function Dashboard() {
-  const { t } = useI18n();
-  const { fmt } = useCurrency();
+  const { t, lang } = useI18n();
+  const { fmt, fmtCompact } = useCurrency();
+
+  /** Y-axis ticks: raw VND totals are nine digits and get clipped on a phone. */
+  const axisMoney = (v: number) =>
+    new Intl.NumberFormat(lang === "vi" ? "vi-VN" : "en-US", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(v);
   const { role } = useAuth();
   const showPrices = canViewPrices(role);
   const showFinance = role === "admin" || role === "accountant" || role === "manager";
@@ -211,27 +218,27 @@ export default function Dashboard() {
         </Alert>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <KpiCard label={t.dashboard.activeListings} icon={<Home className="h-4 w-4" />} value={stats?.listings} loading={!stats} />
             <KpiCard label={t.dashboard.totalBookings} icon={<Users className="h-4 w-4" />} value={stats?.bookings} loading={!stats} />
             {showFinance && (
-              <KpiCard label={t.dashboard.revenue} icon={<DollarSign className="h-4 w-4" />} value={stats ? fmt(stats.revenue) : undefined} loading={!stats} accent="positive" />
+              <KpiCard label={t.dashboard.revenue} icon={<DollarSign className="h-4 w-4" />} value={stats ? fmtCompact(stats.revenue) : undefined} exact={stats ? fmt(stats.revenue) : undefined} loading={!stats} accent="positive" />
             )}
             {showFinance && (
-              <KpiCard label={t.dashboard.netProfit} icon={<TrendingUp className="h-4 w-4" />} value={stats ? fmt(stats.profit) : undefined} loading={!stats} accent={stats && stats.profit >= 0 ? "positive" : "negative"} />
+              <KpiCard label={t.dashboard.netProfit} icon={<TrendingUp className="h-4 w-4" />} value={stats ? fmtCompact(stats.profit) : undefined} exact={stats ? fmt(stats.profit) : undefined} loading={!stats} accent={stats && stats.profit >= 0 ? "positive" : "negative"} />
             )}
           </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:gap-4 lg:grid-cols-4">
             <KpiCard label={t.dashboard.completedBookings} icon={<CheckCircle2 className="h-4 w-4" />} value={stats?.completed} loading={!stats} />
             <KpiCard label={t.dashboard.cancelledBookings} icon={<XCircle className="h-4 w-4" />} value={stats?.cancelled} loading={!stats} />
             {showFinance && (
-              <KpiCard label={t.dashboard.expenses} icon={<TrendingDown className="h-4 w-4" />} value={stats ? fmt(stats.expense) : undefined} loading={!stats} />
+              <KpiCard label={t.dashboard.expenses} icon={<TrendingDown className="h-4 w-4" />} value={stats ? fmtCompact(stats.expense) : undefined} exact={stats ? fmt(stats.expense) : undefined} loading={!stats} />
             )}
             <KpiCard label={t.dashboard.occupancy30d} icon={<Percent className="h-4 w-4" />} value={stats ? `${stats.occupancyRate}%` : undefined} loading={!stats} />
           </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:gap-4 lg:grid-cols-4">
             <KpiCard label={t.dashboard.taskCompletion30d} icon={<Activity className="h-4 w-4" />} value={stats ? `${stats.taskCompletion}%` : undefined} loading={!stats} />
           </div>
 
@@ -250,7 +257,12 @@ export default function Dashboard() {
                         <BarChart data={monthly}>
                           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                           <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                          <YAxis
+                            stroke="hsl(var(--muted-foreground))"
+                            fontSize={11}
+                            width={52}
+                            tickFormatter={axisMoney}
+                          />
                           <Tooltip
                             contentStyle={{
                               background: "hsl(var(--card))",
@@ -357,31 +369,37 @@ function KpiCard({
   label,
   icon,
   value,
+  exact,
   loading,
   accent,
 }: {
   label: string;
   icon: React.ReactNode;
+  /** Short form — must stay on one line down to a 320px viewport. */
   value: number | string | undefined;
+  /** Full figure, shown on hover and to screen readers. */
+  exact?: string;
   loading?: boolean;
   accent?: "positive" | "negative";
 }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{label}</CardTitle>
-        <div className="text-muted-foreground">{icon}</div>
+      <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-2 px-4 pt-4 pb-1.5 sm:px-5 sm:pt-5">
+        <CardTitle className="text-[13px] font-medium leading-snug">{label}</CardTitle>
+        <div className="shrink-0 text-muted-foreground">{icon}</div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 pb-4 sm:px-5 sm:pb-5">
         {loading ? (
-          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-7 w-24" />
         ) : (
           <div
-            className={`text-2xl font-bold ${
+            title={exact}
+            className={`truncate text-xl font-semibold leading-tight tracking-tight sm:text-2xl ${
               accent === "positive" ? "text-primary" : accent === "negative" ? "text-destructive" : ""
             }`}
           >
             {value ?? "—"}
+            {exact && <span className="sr-only"> {exact}</span>}
           </div>
         )}
       </CardContent>
