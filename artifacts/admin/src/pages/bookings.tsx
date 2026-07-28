@@ -64,11 +64,12 @@ type AssignableEmployee = Pick<Employee, "id" | "full_name" | "email" | "status"
 
 // ── Status options (for multi-select filter) ─────────────────────────────────
 
-const STATUS_OPTIONS: { value: Booking["status"]; label: string }[] = [
-  { value: "pending",   label: "Chờ xác nhận" },
-  { value: "confirmed", label: "Đã xác nhận" },
-  { value: "completed", label: "Hoàn thành" },
-  { value: "cancelled", label: "Đã hủy" },
+/** Labels come from `t.status` at render time. */
+const STATUS_VALUES: Booking["status"][] = [
+  "pending",
+  "confirmed",
+  "completed",
+  "cancelled",
 ];
 
 // ── Status styles ─────────────────────────────────────────────────────────────
@@ -227,8 +228,8 @@ export default function Bookings() {
     statusFilter.length === 0
       ? t.status.allStatuses
       : statusFilter.length === 1
-      ? (STATUS_OPTIONS.find((o) => o.value === statusFilter[0])?.label ?? statusFilter[0])
-      : `${statusFilter.length} trạng thái`;
+      ? (t.status[statusFilter[0] as keyof typeof t.status] ?? statusFilter[0])
+      : `${statusFilter.length} ${t.bookings.statusesSelected}`;
 
   const listingTitle = (id: string) =>
     listingsQuery.data?.find((l) => l.id === id)?.title ?? "—";
@@ -484,13 +485,13 @@ export default function Bookings() {
       } else if (depositError) {
         toast({
           variant: "destructive",
-          title: "Lưu tiền cọc thất bại",
+          title: t.bookings.depositSaveFailed,
           description: depositError.message,
         });
       } else if (balanceError) {
         toast({
           variant: "destructive",
-          title: "Cảnh báo: Không thể tạo doanh thu",
+          title: t.bookings.warnRevenueFailed,
           description: balanceError.message,
         });
       } else {
@@ -659,7 +660,7 @@ export default function Bookings() {
       if (paymentError || revenueError) {
         toast({
           variant: "destructive",
-          title: "Cảnh báo: Lỗi đồng bộ tài chính",
+          title: t.bookings.warnFinanceSync,
           description: (paymentError ?? revenueError)!.message,
         });
       }
@@ -734,33 +735,33 @@ export default function Bookings() {
             <div className="flex items-center justify-between border-b px-3 py-2">
               <button
                 className="text-xs font-medium text-primary hover:underline"
-                onClick={() => setStatusFilter(STATUS_OPTIONS.map((o) => o.value))}
+                onClick={() => setStatusFilter([...STATUS_VALUES])}
               >
-                Chọn tất cả
+                {t.bookings.selectAll}
               </button>
               <button
                 className="text-xs text-muted-foreground hover:text-foreground hover:underline"
                 onClick={() => setStatusFilter([])}
               >
-                Xóa lọc
+                {t.bookings.clearFilter}
               </button>
             </div>
 
             {/* Checkbox list */}
             <div className="p-1">
-              {STATUS_OPTIONS.map((opt) => {
-                const checked = statusFilter.includes(opt.value);
+              {STATUS_VALUES.map((value) => {
+                const checked = statusFilter.includes(value);
                 return (
                   <label
-                    key={opt.value}
+                    key={value}
                     className="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm hover:bg-muted/60 select-none"
                   >
                     <Checkbox
                       checked={checked}
-                      onCheckedChange={() => toggleStatus(opt.value)}
-                      id={`filter-${opt.value}`}
+                      onCheckedChange={() => toggleStatus(value)}
+                      id={`filter-${value}`}
                     />
-                    <span className={checked ? "font-medium" : ""}>{opt.label}</span>
+                    <span className={checked ? "font-medium" : ""}>{t.status[value]}</span>
                   </label>
                 );
               })}
@@ -809,7 +810,7 @@ export default function Bookings() {
                     format(parseISO(b.check_out), "dd/MM/yyyy") +
                     " · " +
                     nights +
-                    " đêm";
+                    t.bookings.nightsSuffix;
                   return (
                     <div key={b.id} className="px-4 py-3 space-y-1">
                       {/* Row 1: guest name + status badge */}
@@ -1137,14 +1138,14 @@ export default function Bookings() {
               {/* ── Deposit ──────────────────────────────────────────────── */}
               {canEditDeposit && (
                 <div className="rounded-lg border border-dashed p-4 space-y-3">
-                  <p className="text-sm font-semibold">Tiền cọc</p>
+                  <p className="text-sm font-semibold">{t.bookings.deposit}</p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <FormField
                       control={form.control}
                       name="deposit_amount"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Tiền cọc (VND)</FormLabel>
+                          <FormLabel>{t.bookings.depositVnd}</FormLabel>
                           <FormControl>
                             <Input type="number" step="1" min={0} {...field} />
                           </FormControl>
@@ -1157,7 +1158,7 @@ export default function Bookings() {
                       name="deposit_paid_at"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Ngày nhận cọc</FormLabel>
+                          <FormLabel>{t.bookings.depositReceivedAt}</FormLabel>
                           <FormControl>
                             <Input type="date" {...field} />
                           </FormControl>
@@ -1169,7 +1170,7 @@ export default function Bookings() {
 
                   {watchDepositAmount > 0 && (
                     <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
-                      <span className="text-muted-foreground">Còn lại</span>
+                      <span className="text-muted-foreground">{t.bookings.depositRemaining}</span>
                       <span className="font-semibold tabular-nums">
                         {fmt(Math.max(0, (watchTotalAmount ?? 0) - (watchDepositAmount ?? 0)))}
                       </span>
@@ -1181,9 +1182,9 @@ export default function Bookings() {
                     name="deposit_note"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Ghi chú cọc</FormLabel>
+                        <FormLabel>{t.bookings.depositNote}</FormLabel>
                         <FormControl>
-                          <Input placeholder="Ghi chú về tiền cọc…" {...field} />
+                          <Input placeholder={t.bookings.depositNotePlaceholder} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1328,11 +1329,11 @@ export default function Bookings() {
       <Dialog open={!!cancelTarget} onOpenChange={(open) => !open && setCancelTarget(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Hủy booking</DialogTitle>
+            <DialogTitle>{t.bookings.cancelTitle}</DialogTitle>
             <DialogDescription>
               {(cancelTarget?.booking.deposit_amount ?? 0) > 0
-                ? `Booking có tiền cọc ${fmt(cancelTarget!.booking.deposit_amount)}. Hoàn trả cho khách?`
-                : "Xác nhận hủy booking này?"}
+                ? t.bookings.cancelWithDeposit.replace("{amount}", fmt(cancelTarget!.booking.deposit_amount))
+                : t.bookings.cancelConfirm}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col gap-2 sm:flex-row">
@@ -1341,7 +1342,7 @@ export default function Bookings() {
               className="order-last sm:order-first"
               onClick={() => setCancelTarget(null)}
             >
-              Quay lại
+              {t.bookings.goBack}
             </Button>
             {(cancelTarget?.booking.deposit_amount ?? 0) > 0 && (
               <Button
@@ -1357,7 +1358,7 @@ export default function Bookings() {
                 }}
                 disabled={updateStatusMutation.isPending}
               >
-                Giữ cọc (không hoàn)
+                {t.bookings.keepDeposit}
               </Button>
             )}
             <Button
@@ -1373,7 +1374,7 @@ export default function Bookings() {
               }}
               disabled={updateStatusMutation.isPending}
             >
-              {(cancelTarget?.booking.deposit_amount ?? 0) > 0 ? "Hoàn tiền cọc" : "Xác nhận hủy"}
+              {(cancelTarget?.booking.deposit_amount ?? 0) > 0 ? t.bookings.refundDeposit : t.bookings.confirmCancel}
             </Button>
           </DialogFooter>
         </DialogContent>

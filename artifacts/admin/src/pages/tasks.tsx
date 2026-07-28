@@ -112,40 +112,6 @@ const TASK_TYPE_COLORS: Record<TaskType, string> = {
 
 type TemplateKey = "cleaning" | "maintenance" | "checkin_prepare" | "checkout_check";
 
-const TEMPLATE_ITEMS: Record<TemplateKey, string[]> = {
-  cleaning: [
-    "Thay ga giường",
-    "Dọn toilet",
-    "Lau sàn",
-    "Đổ rác",
-    "Bổ sung khăn",
-    "Bổ sung giấy vệ sinh",
-    "Kiểm tra mùi phòng",
-    "Chụp ảnh sau khi dọn",
-  ],
-  maintenance: [
-    "Kiểm tra thiết bị hỏng",
-    "Kiểm tra điện",
-    "Kiểm tra nước",
-    "Kiểm tra điều hòa",
-    "Ghi chú lỗi",
-    "Chụp ảnh tình trạng",
-  ],
-  checkin_prepare: [
-    "Kiểm tra chìa khóa",
-    "Bật điều hòa trước giờ khách đến",
-    "Kiểm tra nước uống",
-    "Kiểm tra khăn",
-    "Kiểm tra mã cửa",
-    "Xác nhận phòng sạch",
-  ],
-  checkout_check: [
-    "Kiểm tra đồ thất lạc",
-    "Kiểm tra hư hỏng",
-    "Kiểm tra minibar/vật dụng",
-    "Chụp ảnh sau checkout",
-  ],
-};
 
 const TEMPLATE_KEYS: TemplateKey[] = ["cleaning", "maintenance", "checkin_prepare", "checkout_check"];
 
@@ -181,6 +147,8 @@ function genId() {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 }
 
+// Matched against checklist item titles in both languages — keep in sync with
+// the "take a photo" entries in t.tasks.templates.
 const PHOTO_KEYWORDS = ["chụp ảnh", "upload ảnh", "photo"];
 function isPhotoItem(title: string): boolean {
   const lower = title.toLowerCase();
@@ -354,7 +322,7 @@ export default function Tasks() {
   const applyTemplate = (key: string) => {
     setSelectedTemplate(key);
     if (key === "__none__") return;
-    const items = TEMPLATE_ITEMS[key as TemplateKey];
+    const items = t.tasks.templates[key as TemplateKey];
     if (!items) return;
     form.setValue(
       "checklist",
@@ -498,7 +466,7 @@ export default function Tasks() {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
     onError: (err: Error) =>
-      toast({ variant: "destructive", title: "Không thể lưu ảnh", description: err.message }),
+      toast({ variant: "destructive", title: t.tasks.photoSaveFailed, description: err.message }),
   });
 
   const requiresPhotoEvidence = (tk: Task) =>
@@ -509,7 +477,7 @@ export default function Tasks() {
     if ((tk.photos ?? []).length > 0) return true;
     toast({
       variant: "destructive",
-      description: "Vui lòng tải lên ít nhất 1 ảnh báo cáo trước khi hoàn thành công việc.",
+      description: t.tasks.photoRequired,
     });
     return false;
   };
@@ -1016,6 +984,7 @@ function TaskCard({
   onPhotosUpdate,
   onViewDetail,
 }: TaskCardProps) {
+  const { t } = useI18n();
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
@@ -1046,7 +1015,7 @@ function TaskCard({
           {onViewDetail && (
             <button
               type="button"
-              title="Xem chi tiết"
+              title={t.tasks.viewDetail}
               className="rounded p-0.5 text-muted-foreground hover:text-foreground"
               onClick={onViewDetail}
             >
@@ -1063,7 +1032,7 @@ function TaskCard({
       <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         {task.assigned_employee_id
           ? <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">{assigneeName}</span>
-          : <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-600">Chưa được phân công</span>
+          : <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-600">{t.tasks.notAssigned}</span>
         }
         <span>·</span> {listingTitle}
         {task.due_date && (
@@ -1159,7 +1128,7 @@ function TaskCard({
           <div className="mb-1.5 flex items-center justify-between">
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <ImageIcon className="h-3.5 w-3.5" />
-              Ảnh ({photos.length})
+              {t.tasks.photos} ({photos.length})
             </span>
             {canUploadPhoto && (
               <PhotoUploadButton
@@ -1184,7 +1153,7 @@ function TaskCard({
                   <div className="absolute inset-0 flex items-center justify-center gap-1 rounded bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"
-                      title="Xem ảnh"
+                      title={t.tasks.viewPhoto}
                       className="rounded p-0.5 text-white hover:text-blue-300"
                       onClick={() => setLightboxIdx(i)}
                     >
@@ -1193,7 +1162,7 @@ function TaskCard({
                     {canUploadPhoto && (
                       <button
                         type="button"
-                        title="Xóa ảnh"
+                        title={t.tasks.deletePhoto}
                         className="rounded p-0.5 text-white hover:text-red-400"
                         onClick={() => handleDeletePhoto(i)}
                       >
@@ -1254,6 +1223,7 @@ function PhotoUploadButton({
   onPhotosUpdate,
   compact = false,
 }: PhotoUploadButtonProps) {
+  const { t } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -1328,7 +1298,7 @@ function PhotoUploadButton({
         size="sm"
         className={compact ? "h-6 w-6 shrink-0 p-0" : "h-7 gap-1.5 text-xs"}
         disabled={isUploading}
-        title="Tải ảnh lên"
+        title={t.tasks.uploadPhotos}
         onClick={() => fileRef.current?.click()}
       >
         {isUploading ? (
@@ -1338,8 +1308,8 @@ function PhotoUploadButton({
         )}
         {!compact && (
           isUploading
-            ? `Đang tải ${progress!.done}/${progress!.total}...`
-            : "Tải ảnh"
+            ? t.tasks.uploading.replace("{done}", String(progress!.done)).replace("{total}", String(progress!.total))
+            : t.tasks.uploadPhoto
         )}
       </Button>
       {uploadError && !compact && (
@@ -1457,6 +1427,7 @@ function TaskDetailDialog({
   onAssign,
   isAssigning,
 }: TaskDetailDialogProps) {
+  const { t } = useI18n();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const checklist: ChecklistItem[] = Array.isArray(task.checklist) ? task.checklist : [];
@@ -1510,15 +1481,15 @@ function TaskDetailDialog({
             {canAssign ? (
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="text-muted-foreground">Nhân viên:</span>
+                <span className="text-muted-foreground">{t.tasks.staff}</span>
                 <Select
                   value={task.assigned_employee_id ?? "__none__"}
                   onValueChange={(v) => onAssign(v === "__none__" ? null : v)}
                   disabled={isAssigning}
                 >
-                  <SelectTrigger className="h-8 flex-1"><SelectValue placeholder="Chưa phân công" /></SelectTrigger>
+                  <SelectTrigger className="h-8 flex-1"><SelectValue placeholder={t.tasks.pickAssignee} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">Chưa phân công</SelectItem>
+                    <SelectItem value="__none__">{t.tasks.pickAssignee}</SelectItem>
                     {sortedEmployees.map((e, idx) => {
                       const isMatch = e.role && preferredRoles.includes(e.role);
                       const prevMatch = idx > 0 && sortedEmployees[idx - 1].role && preferredRoles.includes(sortedEmployees[idx - 1].role!);
@@ -1526,8 +1497,8 @@ function TaskDetailDialog({
                       const showOtherLabel = hasPreferred && !isMatch && (idx === 0 || prevMatch);
                       return (
                         <div key={e.id}>
-                          {showSuitableLabel && <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Phù hợp</div>}
-                          {showOtherLabel && <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">Khác</div>}
+                          {showSuitableLabel && <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">{t.tasks.suitable}</div>}
+                          {showOtherLabel && <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">{t.tasks.other}</div>}
                           <SelectItem value={e.id}>{e.full_name ?? e.email}</SelectItem>
                         </div>
                       );
@@ -1538,10 +1509,10 @@ function TaskDetailDialog({
             ) : (
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="text-muted-foreground">Nhân viên:</span>
+                <span className="text-muted-foreground">{t.tasks.staff}</span>
                 {task.assigned_employee_id
                   ? <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">{assigneeName}</span>
-                  : <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-600">Chưa được phân công</span>
+                  : <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-600">{t.tasks.notAssigned}</span>
                 }
               </div>
             )}
@@ -1550,7 +1521,7 @@ function TaskDetailDialog({
             {task.due_date && (
               <div className="flex items-center gap-2 text-sm">
                 <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="text-muted-foreground">Hạn:</span>
+                <span className="text-muted-foreground">{t.tasks.dueLabel}</span>
                 <span className="font-medium">
                   {format(parseISO(task.due_date), "MMM d, yyyy")}
                 </span>
@@ -1561,7 +1532,7 @@ function TaskDetailDialog({
             {completedAt && (
               <div className="flex items-center gap-2 text-sm">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-                <span className="text-muted-foreground">Hoàn thành lúc:</span>
+                <span className="text-muted-foreground">{t.tasks.completedAt}</span>
                 <span className="font-medium text-green-700">{completedAt}</span>
               </div>
             )}
@@ -1623,11 +1594,11 @@ function TaskDetailDialog({
             <div>
               <div className="mb-2 flex items-center gap-2 text-sm font-medium">
                 <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                Ảnh ({photos.length})
+                {t.tasks.photos} ({photos.length})
               </div>
               {photos.length === 0 ? (
                 <p className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
-                  Chưa có ảnh
+                  {t.tasks.noPhotos}
                 </p>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
