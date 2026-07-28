@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, canViewPrices } from "@/lib/auth-context";
+import { useI18n } from "@/i18n";
 import { supabase } from "@/lib/supabase";
 
 type Row = {
@@ -38,15 +39,23 @@ type Summary = {
 
 const vnd = (n: number) => n.toLocaleString("vi-VN") + " ₫";
 
-const ACTION_LABEL: Record<Row["action"], { text: string; variant: "default" | "secondary" | "outline" }> = {
-  create: { text: "Tạo mới", variant: "default" },
-  update_imported: { text: "Cập nhật", variant: "secondary" },
-  merge_manual: { text: "Gộp vào booking tay", variant: "outline" },
+const ACTION_VARIANT: Record<Row["action"], "default" | "secondary" | "outline"> = {
+  create: "default",
+  update_imported: "secondary",
+  merge_manual: "outline",
 };
 
 export default function ImportAirbnb() {
+  const { t } = useI18n();
   const { role } = useAuth();
   const { toast } = useToast();
+
+  const actionLabel = (a: Row["action"]) =>
+    a === "create"
+      ? t.importAirbnb.actionCreate
+      : a === "update_imported"
+      ? t.importAirbnb.actionUpdate
+      : t.importAirbnb.actionMerge;
   const queryClient = useQueryClient();
 
   const [csvText, setCsvText] = useState<string | null>(null);
@@ -60,10 +69,10 @@ export default function ImportAirbnb() {
 
   if (!canViewPrices(role)) {
     return (
-      <AppLayout title="Nhập báo cáo Airbnb">
+      <AppLayout title={t.importAirbnb.title}>
         <Alert variant="destructive">
-          <AlertTitle>Không có quyền</AlertTitle>
-          <AlertDescription>Chỉ admin, quản lý hoặc kế toán mới dùng được chức năng này.</AlertDescription>
+          <AlertTitle>{t.importAirbnb.noPermission}</AlertTitle>
+          <AlertDescription>{t.importAirbnb.noPermissionBody}</AlertDescription>
         </Alert>
       </AppLayout>
     );
@@ -112,8 +121,8 @@ export default function ImportAirbnb() {
     try {
       const data = await callFn(false);
       const n = (data.written ?? []).filter((w: any) => w.booking_id).length;
-      setDone(`Đã ghi ${n} booking và doanh thu vào hệ thống.`);
-      toast({ title: "Import thành công", description: `${n} booking đã được cập nhật.` });
+      setDone(t.importAirbnb.importedBody.replace("{n}", String(n)));
+      toast({ title: t.importAirbnb.importSuccess, description: t.importAirbnb.importSuccessBody.replace("{n}", String(n)) });
       queryClient.invalidateQueries({ queryKey: ["revenues"] });
       queryClient.invalidateQueries({ queryKey: ["bookings"] });
       queryClient.invalidateQueries({ queryKey: ["reports"] });
@@ -125,11 +134,11 @@ export default function ImportAirbnb() {
   };
 
   return (
-    <AppLayout title="Nhập báo cáo Airbnb">
+    <AppLayout title={t.importAirbnb.title}>
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">1. Chọn file CSV từ Airbnb</CardTitle>
+            <CardTitle className="text-base">{t.importAirbnb.step1}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <input
@@ -137,17 +146,17 @@ export default function ImportAirbnb() {
               onChange={handleFile}
               className="block text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-primary-foreground"
             />
-            {fileName && <p className="text-sm text-muted-foreground">Đã chọn: {fileName}</p>}
+            {fileName && <p className="text-sm text-muted-foreground">{t.importAirbnb.picked} {fileName}</p>}
             <Button onClick={runPreview} disabled={!csvText || loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-              Xem trước
+              {t.importAirbnb.preview}
             </Button>
           </CardContent>
         </Card>
 
         {error && (
           <Alert variant="destructive">
-            <AlertTitle>Lỗi</AlertTitle>
+            <AlertTitle>{t.common.error}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -155,22 +164,22 @@ export default function ImportAirbnb() {
         {summary && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">2. Xem trước</CardTitle>
+              <CardTitle className="text-base">{t.importAirbnb.step2}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Stat label="Tỷ giá áp dụng" value={`${summary.rate.toLocaleString("vi-VN")} ₫/USD`} />
-                <Stat label="Tổng tiền thực nhận" value={vnd(summary.total_payout_vnd)} />
-                <Stat label="Số booking" value={String(summary.count)} />
-                <Stat label="Tạo mới / Cập nhật / Gộp" value={`${summary.create} / ${summary.update_imported} / ${summary.merge_manual}`} />
+                <Stat label={t.importAirbnb.rateApplied} value={`${summary.rate.toLocaleString("vi-VN")} ₫/USD`} />
+                <Stat label={t.importAirbnb.totalPayout} value={vnd(summary.total_payout_vnd)} />
+                <Stat label={t.importAirbnb.bookingCount} value={String(summary.count)} />
+                <Stat label={t.importAirbnb.createUpdateMerge} value={`${summary.create} / ${summary.update_imported} / ${summary.merge_manual}`} />
               </div>
 
               {summary.unmapped.length > 0 && (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Có nhà chưa được map villa (sẽ bị bỏ qua)</AlertTitle>
+                  <AlertTitle>{t.importAirbnb.unmappedTitle}</AlertTitle>
                   <AlertDescription>
-                    {summary.unmapped.join("; ")}. Hãy điền tên Airbnb cho villa tương ứng rồi thử lại.
+                    {summary.unmapped.join("; ")}. {t.importAirbnb.unmappedBody}
                   </AlertDescription>
                 </Alert>
               )}
@@ -178,11 +187,11 @@ export default function ImportAirbnb() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Khách</TableHead>
-                    <TableHead>Nhận → Trả</TableHead>
-                    <TableHead className="text-right">USD (sau thuế)</TableHead>
+                    <TableHead>{t.importAirbnb.guest}</TableHead>
+                    <TableHead>{t.importAirbnb.checkInOut}</TableHead>
+                    <TableHead className="text-right">{t.importAirbnb.usdAfterTax}</TableHead>
                     <TableHead className="text-right">Doanh thu VND</TableHead>
-                    <TableHead>Hành động</TableHead>
+                    <TableHead>{t.common.actions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -197,8 +206,8 @@ export default function ImportAirbnb() {
                       <TableCell className="text-right font-medium">{vnd(r.amount_vnd)}</TableCell>
                       <TableCell>
                         {r.mapped
-                          ? <Badge variant={ACTION_LABEL[r.action].variant}>{ACTION_LABEL[r.action].text}</Badge>
-                          : <Badge variant="destructive">Chưa map villa</Badge>}
+                          ? <Badge variant={ACTION_VARIANT[r.action]}>{actionLabel(r.action)}</Badge>
+                          : <Badge variant="destructive">{t.importAirbnb.notMapped}</Badge>}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -208,7 +217,7 @@ export default function ImportAirbnb() {
               <div className="flex items-center gap-3">
                 <Button onClick={runCommit} disabled={committing || rows.every((r) => !r.mapped)}>
                   {committing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                  Xác nhận ghi vào hệ thống
+                  {t.importAirbnb.confirmWrite}
                 </Button>
                 {done && <span className="text-sm text-green-600">{done}</span>}
               </div>

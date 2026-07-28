@@ -37,7 +37,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useLogActivity } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
-import { supabase, ROLE_LABELS, SUPABASE_URL_FOR_DEBUG, type AppRole, type ChatAttachment } from "@/lib/supabase";
+import { useI18n } from "@/i18n";
+import { supabase, SUPABASE_URL_FOR_DEBUG, type AppRole, type ChatAttachment } from "@/lib/supabase";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -154,6 +155,7 @@ function CreateGroupModal({
   onSubmit,
   loading,
 }: CreateGroupModalProps) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [search, setSearch] = useState("");
@@ -196,11 +198,11 @@ function CreateGroupModal({
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Create Group</DialogTitle>
+          <DialogTitle>{t.chat.createGroup}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Group name *</Label>
+            <Label>{t.chat.groupNameRequired}</Label>
             <Input
               placeholder="e.g. Housekeeping Team"
               value={name}
@@ -213,15 +215,15 @@ function CreateGroupModal({
               <span className="text-xs text-muted-foreground">(optional)</span>
             </Label>
             <Input
-              placeholder="What is this group for?"
+              placeholder={t.chat.groupPurposePlaceholder}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Add members</Label>
+            <Label>{t.chat.addMembers}</Label>
             <Input
-              placeholder="Search by name or email…"
+              placeholder={t.chat.searchByNameOrEmail}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-8 text-sm"
@@ -252,7 +254,7 @@ function CreateGroupModal({
                       <p className="truncate text-sm font-medium">{m.full_name}</p>
                       <p className="truncate text-[11px] text-muted-foreground">
                         {m.role
-                          ? (ROLE_LABELS[m.role as AppRole] ?? m.role)
+                          ? (t.roles[m.role as AppRole] ?? m.role)
                           : m.email}
                       </p>
                     </div>
@@ -296,6 +298,7 @@ function CreateTopicModal({
   onSubmit,
   loading,
 }: CreateTopicModalProps) {
+  const { t } = useI18n();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
@@ -314,11 +317,11 @@ function CreateTopicModal({
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>New Topic</DialogTitle>
+          <DialogTitle>{t.chat.newTopic}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>Topic title *</Label>
+            <Label>{t.chat.topicTitleRequired}</Label>
             <Input
               placeholder="e.g. General, Urgent Cleaning…"
               value={title}
@@ -332,7 +335,7 @@ function CreateTopicModal({
               <span className="text-xs text-muted-foreground">(optional)</span>
             </Label>
             <Input
-              placeholder="What is this topic about?"
+              placeholder={t.chat.topicPurposePlaceholder}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -371,6 +374,7 @@ function AddMembersModal({
   onAdd,
   loading,
 }: AddMembersModalProps) {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -404,11 +408,11 @@ function AddMembersModal({
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Add Members</DialogTitle>
+          <DialogTitle>{t.chat.addMembers}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <Input
-            placeholder="Search by name or email…"
+            placeholder={t.chat.searchByNameOrEmail}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -470,6 +474,7 @@ function AddMembersModal({
 // ── Main ChatPage ──────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
+  const { t } = useI18n();
   const { session, role } = useAuth();
   const { toast } = useToast();
   const log = useLogActivity();
@@ -879,9 +884,9 @@ export default function ChatPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
       setSelectedGroupId(null);
-      toast({ title: "Đã xóa nhóm" });
+      toast({ title: t.chat.groupDeleted });
     },
-    onError: (err: Error) => toast({ variant: "destructive", title: "Không xóa được nhóm", description: err.message }),
+    onError: (err: Error) => toast({ variant: "destructive", title: t.chat.groupDeleteFailed, description: err.message }),
   });
 
   const createTopicMutation = useMutation({
@@ -982,7 +987,7 @@ export default function ChatPage() {
         queryKey: ["chat_group_members", selectedGroupId],
       });
       queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
-      toast({ title: `Đã thêm ${profileIds.length} thành viên vào nhóm` });
+      toast({ title: t.chat.membersAdded.replace("{n}", String(profileIds.length)) });
       profileIds.forEach((uid) => {
         log({
           action: "chat_member_added",
@@ -999,7 +1004,7 @@ export default function ChatPage() {
     onError: (err: Error) =>
       toast({
         variant: "destructive",
-        title: "Không thể thêm thành viên",
+        title: t.chat.memberAddFailed,
         description: err.message,
       }),
   });
@@ -1010,8 +1015,8 @@ export default function ChatPage() {
       console.log("[REMOVE_MEMBER_MEMBERSHIP_ID]", member.membership_id);
 
       if (!member.membership_id) {
-        toast({ variant: "destructive", title: "Không thể xóa: thiếu membership_id" });
-        throw new Error("Không thể xóa: thiếu membership_id");
+        toast({ variant: "destructive", title: t.chat.memberRemoveNoId });
+        throw new Error(t.chat.memberRemoveNoId);
       }
 
       const { error } = await supabase
@@ -1029,12 +1034,12 @@ export default function ChatPage() {
       setRemovedMemberIds((prev) => new Set([...prev, membership_id]));
       queryClient.refetchQueries({ queryKey: ["chat_group_members", selectedGroupId] });
       queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
-      toast({ title: "Đã xóa thành viên khỏi nhóm" });
+      toast({ title: t.chat.memberRemoved });
     },
     onError: (err: unknown) => {
       const raw = err as { message?: string; details?: string; code?: string };
       const description = [raw?.message, raw?.details].filter(Boolean).join(" — ") || String(err);
-      toast({ variant: "destructive", title: "Không thể xóa thành viên", description });
+      toast({ variant: "destructive", title: t.chat.memberRemoveFailed, description });
     },
   });
 
@@ -1049,7 +1054,7 @@ export default function ChatPage() {
     if (!result.error) {
       setRemovedMemberIds((prev) => new Set([...prev, member.membership_id]));
       queryClient.refetchQueries({ queryKey: ["chat_group_members", selectedGroupId] });
-      toast({ title: "Đã xóa thành viên khỏi nhóm" });
+      toast({ title: t.chat.memberRemoved });
     }
   }
 
@@ -1059,7 +1064,7 @@ export default function ChatPage() {
     console.log("[REMOVE_MEMBER_ID]", member.membership_id);
 
     if (!member.membership_id) {
-      toast({ variant: "destructive", title: "Thiếu membership_id" });
+      toast({ variant: "destructive", title: t.chat.missingMembershipId });
       return;
     }
 
@@ -1071,14 +1076,14 @@ export default function ChatPage() {
     console.log("[REMOVE_MEMBER_DELETE_RESULT]", { error });
 
     if (error) {
-      toast({ variant: "destructive", title: "Không thể xóa thành viên", description: error.message });
+      toast({ variant: "destructive", title: t.chat.memberRemoveFailed, description: error.message });
       return;
     }
 
     setRemovedMemberIds((prev) => new Set([...prev, member.membership_id]));
     queryClient.refetchQueries({ queryKey: ["chat_group_members", selectedGroupId] });
     queryClient.invalidateQueries({ queryKey: ["chat_groups"] });
-    toast({ title: "Đã xóa thành viên khỏi nhóm" });
+    toast({ title: t.chat.memberRemoved });
   }
 
   const sendMutation = useMutation({
@@ -1249,20 +1254,20 @@ export default function ChatPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <AppLayout title="Chat" fullWidth>
+    <AppLayout title={t.chat.title} fullWidth>
       <div className="flex h-full w-full overflow-hidden border-t border-border bg-background">
         {/* ── Groups sidebar ──────────────────────────────────────────────── */}
         <div className={`${selectedGroupId ? "hidden md:flex" : "flex"} w-full md:w-[260px] shrink-0 flex-col border-r border-border`}>
           <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Groups
+              {t.chat.groupsHeading}
             </span>
             <Button
               size="icon"
               variant="ghost"
               className="h-6 w-6 rounded-lg"
               onClick={() => setCreateGroupOpen(true)}
-              title="Create group"
+              title={t.chat.createGroup}
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
@@ -1273,7 +1278,7 @@ export default function ChatPage() {
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="h-7 pl-7 text-xs"
-                placeholder="Search groups…"
+                placeholder={t.chat.searchGroups}
                 value={groupSearch}
                 onChange={(e) => setGroupSearch(e.target.value)}
               />
@@ -1288,12 +1293,12 @@ export default function ChatPage() {
             ) : visibleGroups.length === 0 ? (
               <div className="px-3 py-8 text-center">
                 <MessageSquare className="mx-auto mb-2 h-6 w-6 text-muted-foreground/40" />
-                <p className="text-xs text-muted-foreground">No groups yet</p>
+                <p className="text-xs text-muted-foreground">{t.chat.noGroupsYet}</p>
                 <button
                   className="mt-1 text-xs text-primary underline-offset-2 hover:underline"
                   onClick={() => setCreateGroupOpen(true)}
                 >
-                  Create one
+                  {t.chat.createOne}
                 </button>
               </div>
             ) : (
@@ -1346,7 +1351,7 @@ export default function ChatPage() {
                     size="icon"
                     className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
                     onClick={() => {
-                      if (window.confirm("Xóa nhóm này? Toàn bộ tin nhắn, thành viên và file trong nhóm sẽ bị xóa vĩnh viễn, không thể khôi phục.")) {
+                      if (window.confirm(t.chat.confirmDeleteGroup)) {
                         deleteGroupMutation.mutate(selectedGroup!.id);
                       }
                     }}
@@ -1364,7 +1369,7 @@ export default function ChatPage() {
 
             <div className="flex items-center justify-between px-3 py-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Topics
+                {t.chat.topicsHeading}
               </span>
               {canManageGroup && (
                 <Button
@@ -1372,7 +1377,7 @@ export default function ChatPage() {
                   variant="ghost"
                   className="h-5 w-5 rounded-md"
                   onClick={() => setCreateTopicOpen(true)}
-                  title="Add topic"
+                  title={t.chat.addTopic}
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
@@ -1387,13 +1392,13 @@ export default function ChatPage() {
               ) : (topicsQuery.data ?? []).length === 0 ? (
                 <div className="px-3 py-6 text-center">
                   <Hash className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
-                  <p className="text-xs text-muted-foreground">No topics yet</p>
+                  <p className="text-xs text-muted-foreground">{t.chat.noTopicsYet}</p>
                   {canManageGroup && (
                     <button
                       className="mt-1 text-xs text-primary underline-offset-2 hover:underline"
                       onClick={() => setCreateTopicOpen(true)}
                     >
-                      Create one
+                      {t.chat.createOne}
                     </button>
                   )}
                 </div>
@@ -1434,7 +1439,7 @@ export default function ChatPage() {
                 onClick={() => setSelectedGroupId(null)}
               >
                 <ChevronLeft className="h-4 w-4" />
-                Quay lại
+                {t.chat.back}
               </Button>
               <span className="font-semibold text-sm truncate flex-1">{selectedGroup?.name}</span>
               {role === "admin" && (
@@ -1443,7 +1448,7 @@ export default function ChatPage() {
                   size="icon"
                   className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
                   onClick={() => {
-                    if (window.confirm("Xóa nhóm này? Toàn bộ tin nhắn, thành viên và file trong nhóm sẽ bị xóa vĩnh viễn, không thể khôi phục.")) {
+                    if (window.confirm(t.chat.confirmDeleteGroup)) {
                       deleteGroupMutation.mutate(selectedGroup!.id);
                     }
                   }}
@@ -1458,10 +1463,10 @@ export default function ChatPage() {
               <MessageSquare className="h-10 w-10 text-muted-foreground/30" />
               <div>
                 <p className="font-medium text-muted-foreground">
-                  Select a group to start chatting
+                  {t.chat.selectGroupToChat}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground/60">
-                  Or create a new group from the sidebar
+                  {t.chat.orCreateFromSidebar}
                 </p>
               </div>
               <Button
@@ -1470,7 +1475,7 @@ export default function ChatPage() {
                 onClick={() => setCreateGroupOpen(true)}
               >
                 <Plus className="mr-1.5 h-4 w-4" />
-                New Group
+                {t.chat.newGroup}
               </Button>
             </div>
           ) : !selectedTopicId ? (
@@ -1588,14 +1593,14 @@ export default function ChatPage() {
                                   <img
                                     src={getAttachmentUrl(att)}
                                     alt={att.file_name}
-                                    title="Click to view full size"
+                                    title={t.chat.clickToExpand}
                                     className="max-h-64 max-w-[420px] cursor-pointer rounded-xl object-cover shadow-sm transition-opacity hover:opacity-90"
                                     onClick={() => setImageViewerUrl(getAttachmentUrl(att))}
                                   />
                                   <button
                                     className="absolute bottom-1.5 right-1.5 hidden rounded-lg bg-black/50 p-1 text-white group-hover:flex"
                                     onClick={() => setImageViewerUrl(getAttachmentUrl(att))}
-                                    title="View full size"
+                                    title={t.chat.viewFullSize}
                                   >
                                     <Maximize2 className="h-3 w-3" />
                                   </button>
@@ -1625,7 +1630,7 @@ export default function ChatPage() {
                       <button
                         onClick={clearImage}
                         className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-background shadow"
-                        title="Remove image"
+                        title={t.chat.removeImage}
                       >
                         <X className="h-2.5 w-2.5" />
                       </button>
@@ -1657,7 +1662,7 @@ export default function ChatPage() {
                     onClick={() => imageInputRef.current?.click()}
                     disabled={sendMutation.isPending}
                     className="mb-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
-                    title="Attach image"
+                    title={t.chat.attachImage}
                   >
                     <ImageIcon className="h-4 w-4" />
                   </button>
@@ -1702,7 +1707,7 @@ export default function ChatPage() {
           <div className="hidden lg:flex w-[300px] shrink-0 flex-col border-l border-border">
             <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Members
+                {t.chat.membersHeading}
               </span>
               {canManageGroup && (
                 <Button
@@ -1710,7 +1715,7 @@ export default function ChatPage() {
                   variant="ghost"
                   className="h-6 w-6 rounded-lg"
                   onClick={() => setAddMembersOpen(true)}
-                  title="Add members"
+                  title={t.chat.addMembers}
                 >
                   <UserPlus className="h-3.5 w-3.5" />
                 </Button>
@@ -1726,7 +1731,7 @@ export default function ChatPage() {
               ) : groupMemberViews.length === 0 ? (
                 <div className="px-3 py-6 text-center">
                   <Users className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
-                  <p className="text-xs text-muted-foreground">Chưa có thành viên</p>
+                  <p className="text-xs text-muted-foreground">{t.chat.noMembers}</p>
                 </div>
               ) : (
                 <div className="space-y-px p-2">
@@ -1749,12 +1754,12 @@ export default function ChatPage() {
                         <p className="truncate text-xs font-medium">
                           {member.full_name}
                           {member.is_current_user && (
-                            <span className="ml-1 text-muted-foreground">(bạn)</span>
+                            <span className="ml-1 text-muted-foreground">{t.chat.youSuffix}</span>
                           )}
                         </p>
                         <p className="truncate text-[10px] text-muted-foreground">
                           {member.employee_role
-                            ? (ROLE_LABELS[member.employee_role as AppRole] ?? member.employee_role)
+                            ? (t.roles[member.employee_role as AppRole] ?? member.employee_role)
                             : member.email}
                         </p>
                       </div>
@@ -1767,9 +1772,9 @@ export default function ChatPage() {
                       <button
                         className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-destructive border border-destructive/40 hover:bg-destructive hover:text-white transition-colors"
                         onClick={() => setConfirmRemoveMember(member)}
-                        title="Xóa khỏi nhóm"
+                        title={t.chat.removeFromGroup}
                       >
-                        Xóa
+                        {t.chat.remove}
                       </button>
                     </div>
                   );
@@ -1782,7 +1787,7 @@ export default function ChatPage() {
             <div className="border-t border-border">
               <div className="px-3 py-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  All Staff
+                  {t.chat.allStaffHeading}
                 </span>
               </div>
               <ScrollArea className="h-40">
@@ -1809,7 +1814,7 @@ export default function ChatPage() {
                           </p>
                           <p className="truncate text-[10px] text-muted-foreground">
                             {m.role
-                              ? (ROLE_LABELS[m.role as AppRole] ?? m.role)
+                              ? (t.roles[m.role as AppRole] ?? m.role)
                               : m.email}
                           </p>
                         </div>
@@ -1871,14 +1876,14 @@ export default function ChatPage() {
         >
           <DialogContent className="max-w-sm">
             <DialogHeader>
-              <DialogTitle>Xóa khỏi nhóm</DialogTitle>
+              <DialogTitle>{t.chat.removeFromGroup}</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
-              Bạn có chắc muốn xóa{" "}
+              {t.chat.confirmRemoveMember}{" "}
               <span className="font-semibold text-foreground">
                 {confirmRemoveMember.full_name}
               </span>{" "}
-              khỏi nhóm này không?
+              {t.chat.fromThisGroup}
             </p>
             <p className="text-xs text-muted-foreground">
               membership_id: {confirmRemoveMember.membership_id}
@@ -1889,7 +1894,7 @@ export default function ChatPage() {
                 onClick={() => setConfirmRemoveMember(null)}
                 disabled={removeMemberMutation.isPending}
               >
-                Hủy
+                {t.common.cancel}
               </Button>
               <Button
                 variant="destructive"
@@ -1900,7 +1905,7 @@ export default function ChatPage() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
                 <UserMinus className="mr-1.5 h-4 w-4" />
-                Xóa khỏi nhóm
+                {t.chat.removeFromGroup}
               </Button>
             </DialogFooter>
           </DialogContent>
