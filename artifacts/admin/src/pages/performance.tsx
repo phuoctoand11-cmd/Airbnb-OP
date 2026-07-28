@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { useI18n } from "@/i18n";
+import { useI18n, type Translations } from "@/i18n";
 import { useCurrency } from "@/lib/currency";
 import { supabase } from "@/lib/supabase";
 import type { Employee, PerformanceLog, MonthlyReview } from "@/lib/supabase";
@@ -278,7 +278,7 @@ function AddScoreModal({ open, onOpenChange, employees, month, year, tiers, preE
       // eslint-disable-next-line no-console
       console.error("[PERFORMANCE_SAVE_ERROR]", { message: e?.message, code: e?.code, raw: err });
       const detail = (e?.code === "42P01" || e?.code === "PGRST205")
-        ? " (Bảng chưa tồn tại — hãy chạy migration SQL trong Supabase)"
+        ? t.performance.tableMissing
         : e?.message ? `: ${e.message}` : "";
       toast({ title: `${t.performance.couldNotSave}${detail}`, variant: "destructive" });
     } finally {
@@ -506,7 +506,7 @@ function EditLogModal({ open, onOpenChange, log, month, year, tiers }: EditLogMo
               rows={2}
               value={adminNote}
               onChange={e => setAdminNote(e.target.value)}
-              placeholder="Ghi chú nội bộ, không hiển thị với nhân viên…"
+              placeholder={t.performance.internalNotePlaceholder}
               className="text-sm"
             />
           </div>
@@ -792,7 +792,7 @@ CREATE POLICY "perf_scores_all" ON employee_performance_scores FOR ALL TO authen
 DROP POLICY IF EXISTS "perf_reviews_all" ON employee_monthly_reviews;
 CREATE POLICY "perf_reviews_all" ON employee_monthly_reviews FOR ALL TO authenticated USING (true) WITH CHECK (true);`;
 
-function MigrationCard({ t }: { t: { performance: Record<string, string> } }) {
+function MigrationCard({ t }: { t: Translations }) {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -1028,7 +1028,7 @@ export default function Performance() {
       }
     >
       {/* Migration banner */}
-      {needsMigration && <div className="mb-6"><MigrationCard t={t as { performance: Record<string, string> }} /></div>}
+      {needsMigration && <div className="mb-6"><MigrationCard t={t} /></div>}
 
       {/* Month / Year selector */}
       <div className="mb-6 flex items-center gap-3">
@@ -1504,22 +1504,15 @@ export default function Performance() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
-                      {[
-                        { label: "Hoàn thành checklist xuất sắc", change: +2 },
-                        { label: "Tải ảnh trước/sau đúng cách", change: +3 },
-                        { label: "Hỗ trợ công việc khẩn cấp", change: +5 },
-                        { label: "Không có khiếu nại 7 ngày", change: +5 },
-                        { label: "Khách khen ngợi", change: +5 },
-                        { label: "Chất lượng phòng VIP xuất sắc", change: +10 },
-                        { label: "Quên tải ảnh", change: -2 },
-                        { label: "Đi muộn nhẹ", change: -2 },
-                        { label: "Checklist chưa hoàn thành", change: -5 },
-                        { label: "Quên xác nhận hoàn thành", change: -5 },
-                        { label: "Vấn đề chất lượng phòng", change: -10 },
-                        { label: "Khách khiếu nại", change: -15 },
-                        { label: "Vắng mặt không thông báo", change: -20 },
-                        { label: "Vi phạm nghiêm trọng", change: -30 },
-                      ].map((rule, i) => (
+                      {/* Reference card only — these are never written to the
+                          database, so the labels can be translated freely. The
+                          point values stay in code, in the dictionary's order. */}
+                      {[2, 3, 5, 5, 5, 10, -2, -2, -5, -5, -10, -15, -20, -30]
+                        .map((change, idx) => ({
+                          change,
+                          label: t.performance.scoreRuleLabels[idx],
+                        }))
+                        .map((rule, i) => (
                         <div key={i} className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm">
                           <span className={`w-8 shrink-0 text-right font-mono font-semibold ${rule.change > 0 ? "text-emerald-600" : "text-red-600"}`}>
                             {rule.change > 0 ? `+${rule.change}` : rule.change}

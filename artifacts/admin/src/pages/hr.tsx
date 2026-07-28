@@ -834,8 +834,8 @@ function EmployeeFormDialog({
         });
         if (error) throw error;
       } else {
-        if (!v.password || v.password.length < 8) throw new Error("Mật khẩu tối thiểu 8 ký tự");
-        if (!v.role) throw new Error("Vui lòng chọn vai trò");
+        if (!v.password || v.password.length < 8) throw new Error(t.hr.passwordMin8);
+        if (!v.role) throw new Error(t.hr.pickRole);
         const { error } = await supabase.rpc("admin_create_employee", {
           p_email: v.email,
           p_password: v.password,
@@ -950,11 +950,11 @@ function EmployeeFormDialog({
               />
               <FormField control={form.control} name="password" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{isEdit ? "Mật khẩu mới" : "Mật khẩu đăng nhập *"}</FormLabel>
+                  <FormLabel>{isEdit ? t.hr.newPassword : t.hr.loginPassword}</FormLabel>
                   <FormControl>
                     <Input
                       type="password"
-                      placeholder={isEdit ? "Để trống nếu không đổi" : "Tối thiểu 8 ký tự"}
+                      placeholder={isEdit ? t.hr.leaveBlankNoChange : t.hr.atLeast8}
                       {...field}
                     />
                   </FormControl>
@@ -1151,15 +1151,15 @@ function EmployeeFormDialog({
                   <FormItem>
                     <FormLabel>{t.common.role} *</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Chọn vai trò" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder={t.hr.selectRole} /></SelectTrigger></FormControl>
                       <SelectContent>
-                        <SelectItem value="admin">Chủ (admin)</SelectItem>
-                        <SelectItem value="manager">Quản lý (manager)</SelectItem>
+                        <SelectItem value="admin">{t.roles.admin}</SelectItem>
+                        <SelectItem value="manager">{t.roles.manager}</SelectItem>
                         <SelectItem value="sales">Sale + Check-in/out (sales)</SelectItem>
-                        <SelectItem value="cleaner">Dọn dẹp (cleaner)</SelectItem>
-                        <SelectItem value="maintenance">Bảo trì (maintenance)</SelectItem>
-                        <SelectItem value="accountant">Kế toán (accountant)</SelectItem>
-                        <SelectItem value="collaborator">Cộng tác viên (collaborator)</SelectItem>
+                        <SelectItem value="cleaner">{t.roles.cleaner}</SelectItem>
+                        <SelectItem value="maintenance">{t.roles.maintenance}</SelectItem>
+                        <SelectItem value="accountant">{t.roles.accountant}</SelectItem>
+                        <SelectItem value="collaborator">{t.roles.collaborator}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -1223,15 +1223,15 @@ function EmployeeFormDialog({
               name="team_id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Nhóm (Team)</FormLabel>
+                  <FormLabel>{t.hr.teamLabel}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value ?? ""}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Không có nhóm" />
+                        <SelectValue placeholder={t.hr.noTeam} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="none">Không có nhóm</SelectItem>
+                      <SelectItem value="none">{t.hr.noTeam}</SelectItem>
                       {(teamsQuery.data ?? []).map((tm) => (
                         <SelectItem key={tm.id} value={tm.id}>
                           {tm.name}

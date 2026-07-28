@@ -572,13 +572,13 @@ export default function ActivityLogs() {
                   )}
                   {meta.listingTitle && (
                     <div className="col-span-2">
-                      <p className="text-xs text-muted-foreground">Căn hộ</p>
+                      <p className="text-xs text-muted-foreground">{t.activityLogs.listingCol}</p>
                       <p className="font-medium">{meta.listingTitle}</p>
                     </div>
                   )}
                   {meta.totalAmount != null && (
                     <div>
-                      <p className="text-xs text-muted-foreground">Tổng tiền</p>
+                      <p className="text-xs text-muted-foreground">{t.activityLogs.totalAmount}</p>
                       <p className="font-medium tabular-nums">
                         {meta.totalAmount.toLocaleString("vi-VN")} ₫
                       </p>
@@ -586,7 +586,7 @@ export default function ActivityLogs() {
                   )}
                   {meta.changedAt && (
                     <div>
-                      <p className="text-xs text-muted-foreground">Thời điểm đổi</p>
+                      <p className="text-xs text-muted-foreground">{t.activityLogs.changedAt}</p>
                       <p className="font-medium">
                         {format(new Date(meta.changedAt), "dd/MM/yyyy HH:mm:ss")}
                       </p>
