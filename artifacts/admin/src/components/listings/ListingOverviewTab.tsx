@@ -225,7 +225,15 @@ function NumberField({
         <FormItem>
           <FormLabel>{label}</FormLabel>
           <FormControl>
-            <Input type="number" step={step} disabled={disabled} {...field} />
+            {/* value must follow the spread: nullable fields hand React a null,
+                which silently flips the input to uncontrolled. */}
+            <Input
+              type="number"
+              step={step}
+              disabled={disabled}
+              {...field}
+              value={field.value ?? ""}
+            />
           </FormControl>
           <FormMessage />
         </FormItem>

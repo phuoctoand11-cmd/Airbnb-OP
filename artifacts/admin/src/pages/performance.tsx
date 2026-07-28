@@ -588,7 +588,9 @@ function EmployeeDetailDialog({ employee, logs, month, year, canManage, isAdmin,
     }
   };
 
-  const reviewData = reviewQuery.data ?? {};
+  // A bare {} fallback widens the type and loses every field; Partial keeps the
+  // shape while still allowing "no review saved yet".
+  const reviewData: Partial<MonthlyReview> = reviewQuery.data ?? {};
 
   return (
     <Dialog open={!!employee} onOpenChange={v => !v && onClose()}>

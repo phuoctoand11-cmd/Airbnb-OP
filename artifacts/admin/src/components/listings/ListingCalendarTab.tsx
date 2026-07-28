@@ -165,7 +165,9 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
         throw error;
       }
       setTableNotFound(false);
-      return (data ?? []) as ListingCalendar[];
+      // The select string is a ternary, so supabase-js cannot parse it at the
+      // type level and infers ParserError. Runtime shape is correct either way.
+      return (data ?? []) as unknown as ListingCalendar[];
     },
   });
 
