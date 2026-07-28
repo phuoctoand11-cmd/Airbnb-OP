@@ -39,6 +39,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLogActivity } from "@/lib/activity-log";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n";
+import { enUS as enLocale } from "date-fns/locale";
 import {
   supabase,
   type Booking,
@@ -46,7 +48,6 @@ import {
   type ListingCalendar,
   type ListingCalStatus,
   LISTING_CAL_STATUSES,
-  LISTING_CAL_STATUS_LABELS,
   BLOCKING_CAL_STATUSES,
 } from "@/lib/supabase";
 
@@ -105,13 +106,14 @@ const STATUS_SWATCH: Record<ListingCalStatus | "booked", string> = {
   cleaning_hold: "bg-amber-400",
 };
 
-const LEGEND_ITEMS: { status: ListingCalStatus | "booked"; label: string }[] = [
-  { status: "available",     label: "Trống" },
-  { status: "booked",        label: "Đã booking" },
-  { status: "blocked",       label: "Đã khóa" },
-  { status: "maintenance",   label: "Bảo trì" },
-  { status: "owner_stay",    label: "Chủ nhà ở" },
-  { status: "cleaning_hold", label: "Đang dọn" },
+/** Labels come from the dictionary at render time — see `t.listingDetail.calStatus`. */
+const LEGEND_STATUSES: (ListingCalStatus | "booked")[] = [
+  "available",
+  "booked",
+  "blocked",
+  "maintenance",
+  "owner_stay",
+  "cleaning_hold",
 ];
 
 // ── Props ──────────────────────────────────────────────────────────────────
@@ -123,6 +125,7 @@ interface Props {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export function ListingCalendarTab({ listing, canManage, isSales = false }: Props) {
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -136,6 +139,13 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
   const start = startOfMonth(cursor);
   const end   = endOfMonth(cursor);
   const days  = eachDayOfInterval({ start, end });
+
+  // date-fns' vi locale renders MMMM as "tháng 08"; write it the way Vietnamese
+  // actually does. Matches the availability calendar header.
+  const monthLabel =
+    lang === "vi"
+      ? `Tháng ${cursor.getMonth() + 1}, ${cursor.getFullYear()}`
+      : format(cursor, "MMMM yyyy", { locale: enLocale });
 
   // ── Data fetching ─────────────────────────────────────────────────────
   const calQuery = useQuery({
@@ -293,14 +303,14 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
           },
         },
       });
-      toast({ title: `Đã cập nhật ${rows.length} ngày.` });
+      toast({ title: `${rows.length} ${t.listingDetail.calUpdatedDays}` });
       qc.invalidateQueries({ queryKey: ["listing_calendar", listing.id] });
       clearSelection();
     },
     onError: (err: Error) =>
       toast({
         variant: "destructive",
-        title: "Không thể lưu lịch",
+        title: t.listingDetail.calSaveFailed,
         description: err.message,
       }),
   });
@@ -330,17 +340,19 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
       {tableNotFound && (
         <Alert className="border-amber-300 bg-amber-50 text-amber-800">
           <Info className="h-4 w-4 text-amber-600" />
-          <AlertTitle className="text-amber-800">Cần tạo bảng listing_calendar</AlertTitle>
+          <AlertTitle className="text-amber-800">{t.listingDetail.calTableMissing}</AlertTitle>
           <AlertDescription className="space-y-2">
             <p className="text-sm">
-              Bảng <code className="rounded bg-amber-100 px-1 font-mono text-xs">listing_calendar</code> chưa tồn tại.
-              Chạy lệnh SQL bên dưới trong Supabase SQL Editor để kích hoạt tính năng này.
+              {t.listingDetail.calTableMissingBody1}{" "}
+              <code className="rounded bg-amber-100 px-1 font-mono text-xs">listing_calendar</code>{" "}
+              {t.listingDetail.calTableMissingBody2}{" "}
+              {t.listingDetail.calTableMissingBody3}
             </p>
             <button
               className="text-xs font-medium underline underline-offset-2"
               onClick={() => setSqlExpanded((v) => !v)}
             >
-              {sqlExpanded ? "Ẩn SQL" : "Xem SQL migration"}
+              {sqlExpanded ? t.listingDetail.calHideSql : t.listingDetail.calViewMigration}
             </button>
             {sqlExpanded && (
               <div className="relative mt-2 rounded-lg border border-amber-300 bg-white/70">
@@ -354,7 +366,7 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
                   onClick={copySql}
                 >
                   <ClipboardCopy className="h-3 w-3" />
-                  {sqlCopied ? "Đã sao chép!" : "Sao chép"}
+                  {sqlCopied ? t.listingDetail.calCopied : t.listingDetail.calCopy}
                 </Button>
               </div>
             )}
@@ -371,7 +383,7 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
               <Button size="icon" variant="outline" onClick={() => setCursor(addMonths(cursor, -1))}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <h3 className="text-base font-semibold">{format(cursor, "MMMM yyyy")}</h3>
+              <h3 className="text-base font-semibold">{monthLabel}</h3>
               <Button size="icon" variant="outline" onClick={() => setCursor(addMonths(cursor, 1))}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -379,7 +391,7 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
 
             {queryError && !tableNotFound ? (
               <Alert variant="destructive">
-                <AlertTitle>Lỗi tải lịch</AlertTitle>
+                <AlertTitle>{t.listingDetail.calLoadError}</AlertTitle>
                 <AlertDescription>{(queryError as Error).message}</AlertDescription>
               </Alert>
             ) : isLoading ? (
@@ -392,7 +404,7 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
               <>
                 {/* Day header row */}
                 <div className="mb-1 grid grid-cols-7 gap-1">
-                  {["T2", "T3", "T4", "T5", "T6", "T7", "CN"].map((d, i) => (
+                  {t.listingDetail.weekdaysShort.map((d, i) => (
                     <div
                       key={d}
                       className={cn(
@@ -449,7 +461,7 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
                             <span className="block truncate text-[9px] font-bold uppercase tracking-wide opacity-90">
                               {displayStatus === "booked"
                                 ? "Booked"
-                                : LISTING_CAL_STATUS_LABELS[displayStatus as ListingCalStatus]}
+                                : t.listingDetail.calStatus[displayStatus as ListingCalStatus]}
                             </span>
                           )}
                           {!isSales && entry?.price_override != null && (
@@ -467,15 +479,15 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
 
             {/* Legend */}
             <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1.5 border-t pt-3">
-              {LEGEND_ITEMS.map(({ status, label }) => (
+              {LEGEND_STATUSES.map((status) => (
                 <span key={status} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span className={cn("h-3 w-3 shrink-0 rounded-sm", STATUS_SWATCH[status])} />
-                  {label}
+                  {t.listingDetail.calStatus[status]}
                 </span>
               ))}
               {canManage && !tableNotFound && (
                 <span className="ml-auto text-[11px] text-muted-foreground">
-                  Shift+click để chọn khoảng
+                  {t.listingDetail.calShiftHint}
                 </span>
               )}
             </div>
@@ -510,12 +522,12 @@ export function ListingCalendarTab({ listing, canManage, isSales = false }: Prop
                 <CalendarDays className="h-8 w-8 text-muted-foreground/40" />
                 <p className="text-sm font-medium text-muted-foreground">
                   {canManage && !tableNotFound
-                    ? "Chọn một hoặc nhiều ngày để chỉnh trạng thái"
-                    : "Xem trạng thái lịch từng ngày"}
+                    ? t.listingDetail.calPickDays
+                    : t.listingDetail.calViewDayStatus}
                 </p>
                 {canManage && !tableNotFound && (
                   <p className="text-xs text-muted-foreground/70">
-                    Click vào ngày để chọn. Shift+click để chọn khoảng.
+                    {t.listingDetail.calClickHint}
                   </p>
                 )}
               </CardContent>
@@ -548,6 +560,7 @@ function BulkEditor({
   onApply,
   onClear,
 }: BulkEditorProps) {
+  const { t } = useI18n();
   const [status, setStatus] = useState<ListingCalStatus>("blocked");
   const [price, setPrice] = useState("");
   const [note, setNote] = useState("");
@@ -591,8 +604,9 @@ function BulkEditor({
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-sm font-semibold">
-              Đã chọn{" "}
-              <span className="text-primary">{selectedDates.length}</span> ngày
+              {t.listingDetail.calSelected}{" "}
+              <span className="text-primary">{selectedDates.length}</span>{" "}
+              {t.listingDetail.calDays}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
               {selectedDates.length <= 3
@@ -610,16 +624,19 @@ function BulkEditor({
           <Alert className="border-red-200 bg-red-50 py-2.5">
             <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
             <AlertDescription className="text-xs text-red-700">
-              <span className="font-semibold">{conflictDates.length} ngày</span> đã có booking —
-              không thể đổi sang trạng thái này.{" "}
-              {applyDates.length > 0 && `Sẽ áp dụng cho ${applyDates.length} ngày còn lại.`}
+              <span className="font-semibold">
+                {conflictDates.length} {t.listingDetail.calDays}
+              </span>{" "}
+              {t.listingDetail.calConflictSuffix}{" "}
+              {applyDates.length > 0 &&
+                t.listingDetail.calConflictApply.replace("{n}", String(applyDates.length))}
             </AlertDescription>
           </Alert>
         )}
 
         {/* Status select */}
         <div className="space-y-1.5">
-          <Label className="text-xs font-medium">Trạng thái lịch</Label>
+          <Label className="text-xs font-medium">{t.listingDetail.calStatusLabel}</Label>
           <Select value={status} onValueChange={(v) => setStatus(v as ListingCalStatus)}>
             <SelectTrigger className="h-9">
               <SelectValue />
@@ -631,7 +648,7 @@ function BulkEditor({
                     <span
                       className={cn("h-2.5 w-2.5 shrink-0 rounded-full", STATUS_SWATCH[s])}
                     />
-                    {LISTING_CAL_STATUS_LABELS[s]}
+                    {t.listingDetail.calStatus[s]}
                   </span>
                 </SelectItem>
               ))}
@@ -642,12 +659,12 @@ function BulkEditor({
         {/* Price override */}
         {!isSales && (
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Giá mỗi đêm (tuỳ chọn)</Label>
+            <Label className="text-xs font-medium">{t.listingDetail.calPricePerNight}</Label>
             <Input
               type="number"
               step="1"
               min="0"
-              placeholder="Để trống = dùng giá cơ bản"
+              placeholder={t.listingDetail.calPricePlaceholder}
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               className="h-9 text-sm"
@@ -657,9 +674,9 @@ function BulkEditor({
 
         {/* Note */}
         <div className="space-y-1.5">
-          <Label className="text-xs font-medium">Ghi chú (tuỳ chọn)</Label>
+          <Label className="text-xs font-medium">{t.listingDetail.calNote}</Label>
           <Input
-            placeholder="VD: Đặt riêng, bảo trì khẩn…"
+            placeholder={t.listingDetail.calNotePlaceholder}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             className="h-9 text-sm"
@@ -668,12 +685,12 @@ function BulkEditor({
 
         {/* Status badge preview */}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">Xem trước:</span>
+          <span className="text-[11px] text-muted-foreground">{t.listingDetail.calPreview}</span>
           <Badge
             variant="outline"
             className={cn("text-[11px] font-medium", STATUS_BADGE_CLS[status])}
           >
-            {LISTING_CAL_STATUS_LABELS[status]}
+            {t.listingDetail.calStatus[status]}
           </Badge>
         </div>
 
@@ -686,10 +703,10 @@ function BulkEditor({
             onClick={handleApply}
           >
             {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-            Áp dụng{applyDates.length !== selectedDates.length ? ` (${applyDates.length})` : ""}
+            {t.dateRange.apply}{applyDates.length !== selectedDates.length ? ` (${applyDates.length})` : ""}
           </Button>
           <Button variant="outline" size="sm" onClick={onClear} disabled={saving}>
-            Bỏ chọn
+            {t.listingDetail.calClear}
           </Button>
         </div>
       </CardContent>
