@@ -724,7 +724,7 @@ export const vi: Translations = {
     writingInto: "Sẽ ghi vào",
     writingIntoAll: "Mọi villa khớp được theo tên",
     excludedBadge: "Villa khác",
-    excludedNote: "{n} dòng thuộc villa khác và sẽ không được ghi.",
+    excludedNote: "Đã lọc bỏ {n} dòng của villa khác — đúng như mong đợi.",
     filterNotApplied: "Edge function chưa được cập nhật",
     filterNotApppliedBody:
       "Bản airbnb-import hiện tại bỏ qua bộ lọc villa, nên bấm xác nhận sẽ ghi toàn bộ file. Hãy deploy function mới trước — mã nguồn nằm ở artifacts/admin/supabase/functions/airbnb-import/index.ts.",

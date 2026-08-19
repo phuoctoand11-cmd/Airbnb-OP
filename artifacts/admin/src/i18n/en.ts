@@ -726,7 +726,7 @@ export const en = {
     writingInto: "Writing into",
     writingIntoAll: "Every villa matched by name",
     excludedBadge: "Other villa",
-    excludedNote: "{n} row(s) belong to another villa and will not be written.",
+    excludedNote: "Filtered out {n} row(s) belonging to another villa — as expected.",
     filterNotApplied: "The edge function has not been updated yet",
     filterNotApppliedBody:
       "This version of airbnb-import ignores the villa filter, so confirming would write the whole file. Deploy the new function first — the source is at artifacts/admin/supabase/functions/airbnb-import/index.ts.",

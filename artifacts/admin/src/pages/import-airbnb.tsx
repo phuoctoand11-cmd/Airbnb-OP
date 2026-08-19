@@ -244,13 +244,13 @@ export default function ImportAirbnb() {
                 </Alert>
               )}
 
+              {/* Plain text, not an Alert. Excluding other villas is the whole
+                  point of the filter, so a warning icon here makes correct
+                  behaviour look like a failure. */}
               {!!summary.excluded && summary.excluded > 0 && (
-                <Alert>
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    {t.importAirbnb.excludedNote.replace("{n}", String(summary.excluded))}
-                  </AlertDescription>
-                </Alert>
+                <p className="text-sm text-muted-foreground">
+                  {t.importAirbnb.excludedNote.replace("{n}", String(summary.excluded))}
+                </p>
               )}
 
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
