@@ -272,7 +272,12 @@ Deno.serve(async (req) => {
     merge_manual: kept.filter((p) => p.action === "merge_manual").length,
     skipped: skippedCount,
     excluded: excludedCount,
-    unmapped: kept.filter((p) => !p.mapped).map((p) => p.listing_name),
+    // Tính trên TOÀN BỘ preview, không chỉ phần được giữ. Dòng chưa map cũng bị
+    // bộ lọc loại ra khỏi `kept`, nên nếu lọc ở đây thì cảnh báo "chưa map villa"
+    // sẽ không bao giờ hiện — đúng lúc người dùng cần nó nhất.
+    unmapped: [...new Set(
+      preview.filter((p) => !p.mapped).map((p) => p.listing_name),
+    )],
     // Giao diện dùng hai trường này để xác nhận bộ lọc THỰC SỰ đã chạy. Bản cũ
     // của function không trả về chúng, nên giao diện sẽ chặn việc ghi thay vì
     // âm thầm nhập nhầm cả file.

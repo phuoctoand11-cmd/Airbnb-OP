@@ -281,9 +281,11 @@ export default function ImportAirbnb() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((r) => (
+                  {/* A confirmation code can appear in more than one payout block,
+                      so it is not unique across rows — pair it with the index. */}
+                  {rows.map((r, i) => (
                     <TableRow
-                      key={r.confirmation_code}
+                      key={`${r.confirmation_code}-${i}`}
                       className={cn(r.excluded && "opacity-45")}
                     >
                       <TableCell>
@@ -295,11 +297,14 @@ export default function ImportAirbnb() {
                       <TableCell className="text-right">{r.usd_after_tax.toFixed(2)}</TableCell>
                       <TableCell className="text-right font-medium">{vnd(r.amount_vnd)}</TableCell>
                       <TableCell>
-                        {r.excluded
+                        {/* "not mapped" outranks "other villa": an unmapped row is
+                            excluded too, but calling it another villa hides the
+                            real cause, which is a name that does not match. */}
+                        {!r.mapped
+                          ? <Badge variant="destructive">{t.importAirbnb.notMapped}</Badge>
+                          : r.excluded
                           ? <Badge variant="outline">{t.importAirbnb.excludedBadge}</Badge>
-                          : r.mapped
-                          ? <Badge variant={ACTION_VARIANT[r.action]}>{actionLabel(r.action)}</Badge>
-                          : <Badge variant="destructive">{t.importAirbnb.notMapped}</Badge>}
+                          : <Badge variant={ACTION_VARIANT[r.action]}>{actionLabel(r.action)}</Badge>}
                       </TableCell>
                     </TableRow>
                   ))}
