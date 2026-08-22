@@ -1,336 +1,288 @@
 // Edge Function: airbnb-import
-// Đọc CSV "completed" của Airbnb và ghi doanh thu vào bookings + revenues.
-// CÁCH TÍNH ĐÚNG: doanh thu VND của mỗi booking = lấy THẲNG số ở dòng "Payout"
-// (cột "Đã chi trả") của nhóm chứa booking đó — KHÔNG quy đổi theo tỷ giá.
-// Booking thuộc nhóm payout = 0đ -> BỎ QUA, không nhập.
-// (Booking "Đồng chủ nhà" có payout > 0 = tiền thật về ANVI -> VẪN GHI doanh thu.)
-// Ngày ghi nhận doanh thu = check-in + 1.
-// GIỮ "Verify JWT" BẬT.
-//
-// Body JSON: { "csv": "<toàn bộ nội dung file .csv>", "dry_run": true,
-//              "listing_id": "<uuid>" | null }
-//
-// listing_id (tuỳ chọn): khi có giá trị, CHỈ những booking khớp đúng villa đó
-// mới được ghi. Booking của villa khác vẫn hiện trong danh sách xem trước với
-// excluded = true để người dùng thấy đã loại gì, nhưng không được ghi và không
-// tính vào tổng. Đây là bộ LỌC, không phải gán cứng: hàm này không bao giờ đổi
-// villa của một booking.
+// Preview is read-only; commit is one authenticated PostgreSQL transaction.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.104.1";
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-);
-
-// --- Tiện ích ---
-
+const MAX_CSV_BYTES = 1024 * 1024;
+const ALLOWED_ROLES = new Set(["admin", "manager", "accountant"]);
 const BOM = 0xfeff;
-
-// Parser CSV chuẩn (xử lý dấu phẩy trong ô có ngoặc kép, và BOM)
-function parseCSV(text: string): string[][] {
-  if (text.charCodeAt(0) === BOM) text = text.slice(1);
-  const rows: string[][] = [];
-  let row: string[] = [], field = "", inQ = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQ) {
-      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
-      else field += c;
-    } else {
-      if (c === '"') inQ = true;
-      else if (c === ",") { row.push(field); field = ""; }
-      else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
-      else if (c === "\r") { /* bỏ qua */ }
-      else field += c;
-    }
-  }
-  if (field.length || row.length) { row.push(field); rows.push(row); }
-  return rows;
-}
-
-// Số: bỏ dấu phẩy ngăn nghìn, giữ dấu chấm thập phân
-function num(s: string): number {
-  const v = parseFloat((s ?? "").replace(/,/g, "").trim());
-  return isNaN(v) ? 0 : v;
-}
-
-// "MM/DD/YYYY" -> "YYYY-MM-DD"
-function toISO(mdy: string): string {
-  const m = (mdy ?? "").trim().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (!m) return "";
-  const mm = m[1].padStart(2, "0"), dd = m[2].padStart(2, "0");
-  return `${m[3]}-${mm}-${dd}`;
-}
-
-// chuẩn hoá tên nhà để so khớp
-function norm(s: string): string {
-  return (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-// cộng n ngày vào 'YYYY-MM-DD' (thuần UTC)
-function addDays(d: string, n: number): string {
-  const dt = new Date(d + "T00:00:00Z");
-  dt.setUTCDate(dt.getUTCDate() + n);
-  return dt.toISOString().slice(0, 10);
-}
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+type Item = {
+  start?: string; end?: string; guest?: string; listingName?: string;
+  sourceAmount: number; withholding: number; currency: string; coHost: boolean;
+};
+type Block = {
+  referenceCode: string; payoutDate: string; paidAmount: number;
+  items: Record<string, Item>;
+};
+type PreviewRow = {
+  confirmation_code: string; guest: string; check_in: string; check_out: string;
+  listing_name: string; listing_id: string | null; mapped: boolean;
+  usd_after_tax: number; amount_vnd: number;
+  action: "create" | "update_imported" | "merge_manual";
+  existing_id: string | null; excluded: boolean; payout_index: number;
+  transaction_type: "reservation" | "co_host";
+  source_amount: number; source_currency: string;
+};
 
-  let body: { csv?: string; dry_run?: boolean; listing_id?: string | null };
-  try { body = await req.json(); }
-  catch { return json({ error: "Body phải là JSON { csv, dry_run, listing_id? }" }, 400); }
-
-  const csv = body.csv ?? "";
-  const dryRun = body.dry_run !== false; // mặc định an toàn
-  const filterListingId = body.listing_id ? String(body.listing_id) : null;
-  if (!csv) return json({ error: "Thiếu nội dung CSV" }, 400);
-
-  const rows = parseCSV(csv);
-  if (rows.length < 2) return json({ error: "File rỗng hoặc sai định dạng" }, 400);
-
-  const header = rows[0];
-  const col = (name: string) => header.findIndex((h) => norm(h) === norm(name));
-  const cLoai = col("Loại"), cMa = col("Mã xác nhận");
-  const cStart = col("Ngày bắt đầu"), cEnd = col("Ngày kết thúc");
-  const cKhach = col("Khách"), cNha = col("Nhà/phòng cho thuê");
-  const cCur = col("Loại tiền tệ"), cSoTien = col("Số tiền"), cChiTra = col("Đã chi trả");
-
-  if (cLoai < 0 || cMa < 0 || cSoTien < 0 || cChiTra < 0) {
-    return json({ error: "Không nhận diện được cột (Loại / Mã xác nhận / Số tiền / Đã chi trả)" }, 400);
+function parseCSV(text: string): string[][] {
+  if (text.charCodeAt(0) === BOM) text = text.slice(1);
+  const rows: string[][] = [];
+  let row: string[] = [], field = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (char === '"') quoted = false;
+      else field += char;
+    } else if (char === '"') quoted = true;
+    else if (char === ",") { row.push(field); field = ""; }
+    else if (char === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (char !== "\r") field += char;
   }
+  if (quoted) throw new Error("CSV contains an unclosed quoted field");
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
 
-  // ---- Gom theo BLOCK payout ----
-  // Mỗi dòng "Payout" (VND) mở một nhóm; các dòng đặt phòng/thuế/đồng chủ nhà ngay sau
-  // thuộc nhóm đó. payoutVND = số ở cột "Đã chi trả" của dòng Payout.
-  type Item = {
-    start?: string; end?: string; khach?: string; nha?: string;
-    sotien: number; tax: number; coHost: boolean;
-  };
-  type Block = { payoutVND: number; items: Record<string, Item> };
+function normalize(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
 
-  const blocks: Block[] = [];
-  let cur: Block | null = null;
-  const ensure = (ma: string): Item => {
-    if (!cur!.items[ma]) cur!.items[ma] = { sotien: 0, tax: 0, coHost: false };
-    return cur!.items[ma];
-  };
+function parseAmount(value: string, label: string): number {
+  const normalized = String(value ?? "").replace(/,/g, "").trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalized)) throw new Error(`${label} is not a valid number`);
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount)) throw new Error(`${label} is not finite`);
+  return amount;
+}
 
-  for (const r of rows.slice(1)) {
-    const loai = (r[cLoai] ?? "").trim();
-    const ma = (r[cMa] ?? "").trim();
-    const cur_ccy = (r[cCur] ?? "").trim();
+function parseDate(value: string, label: string): string {
+  const match = String(value ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) throw new Error(`${label} must use MM/DD/YYYY`);
+  const month = Number(match[1]), day = Number(match[2]), year = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw new Error(`${label} is not a valid calendar date`);
+  }
+  return `${match[3]}-${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`;
+}
 
-    if (loai === "Payout" && cur_ccy === "VND") {
-      cur = { payoutVND: num(r[cChiTra]), items: {} };
-      blocks.push(cur);
-      continue;
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status, headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+}
+
+Deno.serve(async (request) => {
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  try {
+    const authorization = request.headers.get("Authorization") ?? "";
+    const tokenMatch = authorization.match(/^Bearer\s+(.+)$/i);
+    if (!tokenMatch) return json({ error: "Authentication required" }, 401);
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !anonKey) throw new Error("Supabase function environment is incomplete");
+    const supabase = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authorization } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data: authData, error: authError } = await supabase.auth.getUser(tokenMatch[1]);
+    if (authError || !authData.user) return json({ error: "Invalid or expired session" }, 401);
+    const { data: userRow, error: userError } = await supabase
+      .from("users").select("role_id, is_active").eq("id", authData.user.id).single();
+    if (userError || !userRow || userRow.is_active === false) return json({ error: "User is not active" }, 403);
+    const { data: roleRow, error: roleError } = await supabase
+      .from("roles").select("name").eq("id", userRow.role_id).single();
+    if (roleError || !roleRow || !ALLOWED_ROLES.has(roleRow.name)) {
+      return json({ error: "Not authorized to import Airbnb payouts" }, 403);
     }
-    if (!cur) continue; // dòng trước payout đầu tiên (không xảy ra với file Airbnb)
 
-    if (loai === "Đặt phòng" && ma) {
-      const it = ensure(ma);
-      it.start = toISO(r[cStart]); it.end = toISO(r[cEnd]);
-      it.khach = (r[cKhach] ?? "").trim(); it.nha = (r[cNha] ?? "").trim();
-      it.sotien = num(r[cSoTien]);
-    } else if (loai.toLowerCase().includes("withholding") && ma) {
-      ensure(ma).tax += num(r[cSoTien]); // âm
-    } else if (loai.includes("Đồng chủ nhà") && ma) {
-      // Booking dạng đồng chủ nhà: cũng là 1 booking thật.
-      // Lấy ngày/khách/nhà/USD nếu chưa có (không ghi đè dòng Đặt phòng nếu trùng mã).
-      const it = ensure(ma);
-      it.coHost = true;
-      if (!it.start) {
-        it.start = toISO(r[cStart]); it.end = toISO(r[cEnd]);
-        it.khach = (r[cKhach] ?? "").trim(); it.nha = (r[cNha] ?? "").trim();
-        it.sotien = num(r[cSoTien]);
+    let body: { csv?: unknown; dry_run?: unknown; listing_id?: unknown };
+    try { body = await request.json(); }
+    catch { return json({ error: "Body must be valid JSON" }, 400); }
+    const csv = typeof body.csv === "string" ? body.csv : "";
+    const dryRun = body.dry_run !== false;
+    const filterListingId = typeof body.listing_id === "string" && body.listing_id ? body.listing_id : null;
+    if (!csv) return json({ error: "CSV content is required" }, 400);
+    if (new TextEncoder().encode(csv).byteLength > MAX_CSV_BYTES) {
+      return json({ error: "CSV exceeds the 1 MiB import limit" }, 413);
+    }
+
+    const rows = parseCSV(csv);
+    if (rows.length < 2) return json({ error: "CSV is empty" }, 400);
+    const header = rows[0].map(normalize);
+    const requiredColumns = ["Loại", "Mã xác nhận", "Ngày bắt đầu", "Ngày kết thúc", "Khách",
+      "Nhà/phòng cho thuê", "Loại tiền tệ", "Số tiền", "Đã chi trả", "Ngày chi trả", "Mã tham chiếu"];
+    const missing = requiredColumns.filter((name) => !header.includes(normalize(name)));
+    if (missing.length) return json({ error: `Missing required columns: ${missing.join(", ")}` }, 400);
+    const invalidWidths = rows.slice(1).map((row, index) => ({ line: index + 2, columns: row.length }))
+      .filter((row) => row.columns !== header.length);
+    if (invalidWidths.length) return json({ error: "CSV rows have an invalid column count", rows: invalidWidths }, 400);
+
+    const column = (name: string) => header.indexOf(normalize(name));
+    const cType = column("Loại"), cCode = column("Mã xác nhận"), cStart = column("Ngày bắt đầu");
+    const cEnd = column("Ngày kết thúc"), cGuest = column("Khách"), cListing = column("Nhà/phòng cho thuê");
+    const cCurrency = column("Loại tiền tệ"), cAmount = column("Số tiền"), cPaid = column("Đã chi trả");
+    const cPayoutDate = column("Ngày chi trả"), cReference = column("Mã tham chiếu");
+
+    const blocks: Block[] = [];
+    let current: Block | null = null;
+    const ensureItem = (code: string): Item => {
+      if (!current!.items[code]) current!.items[code] = {
+        sourceAmount: 0, withholding: 0, currency: "USD", coHost: false,
+      };
+      return current!.items[code];
+    };
+
+    for (let index = 1; index < rows.length; index++) {
+      const row = rows[index], line = index + 1;
+      const type = String(row[cType] ?? "").trim(), code = String(row[cCode] ?? "").trim();
+      const currency = String(row[cCurrency] ?? "").trim().toUpperCase();
+      if (type === "Payout" && currency === "VND") {
+        const referenceCode = String(row[cReference] ?? "").trim();
+        if (!referenceCode) throw new Error(`Line ${line}: payout reference code is required`);
+        const paidAmount = parseAmount(row[cPaid], `Line ${line} paid amount`);
+        if (paidAmount < 0) throw new Error(`Line ${line}: payout amount cannot be negative`);
+        current = { referenceCode, payoutDate: parseDate(row[cPayoutDate], `Line ${line} payout date`), paidAmount, items: {} };
+        blocks.push(current);
+        continue;
+      }
+      if (!current) continue;
+      if (type === "Đặt phòng" && code) {
+        const item = ensureItem(code);
+        item.start = parseDate(row[cStart], `Line ${line} check-in`);
+        item.end = parseDate(row[cEnd], `Line ${line} check-out`);
+        item.guest = String(row[cGuest] ?? "").trim(); item.listingName = String(row[cListing] ?? "").trim();
+        item.sourceAmount = parseAmount(row[cAmount], `Line ${line} amount`); item.currency = currency || "USD";
+      } else if ((normalize(type).includes("thuế khấu lưu") || normalize(type).includes("withholding")) && code) {
+        ensureItem(code).withholding += parseAmount(row[cAmount], `Line ${line} withholding`);
+      } else if (type.includes("Đồng chủ nhà") && code) {
+        const item = ensureItem(code); item.coHost = true;
+        if (!item.start) {
+          item.start = parseDate(row[cStart], `Line ${line} check-in`);
+          item.end = parseDate(row[cEnd], `Line ${line} check-out`);
+          item.guest = String(row[cGuest] ?? "").trim(); item.listingName = String(row[cListing] ?? "").trim();
+          item.sourceAmount = parseAmount(row[cAmount], `Line ${line} amount`); item.currency = currency || "USD";
+        }
       }
     }
-  }
+    if (!blocks.length) return json({ error: "No VND payout rows were found" }, 400);
 
-  // ---- Bảng map tên nhà Airbnb -> villa trong app ----
-  const { data: listings } = await supabase
-    .from("listings").select("id, title, airbnb_listing_name");
-  const byName: Record<string, string> = {};
-  (listings ?? []).forEach((l: any) => {
-    if (l.airbnb_listing_name) byName[norm(l.airbnb_listing_name)] = l.id;
-  });
+    const { data: listings, error: listingsError } = await supabase
+      .from("listings").select("id, title, airbnb_listing_name");
+    if (listingsError) throw new Error("Unable to load listing mappings");
+    const listingsByName = new Map<string, string>();
+    for (const listing of listings ?? []) if (listing.airbnb_listing_name) {
+      listingsByName.set(normalize(listing.airbnb_listing_name), listing.id);
+    }
+    let filterListingTitle: string | null = null;
+    if (filterListingId) {
+      const match = (listings ?? []).find((listing) => listing.id === filterListingId);
+      if (!match) return json({ error: "listing_id does not exist" }, 400);
+      filterListingTitle = match.title ?? null;
+    }
 
-  // Nếu người dùng chọn lọc theo villa, villa đó phải tồn tại. Một id sai là lỗi
-  // cấu hình, không phải "không khớp gì cả" — dừng hẳn thay vì ghi 0 dòng im lặng.
-  let filterListingTitle: string | null = null;
-  if (filterListingId) {
-    const hit = (listings ?? []).find((l: any) => l.id === filterListingId);
-    if (!hit) return json({ error: "listing_id không tồn tại" }, 400);
-    filterListingTitle = hit.title ?? null;
-  }
+    const findExisting = async (listingId: string, checkIn: string, checkOut: string, code: string) => {
+      const byCode = await supabase.from("bookings").select("id").eq("confirmation_code", code).limit(1).maybeSingle();
+      if (byCode.error) throw new Error("Unable to check existing confirmation codes");
+      if (byCode.data) return { id: byCode.data.id as string, by: "code" as const };
+      const byDate = await supabase.from("bookings").select("id").eq("listing_id", listingId)
+        .eq("check_in", checkIn).eq("check_out", checkOut).is("confirmation_code", null).limit(1);
+      if (byDate.error) throw new Error("Unable to check existing booking dates");
+      return byDate.data?.length ? { id: byDate.data[0].id as string, by: "date" as const } : { id: null, by: null };
+    };
 
-  // Tìm booking đã có để KHÔNG tạo trùng
-  async function findExisting(listingId: string, ci: string, co: string, code: string) {
-    const { data: byCode } = await supabase
-      .from("bookings").select("id").eq("confirmation_code", code).maybeSingle();
-    if (byCode) return { id: byCode.id as string, by: "code" as const };
-    const { data: byDate } = await supabase
-      .from("bookings").select("id")
-      .eq("listing_id", listingId).eq("check_in", ci).eq("check_out", co)
-      .is("confirmation_code", null).limit(1);
-    if (byDate && byDate.length) return { id: byDate[0].id as string, by: "date" as const };
-    return { id: null, by: null };
-  }
+    const preview: PreviewRow[] = [];
+    let sumVnd = 0, sumUsd = 0, skippedCount = 0, excludedCount = 0;
+    for (let payoutIndex = 0; payoutIndex < blocks.length; payoutIndex++) {
+      const block = blocks[payoutIndex];
+      const codes = Object.keys(block.items).filter((code) => block.items[code].start);
+      if (!codes.length) continue;
+      if (block.paidAmount === 0) { skippedCount += codes.length; continue; }
+      const netAmounts = codes.map((code) => Math.max(0, block.items[code].sourceAmount + block.items[code].withholding));
+      const totalNet = netAmounts.reduce((total, amount) => total + amount, 0);
+      if (totalNet <= 0) { skippedCount += codes.length; continue; }
+      const allocatedAmounts: Record<string, number> = {}; let allocated = 0;
+      codes.forEach((code, index) => {
+        const amount = index === codes.length - 1 ? Math.round(block.paidAmount) - allocated
+          : Math.round(block.paidAmount * (netAmounts[index] / totalNet));
+        allocatedAmounts[code] = amount; allocated += amount;
+      });
 
-  // ---- Dựng danh sách xem trước ----
-  const preview: any[] = [];
-  let sumVND = 0, sumUSD = 0, skippedCount = 0, excludedCount = 0;
-
-  for (const blk of blocks) {
-    // các mã có thông tin booking (ngày bắt đầu) — từ "Đặt phòng" HOẶC "Đồng chủ nhà"
-    const mas = Object.keys(blk.items).filter((ma) => blk.items[ma].start);
-    if (mas.length === 0) continue;
-
-    // net USD từng booking (để chia khi 1 payout gồm nhiều booking)
-    const nets = mas.map((ma) => Math.max(0, blk.items[ma].sotien + blk.items[ma].tax));
-    const totalNet = nets.reduce((a, b) => a + b, 0) || 1;
-
-    // phân bổ payout VND cho từng booking (giữ tổng khớp tuyệt đối)
-    // LƯU Ý: chia trên TOÀN BỘ nhóm, kể cả booking sẽ bị lọc bỏ. Nếu chỉ chia cho
-    // phần còn lại thì booking được giữ sẽ nhận sai số tiền.
-    const amounts: Record<string, number> = {};
-    if (blk.payoutVND > 0) {
-      if (mas.length === 1) {
-        amounts[mas[0]] = Math.round(blk.payoutVND);
-      } else {
-        let allocated = 0;
-        mas.forEach((ma, i) => {
-          if (i < mas.length - 1) {
-            const a = Math.round(blk.payoutVND * (nets[i] / totalNet));
-            amounts[ma] = a; allocated += a;
-          } else {
-            amounts[ma] = Math.round(blk.payoutVND) - allocated;
-          }
+      for (const code of codes) {
+        const item = block.items[code];
+        const listingId = listingsByName.get(normalize(item.listingName)) ?? null;
+        const excluded = !!filterListingId && listingId !== filterListingId;
+        if (excluded) excludedCount++;
+        let action: PreviewRow["action"] = "create", existingId: string | null = null;
+        if (listingId && !excluded) {
+          const existing = await findExisting(listingId, item.start!, item.end!, code);
+          existingId = existing.id;
+          action = existing.by === "code" ? "update_imported" : existing.by === "date" ? "merge_manual" : "create";
+        }
+        const sourceAmount = item.sourceAmount + item.withholding, amountVnd = allocatedAmounts[code] ?? 0;
+        if (!excluded) { sumVnd += amountVnd; sumUsd += sourceAmount; }
+        preview.push({
+          confirmation_code: code, guest: item.guest || "Khách Airbnb", check_in: item.start!, check_out: item.end!,
+          listing_name: item.listingName ?? "", listing_id: listingId, mapped: !!listingId,
+          usd_after_tax: Number(sourceAmount.toFixed(2)), amount_vnd: amountVnd, action, existing_id: existingId,
+          excluded, payout_index: payoutIndex, transaction_type: item.coHost ? "co_host" : "reservation",
+          source_amount: Number(item.sourceAmount.toFixed(2)), source_currency: item.currency,
         });
       }
     }
 
-    for (const ma of mas) {
-      const it = blk.items[ma];
-
-      // BỎ QUA: chỉ khi nhóm payout = 0đ (không có tiền thật về ANVI).
-      // -> không đưa vào danh sách xem trước, chỉ đếm để báo lại.
-      if (blk.payoutVND <= 0) { skippedCount++; continue; }
-
-      const afterTax = it.sotien + it.tax;
-      const listing_id = byName[norm(it.nha ?? "")] ?? null;
-      const amount_vnd = amounts[ma] ?? 0;
-
-      // Lọc theo villa đã chọn. Dòng vẫn hiện để người dùng thấy đã loại gì.
-      const excluded = !!filterListingId && listing_id !== filterListingId;
-      if (excluded) excludedCount++;
-
-      let action = "create";
-      let existing_id: string | null = null;
-      if (listing_id && !excluded) {
-        const m = await findExisting(listing_id, it.start!, it.end!, ma);
-        existing_id = m.id;
-        action = m.by === "code" ? "update_imported"
-               : m.by === "date" ? "merge_manual"
-               : "create";
-      }
-
-      if (!excluded) { sumVND += amount_vnd; sumUSD += afterTax; }
-
-      preview.push({
-        confirmation_code: ma,
-        guest: it.khach || "Khách Airbnb",
-        check_in: it.start!, check_out: it.end!,
-        listing_name: it.nha ?? "",
-        listing_id, mapped: !!listing_id,
-        usd_after_tax: +afterTax.toFixed(2),
-        amount_vnd,
-        action, existing_id,
-        excluded,
-      });
-    }
-  }
-
-  const kept = preview.filter((p) => !p.excluded);
-
-  const summary = {
-    // tỷ giá trung bình CHỈ để tham khảo (không dùng để tính nữa)
-    rate: sumUSD > 0 ? Math.round(sumVND / sumUSD) : 0,
-    total_payout_vnd: Math.round(sumVND),
-    total_usd_after_tax: +sumUSD.toFixed(2),
-    count: kept.length,
-    create: kept.filter((p) => p.mapped && p.action === "create").length,
-    update_imported: kept.filter((p) => p.action === "update_imported").length,
-    merge_manual: kept.filter((p) => p.action === "merge_manual").length,
-    skipped: skippedCount,
-    excluded: excludedCount,
-    // Tính trên TOÀN BỘ preview, không chỉ phần được giữ. Dòng chưa map cũng bị
-    // bộ lọc loại ra khỏi `kept`, nên nếu lọc ở đây thì cảnh báo "chưa map villa"
-    // sẽ không bao giờ hiện — đúng lúc người dùng cần nó nhất.
-    unmapped: [...new Set(
-      preview.filter((p) => !p.mapped).map((p) => p.listing_name),
-    )],
-    // Giao diện dùng hai trường này để xác nhận bộ lọc THỰC SỰ đã chạy. Bản cũ
-    // của function không trả về chúng, nên giao diện sẽ chặn việc ghi thay vì
-    // âm thầm nhập nhầm cả file.
-    applied_listing_filter: filterListingId,
-    applied_listing_title: filterListingTitle,
-  };
-
-  if (dryRun) return json({ dry_run: true, summary, bookings: preview });
-
-  // ----- GHI THẬT -----
-  const written: any[] = [];
-  for (const p of preview) {
-    if (p.excluded) { written.push({ code: p.confirmation_code, skipped: "villa khác — đã lọc bỏ" }); continue; }
-    if (!p.listing_id) { written.push({ code: p.confirmation_code, skipped: "villa chưa được map" }); continue; }
-
-    let bookingId: string | null = p.existing_id;
-
-    const bookingRow = {
-      listing_id: p.listing_id,
-      guest_name: p.guest,
-      check_in: p.check_in, check_out: p.check_out,
-      guests: 1,
-      total_amount: p.amount_vnd,
-      status: "completed", source: "Airbnb",
-      confirmation_code: p.confirmation_code,
+    const kept = preview.filter((row) => !row.excluded);
+    const unmapped = [...new Set(preview.filter((row) => !row.mapped).map((row) => row.listing_name))];
+    const summary = {
+      rate: sumUsd > 0 ? Math.round(sumVnd / sumUsd) : 0, total_payout_vnd: Math.round(sumVnd),
+      total_usd_after_tax: Number(sumUsd.toFixed(2)), count: kept.length,
+      create: kept.filter((row) => row.mapped && row.action === "create").length,
+      update_imported: kept.filter((row) => row.action === "update_imported").length,
+      merge_manual: kept.filter((row) => row.action === "merge_manual").length,
+      skipped: skippedCount, excluded: excludedCount, unmapped,
+      applied_listing_filter: filterListingId, applied_listing_title: filterListingTitle,
     };
+    if (dryRun) return json({ dry_run: true, summary, bookings: preview });
+    if (unmapped.length) return json({ error: "All Airbnb listing names must be mapped before commit" }, 400);
+    const eligible = preview.filter((row) => !row.excluded && row.listing_id && row.amount_vnd > 0);
+    if (!eligible.length) return json({ error: "There are no mapped transactions to write" }, 400);
 
-    if (bookingId) {
-      await supabase.from("bookings").update(bookingRow).eq("id", bookingId);
-    } else {
-      const { data: ins, error } = await supabase.from("bookings").insert(bookingRow).select("id").single();
-      if (error) { written.push({ code: p.confirmation_code, error: error.message }); continue; }
-      bookingId = ins.id;
+    const idempotencyKeys = new Set<string>();
+    for (const row of eligible) {
+      const block = blocks[row.payout_index];
+      const key = [row.confirmation_code, block.payoutDate, row.transaction_type, row.source_amount].join("|");
+      if (idempotencyKeys.has(key)) return json({ error: "CSV contains duplicate Airbnb transactions" }, 400);
+      idempotencyKeys.add(key);
     }
+    const payouts = blocks.map((block, payoutIndex) => ({
+      reference_code: block.referenceCode, payout_date: block.payoutDate, paid_amount: block.paidAmount,
+      transactions: eligible.filter((row) => row.payout_index === payoutIndex).map((row) => ({
+        listing_id: row.listing_id, confirmation_code: row.confirmation_code,
+        transaction_type: row.transaction_type, guest_name: row.guest, check_in: row.check_in, check_out: row.check_out,
+        amount: row.source_amount, currency: row.source_currency, allocated_amount_vnd: row.amount_vnd,
+      })),
+    })).filter((payout) => payout.transactions.length > 0);
 
-    const { error: rerr } = await supabase.from("revenues").upsert({
-      listing_id: p.listing_id, booking_id: bookingId,
-      amount: p.amount_vnd, category: "booking_revenue",
-      received_at: addDays(p.check_in, 1),
-      description: `Airbnb ${p.confirmation_code} - ${p.guest}`,
-    }, { onConflict: "booking_id,category" });
-
-    written.push({
-      code: p.confirmation_code, booking_id: bookingId, action: p.action,
-      amount_vnd: p.amount_vnd, revenue_error: rerr?.message ?? null,
+    const { data: commitResult, error: commitError } = await supabase.rpc("commit_airbnb_import", {
+      p_payouts: payouts, p_expected_listing_id: filterListingId,
     });
+    if (commitError) {
+      console.error("airbnb-import RPC failed", { code: commitError.code });
+      return json({ error: "Airbnb import was rolled back" }, 500);
+    }
+    return json({ dry_run: false, summary, ...(commitResult as Record<string, unknown>) });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Unexpected import error" }, 400);
   }
-
-  return json({ dry_run: false, summary, written });
 });
-
-function json(obj: unknown, status = 200): Response {
-  return new Response(JSON.stringify(obj, null, 2), {
-    status, headers: { "Content-Type": "application/json", ...corsHeaders },
-  });
-}
