@@ -31,7 +31,7 @@ type Row = {
   usd_after_tax: number;
   amount_vnd: number | null;
   requires_exact_vnd?: boolean;
-  action: "create" | "update_imported" | "merge_manual";
+  action: "create" | "update_imported" | "merge_manual" | "duplicate_skip";
   /** Belongs to a different villa than the one selected — shown, never written. */
   excluded?: boolean;
 };
@@ -42,6 +42,7 @@ type Summary = {
   create: number;
   update_imported: number;
   merge_manual: number;
+  duplicate: number;
   unmapped: string[];
   blocked_multi_booking_payouts?: string[];
   excluded?: number;
@@ -58,6 +59,7 @@ const ACTION_VARIANT: Record<Row["action"], "default" | "secondary" | "outline">
   create: "default",
   update_imported: "secondary",
   merge_manual: "outline",
+  duplicate_skip: "secondary",
 };
 
 export default function ImportAirbnb() {
@@ -65,12 +67,12 @@ export default function ImportAirbnb() {
   const { role } = useAuth();
   const { toast } = useToast();
 
-  const actionLabel = (a: Row["action"]) =>
-    a === "create"
-      ? t.importAirbnb.actionCreate
-      : a === "update_imported"
-      ? t.importAirbnb.actionUpdate
-      : t.importAirbnb.actionMerge;
+  const actionLabel = (a: Row["action"]) => {
+    if (a === "create") return t.importAirbnb.actionCreate;
+    if (a === "update_imported") return t.importAirbnb.actionUpdate;
+    if (a === "merge_manual") return t.importAirbnb.actionMerge;
+    return t.importAirbnb.actionDuplicate;
+  };
   const queryClient = useQueryClient();
 
   const [listingId, setListingId] = useState<string>(ALL_LISTINGS);
@@ -137,7 +139,19 @@ export default function ImportAirbnb() {
     const { data, error } = await supabase.functions.invoke("airbnb-import", {
       body: { csv: csvText, dry_run, listing_id: selectedListingId },
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      let message = error.message;
+      const context = (error as { context?: Response }).context;
+      if (context) {
+        try {
+          const payload = await context.json();
+          if (typeof payload?.error === "string") message = payload.error;
+        } catch {
+          // Keep the SDK message when the response body is not JSON.
+        }
+      }
+      throw new Error(message);
+    }
     if (data?.error) throw new Error(data.error);
     return data;
   };
@@ -181,7 +195,8 @@ export default function ImportAirbnb() {
   const filterHonoured =
     !selectedListingId || summary?.applied_listing_filter === selectedListingId;
   const writableRows = rows.filter((r) =>
-    r.mapped && !r.excluded && !r.requires_exact_vnd && r.amount_vnd !== null
+    r.action !== "duplicate_skip" && r.mapped && !r.excluded &&
+    !r.requires_exact_vnd && r.amount_vnd !== null
   );
   const hasUnallocatedPayouts = !!summary?.blocked_multi_booking_payouts?.length;
 
@@ -269,7 +284,10 @@ export default function ImportAirbnb() {
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <Stat label={t.importAirbnb.totalPayout} value={vnd(summary.total_payout_vnd)} />
                 <Stat label={t.importAirbnb.bookingCount} value={String(summary.count)} />
-                <Stat label={t.importAirbnb.createUpdateMerge} value={`${summary.create} / ${summary.update_imported} / ${summary.merge_manual}`} />
+                <Stat
+                  label={t.importAirbnb.createUpdateMerge}
+                  value={`${summary.create} / ${summary.update_imported} / ${summary.merge_manual} / ${summary.duplicate}`}
+                />
               </div>
 
               {summary.unmapped.length > 0 && (
@@ -321,13 +339,18 @@ export default function ImportAirbnb() {
                       <TableCell className="text-sm">{r.check_in} → {r.check_out}</TableCell>
                       <TableCell className="text-right">{r.usd_after_tax.toFixed(2)}</TableCell>
                       <TableCell className="text-right font-medium">
-                        {r.amount_vnd === null ? t.importAirbnb.exactVndMissing : vnd(r.amount_vnd)}
+                        {r.action === "duplicate_skip"
+                          ? t.importAirbnb.duplicateAmount
+                          : r.amount_vnd === null
+                          ? t.importAirbnb.exactVndMissing
+                          : vnd(r.amount_vnd)}
                       </TableCell>
                       <TableCell>
-                        {/* "not mapped" outranks "other villa": an unmapped row is
-                            excluded too, but calling it another villa hides the
-                            real cause, which is a name that does not match. */}
-                        {!r.mapped
+                        {/* A confirmed ledger duplicate always wins because it will
+                            be skipped regardless of current listing mapping. */}
+                        {r.action === "duplicate_skip"
+                          ? <Badge variant={ACTION_VARIANT[r.action]}>{actionLabel(r.action)}</Badge>
+                          : !r.mapped
                           ? <Badge variant="destructive">{t.importAirbnb.notMapped}</Badge>
                           : r.excluded
                           ? <Badge variant="outline">{t.importAirbnb.excludedBadge}</Badge>

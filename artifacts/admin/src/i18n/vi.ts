@@ -697,6 +697,8 @@ export const vi: Translations = {
     actionCreate: "Tạo mới",
     actionUpdate: "Cập nhật",
     actionMerge: "Gộp vào booking tay",
+    actionDuplicate: "Đã nhập — bỏ qua",
+    duplicateAmount: "Đã có trong hệ thống",
     step1: "2. Chọn file CSV từ Airbnb",
     picked: "Đã chọn:",
     preview: "Xem trước",
@@ -704,7 +706,7 @@ export const vi: Translations = {
     rateApplied: "Tỷ giá áp dụng",
     totalPayout: "Tổng VND thực nhận trong CSV",
     bookingCount: "Số booking",
-    createUpdateMerge: "Tạo mới / Cập nhật / Gộp",
+    createUpdateMerge: "Mới / Cập nhật / Gộp / Trùng",
     unmappedTitle: "Có nhà chưa được map villa (sẽ bị bỏ qua)",
     unmappedBody:
       "Hãy điền tên Airbnb cho villa tương ứng rồi thử lại.",
