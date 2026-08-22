@@ -1,0 +1,5 @@
+Loại,Mã xác nhận,Ngày bắt đầu,Ngày kết thúc,Khách,Nhà/phòng cho thuê,Loại tiền tệ,Số tiền,Đã chi trả,Ngày chi trả,Mã tham chiếu
+Payout,,,,,,,0,"9,500,000",08/20/2026,PAYOUT-REDACTED-002
+Đặt phòng,HMREDACTED2,08/05/2026,08/08/2026,Khách Mẫu A,Villa Mẫu 1,USD,240,,08/20/2026,PAYOUT-REDACTED-002
+Thuế khấu lưu,HMREDACTED2,,,,,USD,-12,,08/20/2026,PAYOUT-REDACTED-002
+Đặt phòng,HMREDACTED3,08/10/2026,08/12/2026,Khách Mẫu B,Villa Mẫu 2,USD,180,,08/20/2026,PAYOUT-REDACTED-002

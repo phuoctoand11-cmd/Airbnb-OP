@@ -52,3 +52,9 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Local n8n runtime data and exports
+automation/n8n/backups/*
+!automation/n8n/backups/.gitkeep
+automation/n8n/exports/*
+!automation/n8n/exports/.gitkeep
