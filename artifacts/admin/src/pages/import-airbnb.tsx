@@ -15,9 +15,11 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, canViewPrices } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/i18n";
 import { supabase } from "@/lib/supabase";
+
+const MAX_CSV_BYTES = 1024 * 1024;
 
 type Row = {
   confirmation_code: string;
@@ -93,10 +95,12 @@ export default function ImportAirbnb() {
       if (error) throw error;
       return (data ?? []) as { id: string; title: string }[];
     },
-    enabled: canViewPrices(role),
+    enabled: role === "admin" || role === "manager" || role === "accountant",
   });
 
-  if (!canViewPrices(role)) {
+  const canImport = role === "admin" || role === "manager" || role === "accountant";
+
+  if (!canImport) {
     return (
       <AppLayout title={t.importAirbnb.title}>
         <Alert variant="destructive">
@@ -116,6 +120,11 @@ export default function ImportAirbnb() {
     if (!f) return;
     reset();
     setFileName(f.name);
+    if (f.size > MAX_CSV_BYTES) {
+      setCsvText(null);
+      setError("CSV exceeds the 1 MiB import limit");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => setCsvText(String(reader.result ?? ""));
     reader.readAsText(f, "utf-8");
