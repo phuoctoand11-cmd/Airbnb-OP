@@ -23,11 +23,12 @@ type Block = {
 type PreviewRow = {
   confirmation_code: string; guest: string; check_in: string; check_out: string;
   listing_name: string; listing_id: string | null; mapped: boolean;
-  usd_after_tax: number; amount_vnd: number;
+  usd_after_tax: number; amount_vnd: number | null;
   action: "create" | "update_imported" | "merge_manual";
   existing_id: string | null; excluded: boolean; payout_index: number;
   transaction_type: "reservation" | "co_host";
   source_amount: number; source_currency: string;
+  requires_exact_vnd: boolean;
 };
 
 function parseCSV(text: string): string[][] {
@@ -148,7 +149,10 @@ Deno.serve(async (request) => {
       const row = rows[index], line = index + 1;
       const type = String(row[cType] ?? "").trim(), code = String(row[cCode] ?? "").trim();
       const currency = String(row[cCurrency] ?? "").trim().toUpperCase();
-      if (type === "Payout" && currency === "VND") {
+      if (type === "Payout") {
+        if (currency && currency !== "VND") {
+          throw new Error(`Line ${line}: unsupported payout currency ${currency}`);
+        }
         const referenceCode = String(row[cReference] ?? "").trim();
         if (!referenceCode) throw new Error(`Line ${line}: payout reference code is required`);
         const paidAmount = parseAmount(row[cPaid], `Line ${line} paid amount`);
@@ -203,21 +207,16 @@ Deno.serve(async (request) => {
     };
 
     const preview: PreviewRow[] = [];
-    let sumVnd = 0, sumUsd = 0, skippedCount = 0, excludedCount = 0;
+    let totalPayoutVnd = 0, sumUsd = 0, skippedCount = 0, excludedCount = 0;
+    const blockedMultiBookingPayouts: string[] = [];
     for (let payoutIndex = 0; payoutIndex < blocks.length; payoutIndex++) {
       const block = blocks[payoutIndex];
       const codes = Object.keys(block.items).filter((code) => block.items[code].start);
       if (!codes.length) continue;
       if (block.paidAmount === 0) { skippedCount += codes.length; continue; }
-      const netAmounts = codes.map((code) => Math.max(0, block.items[code].sourceAmount + block.items[code].withholding));
-      const totalNet = netAmounts.reduce((total, amount) => total + amount, 0);
-      if (totalNet <= 0) { skippedCount += codes.length; continue; }
-      const allocatedAmounts: Record<string, number> = {}; let allocated = 0;
-      codes.forEach((code, index) => {
-        const amount = index === codes.length - 1 ? Math.round(block.paidAmount) - allocated
-          : Math.round(block.paidAmount * (netAmounts[index] / totalNet));
-        allocatedAmounts[code] = amount; allocated += amount;
-      });
+      totalPayoutVnd += block.paidAmount;
+      const requiresExactVnd = codes.length > 1;
+      if (requiresExactVnd) blockedMultiBookingPayouts.push(block.referenceCode);
 
       for (const code of codes) {
         const item = block.items[code];
@@ -230,14 +229,16 @@ Deno.serve(async (request) => {
           existingId = existing.id;
           action = existing.by === "code" ? "update_imported" : existing.by === "date" ? "merge_manual" : "create";
         }
-        const sourceAmount = item.sourceAmount + item.withholding, amountVnd = allocatedAmounts[code] ?? 0;
-        if (!excluded) { sumVnd += amountVnd; sumUsd += sourceAmount; }
+        const sourceAmount = item.sourceAmount + item.withholding;
+        const amountVnd = requiresExactVnd ? null : block.paidAmount;
+        if (!excluded) sumUsd += sourceAmount;
         preview.push({
           confirmation_code: code, guest: item.guest || "Khách Airbnb", check_in: item.start!, check_out: item.end!,
           listing_name: item.listingName ?? "", listing_id: listingId, mapped: !!listingId,
           usd_after_tax: Number(sourceAmount.toFixed(2)), amount_vnd: amountVnd, action, existing_id: existingId,
           excluded, payout_index: payoutIndex, transaction_type: item.coHost ? "co_host" : "reservation",
           source_amount: Number(item.sourceAmount.toFixed(2)), source_currency: item.currency,
+          requires_exact_vnd: requiresExactVnd,
         });
       }
     }
@@ -245,17 +246,23 @@ Deno.serve(async (request) => {
     const kept = preview.filter((row) => !row.excluded);
     const unmapped = [...new Set(preview.filter((row) => !row.mapped).map((row) => row.listing_name))];
     const summary = {
-      rate: sumUsd > 0 ? Math.round(sumVnd / sumUsd) : 0, total_payout_vnd: Math.round(sumVnd),
+      total_payout_vnd: Math.round(totalPayoutVnd),
       total_usd_after_tax: Number(sumUsd.toFixed(2)), count: kept.length,
       create: kept.filter((row) => row.mapped && row.action === "create").length,
       update_imported: kept.filter((row) => row.action === "update_imported").length,
       merge_manual: kept.filter((row) => row.action === "merge_manual").length,
       skipped: skippedCount, excluded: excludedCount, unmapped,
+      blocked_multi_booking_payouts: blockedMultiBookingPayouts,
       applied_listing_filter: filterListingId, applied_listing_title: filterListingTitle,
     };
     if (dryRun) return json({ dry_run: true, summary, bookings: preview });
     if (unmapped.length) return json({ error: "All Airbnb listing names must be mapped before commit" }, 400);
-    const eligible = preview.filter((row) => !row.excluded && row.listing_id && row.amount_vnd > 0);
+    if (kept.some((row) => row.requires_exact_vnd)) {
+      return json({ error: "Multi-booking payouts require exact VND amounts per booking" }, 400);
+    }
+    const eligible = preview.filter((row) =>
+      !row.excluded && row.listing_id && typeof row.amount_vnd === "number" && row.amount_vnd > 0
+    );
     if (!eligible.length) return json({ error: "There are no mapped transactions to write" }, 400);
 
     const idempotencyKeys = new Set<string>();
@@ -270,7 +277,7 @@ Deno.serve(async (request) => {
       transactions: eligible.filter((row) => row.payout_index === payoutIndex).map((row) => ({
         listing_id: row.listing_id, confirmation_code: row.confirmation_code,
         transaction_type: row.transaction_type, guest_name: row.guest, check_in: row.check_in, check_out: row.check_out,
-        amount: row.source_amount, currency: row.source_currency, allocated_amount_vnd: row.amount_vnd,
+        amount: row.source_amount, currency: row.source_currency, allocated_amount_vnd: row.amount_vnd!,
       })),
     })).filter((payout) => payout.transactions.length > 0);
 

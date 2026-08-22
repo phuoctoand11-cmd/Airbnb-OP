@@ -704,7 +704,7 @@ export const en = {
     preview: "Preview",
     step2: "3. Preview",
     rateApplied: "Exchange rate applied",
-    totalPayout: "Total payout received",
+    totalPayout: "Exact VND payout in CSV",
     bookingCount: "Bookings",
     createUpdateMerge: "Create / Update / Merge",
     unmappedTitle: "Some properties are not mapped to a villa (they will be skipped)",
@@ -732,6 +732,10 @@ export const en = {
       "This version of airbnb-import ignores the villa filter, so confirming would write the whole file. Deploy the new function first — the source is at artifacts/admin/supabase/functions/airbnb-import/index.ts.",
     nothingToWrite: "No row in this file belongs to the selected villa.",
     revenueVnd: "Revenue VND",
+    exactVndRequiredTitle: "Exact VND per booking is unavailable",
+    exactVndRequiredBody:
+      "Payout {refs} contains multiple bookings but the CSV provides only one VND total. The system will not allocate it using an exchange rate or ratio; exact VND data per booking is required before writing.",
+    exactVndMissing: "Exact VND unavailable",
   },
   chat: {
     groupDeleteFailed: "Could not delete the group",

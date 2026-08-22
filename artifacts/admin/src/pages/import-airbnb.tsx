@@ -29,13 +29,13 @@ type Row = {
   listing_name: string;
   mapped: boolean;
   usd_after_tax: number;
-  amount_vnd: number;
+  amount_vnd: number | null;
+  requires_exact_vnd?: boolean;
   action: "create" | "update_imported" | "merge_manual";
   /** Belongs to a different villa than the one selected — shown, never written. */
   excluded?: boolean;
 };
 type Summary = {
-  rate: number;
   total_payout_vnd: number;
   total_usd_after_tax: number;
   count: number;
@@ -43,6 +43,7 @@ type Summary = {
   update_imported: number;
   merge_manual: number;
   unmapped: string[];
+  blocked_multi_booking_payouts?: string[];
   excluded?: number;
   /** Echoed back by the function so the UI can prove the filter actually ran. */
   applied_listing_filter?: string | null;
@@ -179,7 +180,10 @@ export default function ImportAirbnb() {
   // proves the filter ran.
   const filterHonoured =
     !selectedListingId || summary?.applied_listing_filter === selectedListingId;
-  const writableRows = rows.filter((r) => r.mapped && !r.excluded);
+  const writableRows = rows.filter((r) =>
+    r.mapped && !r.excluded && !r.requires_exact_vnd && r.amount_vnd !== null
+  );
+  const hasUnallocatedPayouts = !!summary?.blocked_multi_booking_payouts?.length;
 
   return (
     <AppLayout title={t.importAirbnb.title}>
@@ -262,8 +266,7 @@ export default function ImportAirbnb() {
                 </p>
               )}
 
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Stat label={t.importAirbnb.rateApplied} value={`${summary.rate.toLocaleString("vi-VN")} ₫/USD`} />
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <Stat label={t.importAirbnb.totalPayout} value={vnd(summary.total_payout_vnd)} />
                 <Stat label={t.importAirbnb.bookingCount} value={String(summary.count)} />
                 <Stat label={t.importAirbnb.createUpdateMerge} value={`${summary.create} / ${summary.update_imported} / ${summary.merge_manual}`} />
@@ -275,6 +278,19 @@ export default function ImportAirbnb() {
                   <AlertTitle>{t.importAirbnb.unmappedTitle}</AlertTitle>
                   <AlertDescription>
                     {summary.unmapped.join("; ")}. {t.importAirbnb.unmappedBody}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {hasUnallocatedPayouts && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>{t.importAirbnb.exactVndRequiredTitle}</AlertTitle>
+                  <AlertDescription>
+                    {t.importAirbnb.exactVndRequiredBody.replace(
+                      "{refs}",
+                      summary.blocked_multi_booking_payouts!.join(", "),
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
@@ -304,7 +320,9 @@ export default function ImportAirbnb() {
                       </TableCell>
                       <TableCell className="text-sm">{r.check_in} → {r.check_out}</TableCell>
                       <TableCell className="text-right">{r.usd_after_tax.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">{vnd(r.amount_vnd)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {r.amount_vnd === null ? t.importAirbnb.exactVndMissing : vnd(r.amount_vnd)}
+                      </TableCell>
                       <TableCell>
                         {/* "not mapped" outranks "other villa": an unmapped row is
                             excluded too, but calling it another villa hides the
@@ -323,7 +341,7 @@ export default function ImportAirbnb() {
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   onClick={runCommit}
-                  disabled={committing || !filterHonoured || writableRows.length === 0}
+                  disabled={committing || !filterHonoured || hasUnallocatedPayouts || writableRows.length === 0}
                 >
                   {committing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                   {t.importAirbnb.confirmWrite}
