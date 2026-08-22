@@ -702,7 +702,7 @@ export const vi: Translations = {
     preview: "Xem trước",
     step2: "3. Xem trước",
     rateApplied: "Tỷ giá áp dụng",
-    totalPayout: "Tổng tiền thực nhận",
+    totalPayout: "Tổng VND thực nhận trong CSV",
     bookingCount: "Số booking",
     createUpdateMerge: "Tạo mới / Cập nhật / Gộp",
     unmappedTitle: "Có nhà chưa được map villa (sẽ bị bỏ qua)",
@@ -730,6 +730,10 @@ export const vi: Translations = {
       "Bản airbnb-import hiện tại bỏ qua bộ lọc villa, nên bấm xác nhận sẽ ghi toàn bộ file. Hãy deploy function mới trước — mã nguồn nằm ở artifacts/admin/supabase/functions/airbnb-import/index.ts.",
     nothingToWrite: "Không có dòng nào trong file thuộc villa đã chọn.",
     revenueVnd: "Doanh thu VND",
+    exactVndRequiredTitle: "Không có số VND chính xác cho từng booking",
+    exactVndRequiredBody:
+      "Payout {refs} chứa nhiều booking nhưng CSV chỉ có một tổng VND. Hệ thống không tự chia theo tỷ giá hoặc tỷ lệ; cần dữ liệu VND thật cho từng booking trước khi ghi.",
+    exactVndMissing: "Chưa có số VND chính xác",
   },
   chat: {
     groupDeleteFailed: "Không xóa được nhóm",
