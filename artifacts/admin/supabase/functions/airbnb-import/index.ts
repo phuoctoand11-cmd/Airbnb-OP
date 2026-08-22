@@ -148,7 +148,10 @@ Deno.serve(async (request) => {
       const row = rows[index], line = index + 1;
       const type = String(row[cType] ?? "").trim(), code = String(row[cCode] ?? "").trim();
       const currency = String(row[cCurrency] ?? "").trim().toUpperCase();
-      if (type === "Payout" && currency === "VND") {
+      if (type === "Payout") {
+        if (currency && currency !== "VND") {
+          throw new Error(`Line ${line}: unsupported payout currency ${currency}`);
+        }
         const referenceCode = String(row[cReference] ?? "").trim();
         if (!referenceCode) throw new Error(`Line ${line}: payout reference code is required`);
         const paidAmount = parseAmount(row[cPaid], `Line ${line} paid amount`);
