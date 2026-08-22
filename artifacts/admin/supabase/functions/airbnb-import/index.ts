@@ -24,7 +24,7 @@ type PreviewRow = {
   confirmation_code: string; guest: string; check_in: string; check_out: string;
   listing_name: string; listing_id: string | null; mapped: boolean;
   usd_after_tax: number; amount_vnd: number | null;
-  action: "create" | "update_imported" | "merge_manual";
+  action: "create" | "update_imported" | "merge_manual" | "duplicate_skip";
   existing_id: string | null; excluded: boolean; payout_index: number;
   transaction_type: "reservation" | "co_host";
   source_amount: number; source_currency: string;
@@ -123,8 +123,11 @@ Deno.serve(async (request) => {
     if (rows.length < 2) return json({ error: "CSV is empty" }, 400);
     const header = rows[0].map(normalize);
     const requiredColumns = ["Loại", "Mã xác nhận", "Ngày bắt đầu", "Ngày kết thúc", "Khách",
-      "Nhà/phòng cho thuê", "Loại tiền tệ", "Số tiền", "Đã chi trả", "Ngày chi trả", "Mã tham chiếu"];
+      "Nhà/phòng cho thuê", "Loại tiền tệ", "Số tiền", "Đã chi trả", "Mã tham chiếu"];
     const missing = requiredColumns.filter((name) => !header.includes(normalize(name)));
+    if (!header.includes(normalize("Ngày")) && !header.includes(normalize("Ngày chi trả"))) {
+      missing.push("Ngày");
+    }
     if (missing.length) return json({ error: `Missing required columns: ${missing.join(", ")}` }, 400);
     const invalidWidths = rows.slice(1).map((row, index) => ({ line: index + 2, columns: row.length }))
       .filter((row) => row.columns !== header.length);
@@ -134,7 +137,10 @@ Deno.serve(async (request) => {
     const cType = column("Loại"), cCode = column("Mã xác nhận"), cStart = column("Ngày bắt đầu");
     const cEnd = column("Ngày kết thúc"), cGuest = column("Khách"), cListing = column("Nhà/phòng cho thuê");
     const cCurrency = column("Loại tiền tệ"), cAmount = column("Số tiền"), cPaid = column("Đã chi trả");
-    const cPayoutDate = column("Ngày chi trả"), cReference = column("Mã tham chiếu");
+    const cPayoutDate = header.includes(normalize("Ngày chi trả"))
+      ? column("Ngày chi trả")
+      : column("Ngày");
+    const cReference = column("Mã tham chiếu");
 
     const blocks: Block[] = [];
     let current: Block | null = null;
@@ -182,6 +188,24 @@ Deno.serve(async (request) => {
     }
     if (!blocks.length) return json({ error: "No VND payout rows were found" }, 400);
 
+    const duplicateCandidates = blocks.flatMap((block) => Object.entries(block.items)
+      .filter(([, item]) => item.start)
+      .map(([confirmationCode, item]) => ({
+        confirmation_code: confirmationCode,
+        payout_date: block.payoutDate,
+        transaction_type: item.coHost ? "co_host" : "reservation",
+        amount: Number(item.sourceAmount.toFixed(2)),
+      })));
+    const { data: duplicateRows, error: duplicateError } = await supabase.rpc(
+      "preview_airbnb_import_duplicates",
+      { p_transactions: duplicateCandidates },
+    );
+    if (duplicateError) throw new Error("Unable to classify previously imported Airbnb transactions");
+    const duplicateKey = (candidate: {
+      confirmation_code: string; payout_date: string; transaction_type: string; amount: number;
+    }) => [candidate.confirmation_code, candidate.payout_date, candidate.transaction_type, candidate.amount].join("|");
+    const duplicateKeys = new Set((duplicateRows ?? []).map(duplicateKey));
+
     const { data: listings, error: listingsError } = await supabase
       .from("listings").select("id, title, airbnb_listing_name");
     if (listingsError) throw new Error("Unable to load listing mappings");
@@ -207,6 +231,7 @@ Deno.serve(async (request) => {
     };
 
     const preview: PreviewRow[] = [];
+    const seenTransactionKeys = new Set<string>();
     let totalPayoutVnd = 0, sumUsd = 0, skippedCount = 0, excludedCount = 0;
     const blockedMultiBookingPayouts: string[] = [];
     for (let payoutIndex = 0; payoutIndex < blocks.length; payoutIndex++) {
@@ -215,42 +240,59 @@ Deno.serve(async (request) => {
       if (!codes.length) continue;
       if (block.paidAmount === 0) { skippedCount += codes.length; continue; }
       totalPayoutVnd += block.paidAmount;
-      const requiresExactVnd = codes.length > 1;
-      if (requiresExactVnd) blockedMultiBookingPayouts.push(block.referenceCode);
+      let blockRequiresExactVnd = false;
 
       for (const code of codes) {
         const item = block.items[code];
+        const transactionType = item.coHost ? "co_host" : "reservation";
+        const sourceAmountForKey = Number(item.sourceAmount.toFixed(2));
+        const currentTransactionKey = duplicateKey({
+          confirmation_code: code,
+          payout_date: block.payoutDate,
+          transaction_type: transactionType,
+          amount: sourceAmountForKey,
+        });
+        const duplicate = duplicateKeys.has(currentTransactionKey) || seenTransactionKeys.has(currentTransactionKey);
+        seenTransactionKeys.add(currentTransactionKey);
         const listingId = listingsByName.get(normalize(item.listingName)) ?? null;
         const excluded = !!filterListingId && listingId !== filterListingId;
         if (excluded) excludedCount++;
         let action: PreviewRow["action"] = "create", existingId: string | null = null;
-        if (listingId && !excluded) {
+        if (duplicate) {
+          action = "duplicate_skip";
+        } else if (listingId && !excluded) {
           const existing = await findExisting(listingId, item.start!, item.end!, code);
           existingId = existing.id;
-          action = existing.by === "code" ? "update_imported" : existing.by === "date" ? "merge_manual" : "create";
+          action = existing.by === "code" ? "duplicate_skip" : existing.by === "date" ? "merge_manual" : "create";
         }
+        const requiresExactVnd = codes.length > 1 && action !== "duplicate_skip";
+        if (requiresExactVnd) blockRequiresExactVnd = true;
         const sourceAmount = item.sourceAmount + item.withholding;
-        const amountVnd = requiresExactVnd ? null : block.paidAmount;
+        const amountVnd = requiresExactVnd || action === "duplicate_skip" ? null : block.paidAmount;
         if (!excluded) sumUsd += sourceAmount;
         preview.push({
           confirmation_code: code, guest: item.guest || "Khách Airbnb", check_in: item.start!, check_out: item.end!,
           listing_name: item.listingName ?? "", listing_id: listingId, mapped: !!listingId,
           usd_after_tax: Number(sourceAmount.toFixed(2)), amount_vnd: amountVnd, action, existing_id: existingId,
-          excluded, payout_index: payoutIndex, transaction_type: item.coHost ? "co_host" : "reservation",
+          excluded, payout_index: payoutIndex, transaction_type: transactionType,
           source_amount: Number(item.sourceAmount.toFixed(2)), source_currency: item.currency,
           requires_exact_vnd: requiresExactVnd,
         });
       }
+      if (blockRequiresExactVnd) blockedMultiBookingPayouts.push(block.referenceCode);
     }
 
     const kept = preview.filter((row) => !row.excluded);
-    const unmapped = [...new Set(preview.filter((row) => !row.mapped).map((row) => row.listing_name))];
+    const unmapped = [...new Set(preview
+      .filter((row) => row.action !== "duplicate_skip" && !row.mapped)
+      .map((row) => row.listing_name))];
     const summary = {
       total_payout_vnd: Math.round(totalPayoutVnd),
       total_usd_after_tax: Number(sumUsd.toFixed(2)), count: kept.length,
       create: kept.filter((row) => row.mapped && row.action === "create").length,
       update_imported: kept.filter((row) => row.action === "update_imported").length,
       merge_manual: kept.filter((row) => row.action === "merge_manual").length,
+      duplicate: kept.filter((row) => row.action === "duplicate_skip").length,
       skipped: skippedCount, excluded: excludedCount, unmapped,
       blocked_multi_booking_payouts: blockedMultiBookingPayouts,
       applied_listing_filter: filterListingId, applied_listing_title: filterListingTitle,
@@ -261,7 +303,8 @@ Deno.serve(async (request) => {
       return json({ error: "Multi-booking payouts require exact VND amounts per booking" }, 400);
     }
     const eligible = preview.filter((row) =>
-      !row.excluded && row.listing_id && typeof row.amount_vnd === "number" && row.amount_vnd > 0
+      row.action !== "duplicate_skip" && !row.excluded && row.listing_id &&
+      typeof row.amount_vnd === "number" && row.amount_vnd > 0
     );
     if (!eligible.length) return json({ error: "There are no mapped transactions to write" }, 400);
 

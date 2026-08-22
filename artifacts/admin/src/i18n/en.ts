@@ -699,6 +699,8 @@ export const en = {
     actionCreate: "Create",
     actionUpdate: "Update",
     actionMerge: "Merge into manual booking",
+    actionDuplicate: "Already imported — skip",
+    duplicateAmount: "Already in the system",
     step1: "2. Pick the CSV file from Airbnb",
     picked: "Picked:",
     preview: "Preview",
@@ -706,7 +708,7 @@ export const en = {
     rateApplied: "Exchange rate applied",
     totalPayout: "Exact VND payout in CSV",
     bookingCount: "Bookings",
-    createUpdateMerge: "Create / Update / Merge",
+    createUpdateMerge: "New / Update / Merge / Duplicate",
     unmappedTitle: "Some properties are not mapped to a villa (they will be skipped)",
     unmappedBody:
       "Fill in the Airbnb name on the matching villa and try again.",
