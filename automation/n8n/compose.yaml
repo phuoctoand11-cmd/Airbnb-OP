@@ -1,0 +1,36 @@
+name: anvi-villas-automation
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.32.7
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in automation/n8n/.env}
+      GENERIC_TIMEZONE: Asia/Ho_Chi_Minh
+      TZ: Asia/Ho_Chi_Minh
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_UNVERIFIED_PACKAGES_ENABLED: "false"
+      N8N_RUNNERS_TASK_TIMEOUT: 60
+      N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES: 268435456
+      N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES: 1000
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: 168
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows:ro
+      - ./exports:/exports
+      - ./backups:/backups
+      - ../fixtures:/files:ro
+
+volumes:
+  n8n_data:
+    name: anvi_villas_n8n_data

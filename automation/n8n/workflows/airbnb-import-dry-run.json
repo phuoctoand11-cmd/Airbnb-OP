@@ -1,0 +1,80 @@
+{
+  "id": "3fd5fb62-49a9-4d92-bcec-22c7f8ca48e0",
+  "name": "Anvi Villas - Airbnb CSV Dry Run",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "24ff1541-c920-4f45-8ec8-42fd2a1f9760",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fixtures = [\n  { source: 'sample-single-payout.redacted.csv', csv: `Loại,Mã xác nhận,Ngày bắt đầu,Ngày kết thúc,Khách,Nhà/phòng cho thuê,Loại tiền tệ,Số tiền,Đã chi trả,Ngày chi trả,Mã tham chiếu\nPayout,,,,,,,0,\"5,000,000\",08/15/2026,PAYOUT-REDACTED-001\nĐặt phòng,HMREDACTED1,08/01/2026,08/03/2026,Khách Mẫu,Villa Mẫu 1,USD,200,,08/15/2026,PAYOUT-REDACTED-001` },\n  { source: 'sample-multi-booking-payout.redacted.csv', csv: `Loại,Mã xác nhận,Ngày bắt đầu,Ngày kết thúc,Khách,Nhà/phòng cho thuê,Loại tiền tệ,Số tiền,Đã chi trả,Ngày chi trả,Mã tham chiếu\nPayout,,,,,,,0,\"9,500,000\",08/20/2026,PAYOUT-REDACTED-002\nĐặt phòng,HMREDACTED2,08/05/2026,08/08/2026,Khách Mẫu A,Villa Mẫu 1,USD,240,,08/20/2026,PAYOUT-REDACTED-002\nThuế khấu lưu,HMREDACTED2,,,,,USD,-12,,08/20/2026,PAYOUT-REDACTED-002\nĐặt phòng,HMREDACTED3,08/10/2026,08/12/2026,Khách Mẫu B,Villa Mẫu 2,USD,180,,08/20/2026,PAYOUT-REDACTED-002` },\n];\nreturn fixtures.map((fixture) => ({ json: { ...fixture, dry_run: true } }));"
+      },
+      "id": "8fbf069d-2efb-48aa-a4ff-d8451f48445b",
+      "name": "Redacted CSV Fixtures",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputs = $input.all();\nconst normalizeHeader = (value) => String(value ?? '').trim().toLowerCase().replace(/\\s+/g, ' ');\nfunction parseCSV(text) {\n  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);\n  const rows = []; let row = []; let field = ''; let quoted = false;\n  for (let i = 0; i < text.length; i++) {\n    const c = text[i];\n    if (quoted) {\n      if (c === '\"' && text[i + 1] === '\"') { field += '\"'; i++; }\n      else if (c === '\"') quoted = false;\n      else field += c;\n    } else if (c === '\"') quoted = true;\n    else if (c === ',') { row.push(field); field = ''; }\n    else if (c === '\\n') { row.push(field); rows.push(row); row = []; field = ''; }\n    else if (c !== '\\r') field += c;\n  }\n  if (field.length || row.length) { row.push(field); rows.push(row); }\n  if (quoted) throw new Error('CSV contains an unclosed quoted field');\n  return rows;\n}\nfunction parseDate(value) {\n  const match = String(value ?? '').trim().match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);\n  if (!match) return null;\n  const month = Number(match[1]); const day = Number(match[2]); const year = Number(match[3]);\n  const date = new Date(Date.UTC(year, month - 1, day));\n  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;\n  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;\n}\nfunction parseAmount(value) {\n  const normalized = String(value ?? '').trim().replace(/,/g, '');\n  if (!normalized) return null;\n  const amount = Number(normalized);\n  return Number.isFinite(amount) ? amount : null;\n}\nconst typeMap = { payout: 'payout', 'đặt phòng': 'booking', 'thuế khấu lưu': 'withholding_tax' };\nconst required = ['Loại', 'Mã xác nhận', 'Số tiền', 'Đã chi trả', 'Ngày chi trả', 'Mã tham chiếu'];\nreturn inputs.map(({ json: input }) => {\n  if (input.dry_run !== true) throw new Error('Safety guard: dry_run must be true');\n  const csv = String(input.csv ?? '');\n  if (Buffer.byteLength(csv, 'utf8') > 1024 * 1024) throw new Error('CSV exceeds the 1 MiB local Phase 1 limit');\n  const rows = parseCSV(csv);\n  if (rows.length < 2) throw new Error('CSV is empty');\n  const header = rows[0].map(normalizeHeader);\n  const missing = required.filter((name) => !header.includes(normalizeHeader(name)));\n  if (missing.length) throw new Error(`Missing required columns: ${missing.join(', ')}`);\n  const index = Object.fromEntries(header.map((name, position) => [name, position]));\n  const valueAt = (row, name) => String(row[index[normalizeHeader(name)]] ?? '').trim();\n  const records = []; const errors = [];\n  rows.slice(1).forEach((row, offset) => {\n    const line = offset + 2;\n    if (row.length !== header.length) { errors.push({ line, code: 'invalid_column_count', expected: header.length, actual: row.length }); return; }\n    const transactionType = typeMap[normalizeHeader(valueAt(row, 'Loại'))] ?? null;\n    const payoutDate = parseDate(valueAt(row, 'Ngày chi trả'));\n    const amount = parseAmount(valueAt(row, 'Số tiền'));\n    const paidAmount = parseAmount(valueAt(row, 'Đã chi trả'));\n    const confirmationCode = valueAt(row, 'Mã xác nhận') || null;\n    const referenceCode = valueAt(row, 'Mã tham chiếu') || null;\n    const rowErrors = [];\n    if (!transactionType) rowErrors.push('unsupported_transaction_type');\n    if (!payoutDate) rowErrors.push('invalid_payout_date');\n    if (!referenceCode) rowErrors.push('missing_reference_code');\n    if (transactionType === 'payout' && paidAmount === null) rowErrors.push('invalid_paid_amount');\n    if (transactionType !== 'payout' && amount === null) rowErrors.push('invalid_amount');\n    if (transactionType !== 'payout' && !confirmationCode) rowErrors.push('missing_confirmation_code');\n    const startDateRaw = valueAt(row, 'Ngày bắt đầu'); const endDateRaw = valueAt(row, 'Ngày kết thúc');\n    const startDate = startDateRaw ? parseDate(startDateRaw) : null; const endDate = endDateRaw ? parseDate(endDateRaw) : null;\n    if (startDateRaw && !startDate) rowErrors.push('invalid_start_date');\n    if (endDateRaw && !endDate) rowErrors.push('invalid_end_date');\n    if (rowErrors.length) { errors.push({ line, codes: rowErrors }); return; }\n    records.push({ line, transaction_type: transactionType, confirmation_code: confirmationCode, reference_code: referenceCode, payout_date: payoutDate, start_date: startDate, end_date: endDate, guest_name: valueAt(row, 'Khách') || null, listing_name: valueAt(row, 'Nhà/phòng cho thuê') || null, currency: valueAt(row, 'Loại tiền tệ') || null, amount, paid_amount: paidAmount });\n  });\n  const payouts = records.filter((record) => record.transaction_type === 'payout');\n  const transactions = records.filter((record) => record.transaction_type !== 'payout');\n  return { json: { dry_run: true, valid: errors.length === 0, source: input.source, row_count: rows.length - 1, normalized_count: records.length, payout_count: payouts.length, booking_count: transactions.filter((record) => record.transaction_type === 'booking').length, withholding_tax_count: transactions.filter((record) => record.transaction_type === 'withholding_tax').length, error_count: errors.length, errors, payouts, transactions, network_calls: 0, database_writes: 0 } };\n});"
+      },
+      "id": "c76cb595-59b2-4606-aa2d-a1e0b6939a52",
+      "name": "Parse and Normalize - No Writes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const seenPayouts = new Set();\nconst seenTransactions = new Set();\nreturn $input.all().map(({ json: input }) => {\n  if (input.dry_run !== true) throw new Error('Safety guard: dry_run must be true');\n  const payouts = input.payouts.map((payout) => {\n    const idempotencyKey = JSON.stringify([payout.reference_code, payout.payout_date, payout.paid_amount]);\n    const classification = seenPayouts.has(idempotencyKey) ? 'duplicate' : 'would_insert';\n    seenPayouts.add(idempotencyKey);\n    return { ...payout, idempotency_key: idempotencyKey, classification };\n  });\n  const transactions = input.transactions.map((transaction) => {\n    const idempotencyKey = JSON.stringify([transaction.confirmation_code, transaction.payout_date, transaction.transaction_type, transaction.amount]);\n    const classification = seenTransactions.has(idempotencyKey) ? 'duplicate' : 'would_insert';\n    seenTransactions.add(idempotencyKey);\n    return { ...transaction, idempotency_key: idempotencyKey, classification };\n  });\n  const all = [...payouts, ...transactions];\n  return { json: { ...input, payouts, transactions, idempotency_preview: { scope: 'current_local_batch_only', would_insert: all.filter((record) => record.classification === 'would_insert').length, duplicate: all.filter((record) => record.classification === 'duplicate').length, would_update: 0, database_comparison_performed: false }, network_calls: 0, database_writes: 0 } };\n});"
+      },
+      "id": "51a7d880-7b94-4a9a-a2cb-78c2e9678c51",
+      "name": "Idempotency Preview - No Writes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const listingMap = { 'Villa Mẫu 1': '00000000-0000-4000-8000-000000000001', 'Villa Mẫu 2': '00000000-0000-4000-8000-000000000002' };\nreturn $input.all().map(({ json: input }) => {\n  if (input.dry_run !== true) throw new Error('Safety guard: dry_run must be true');\n  const bookingListings = new Map();\n  for (const transaction of input.transactions) {\n    if (transaction.transaction_type !== 'booking') continue;\n    const listingId = listingMap[transaction.listing_name] ?? null;\n    if (listingId && transaction.confirmation_code) bookingListings.set(transaction.confirmation_code, listingId);\n  }\n  const transactions = input.transactions.map((transaction) => {\n    const directListingId = transaction.listing_name ? listingMap[transaction.listing_name] ?? null : null;\n    const inheritedListingId = transaction.confirmation_code ? bookingListings.get(transaction.confirmation_code) ?? null : null;\n    const listingId = directListingId ?? inheritedListingId;\n    const requiresListing = transaction.transaction_type === 'booking' || transaction.transaction_type === 'withholding_tax';\n    const mappingStatus = !requiresListing ? 'not_applicable' : directListingId ? 'mapped' : inheritedListingId ? 'mapped_via_confirmation' : 'unmapped_listing';\n    return { ...transaction, idempotency_classification: transaction.classification, classification: mappingStatus === 'unmapped_listing' ? 'unmapped_listing' : transaction.classification, listing_id: listingId, listing_mapping_status: mappingStatus };\n  });\n  const mapped = transactions.filter((record) => record.listing_mapping_status === 'mapped').length;\n  const mappedViaConfirmation = transactions.filter((record) => record.listing_mapping_status === 'mapped_via_confirmation').length;\n  const unmapped = transactions.filter((record) => record.listing_mapping_status === 'unmapped_listing').length;\n  return { json: { ...input, transactions, listing_mapping_preview: { scope: 'redacted_local_fixture_only', mapped, mapped_via_confirmation: mappedViaConfirmation, unmapped_listing: unmapped, production_listing_lookup_performed: false }, network_calls: 0, database_writes: 0 } };\n});"
+      },
+      "id": "f59f95d7-c74e-4f3b-a96d-cef6f8665023",
+      "name": "Listing Mapping Preview - No Writes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 300]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Redacted CSV Fixtures", "type": "main", "index": 0 }]]
+    },
+    "Redacted CSV Fixtures": {
+      "main": [[{ "node": "Parse and Normalize - No Writes", "type": "main", "index": 0 }]]
+    },
+    "Parse and Normalize - No Writes": {
+      "main": [[{ "node": "Idempotency Preview - No Writes", "type": "main", "index": 0 }]]
+    },
+    "Idempotency Preview - No Writes": {
+      "main": [[{ "node": "Listing Mapping Preview - No Writes", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "saveManualExecutions": true
+  },
+  "versionId": "25f5d91f-67da-4905-8a36-14d61df30d18",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
