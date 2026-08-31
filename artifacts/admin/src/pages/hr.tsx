@@ -1159,7 +1159,6 @@ function EmployeeFormDialog({
                         <SelectItem value="cleaner">{t.roles.cleaner}</SelectItem>
                         <SelectItem value="maintenance">{t.roles.maintenance}</SelectItem>
                         <SelectItem value="accountant">{t.roles.accountant}</SelectItem>
-                        <SelectItem value="collaborator">{t.roles.collaborator}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

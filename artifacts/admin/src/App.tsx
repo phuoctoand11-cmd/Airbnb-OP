@@ -10,6 +10,7 @@ import { CurrencyProvider } from "@/lib/currency";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 
 import Login from "@/pages/login";
+import PublicHome from "@/pages/public-home";
 import Dashboard from "@/pages/dashboard";
 import Listings from "@/pages/listings";
 import ListingDetail from "@/pages/listing-detail";
@@ -45,8 +46,9 @@ function RootRedirect() {
     );
   }
 
-  // 2. No session → go to login
-  if (!session) return <Redirect to="/login" />;
+  // 2. No session → the public guest page, not the login screen. Signing in is
+  // still reachable from the header there and at /login directly.
+  if (!session) return <PublicHome />;
 
   // 3. Session exists but profile is still loading — wait so we get the correct role
   // (without this, role is null → getDefaultRouteByRole sends everyone to /listings)
@@ -128,13 +130,13 @@ function Router() {
       </Route>
 
       <Route path="/chat">
-        <ProtectedRoute require={(r) => r !== "collaborator"}>
+        <ProtectedRoute>
           <ChatPage />
         </ProtectedRoute>
       </Route>
 
       <Route path="/calendar">
-        <ProtectedRoute require={(r) => hasPermission(r, "manageCalendar") || r === "collaborator"}>
+        <ProtectedRoute permission="manageCalendar">
           <AvailabilityCalendar />
         </ProtectedRoute>
       </Route>

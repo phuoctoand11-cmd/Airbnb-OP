@@ -81,12 +81,9 @@ export function AppLayout({ children, title, action, fullWidth }: AppLayoutProps
     { href: "/settings/users", label: t.nav.team, icon: Settings, permission: "manageUsers" },
   ];
 
-  const visibleNav = NAV_ITEMS.filter((n) => {
-    if (role === "collaborator") {
-      return n.href === "/listings" || n.href === "/calendar";
-    }
-    return !n.permission || hasPermission(role, n.permission);
-  });
+  const visibleNav = NAV_ITEMS.filter(
+    (n) => !n.permission || hasPermission(role, n.permission),
+  );
 
   const initials = (profile?.full_name ?? profile?.email ?? "U")
     .split(" ")

@@ -476,7 +476,7 @@ export function canViewSalary(role: AppRole | null): boolean {
 export function getDefaultRouteByRole(role: AppRole | null): string {
   if (role === "accountant") return "/revenues";
   if (role === "maintenance" || role === "cleaner" || role === "cleaningstaff" || role === "staff") return "/tasks";
-  if (role === "sales" || role === "collaborator") return "/listings";
+  if (role === "sales") return "/listings";
   if (role === "admin" || role === "manager") return "/dashboard";
   return "/listings";
 }

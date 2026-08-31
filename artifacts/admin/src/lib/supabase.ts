@@ -47,8 +47,11 @@ export type AppRole =
   | "cleaner"
   | "cleaningstaff"
   | "staff"
+  /** Retired. Guests now use the signed-out public page instead of an account.
+   *  Kept in the union so existing rows still resolve to a label. */
   | "collaborator";
 
+/** Roles that can be ASSIGNED. "collaborator" is deliberately absent. */
 export const ROLES: AppRole[] = [
   "admin",
   "manager",
@@ -58,7 +61,6 @@ export const ROLES: AppRole[] = [
   "cleaner",
   "cleaningstaff",
   "staff",
-  "collaborator",
 ];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
