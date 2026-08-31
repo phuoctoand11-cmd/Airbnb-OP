@@ -48,6 +48,11 @@ where l.status = 'active';
 -- Busy dates only. A guest learns THAT a date is taken, never who booked it or
 -- for how much: no guest_name, no confirmation_code, no amount, and the reason
 -- is flattened to a coarse label.
+--
+-- CONVENTION: end_date is EXCLUSIVE on every row, so a consumer needs one rule
+-- — mark [start_date, end_date). bookings.check_out and listing_blocks.end_date
+-- are already half-open (the internal calendar tests `ds < end_date`);
+-- listing_calendar holds one row per day, so its single date gets + 1 to fit.
 create or replace view public.public_availability_view
 with (security_invoker = false) as
 select b.listing_id, b.check_in as start_date, b.check_out as end_date, 'booked'::text as kind
@@ -60,7 +65,7 @@ from public.listing_blocks bl
 join public.listings l on l.id = bl.listing_id
 where l.status = 'active'
 union all
-select c.listing_id, c.date as start_date, c.date as end_date, 'blocked'::text as kind
+select c.listing_id, c.date as start_date, (c.date + 1) as end_date, 'blocked'::text as kind
 from public.listing_calendar c
 join public.listings l on l.id = c.listing_id
 where l.status = 'active' and c.status <> 'available';

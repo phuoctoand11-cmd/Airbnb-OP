@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  addMonths, eachDayOfInterval, endOfMonth, format, isSameMonth,
+  addDays, addMonths, eachDayOfInterval, endOfMonth, format, isSameMonth,
   parseISO, startOfMonth,
 } from "date-fns";
 import { enUS as enLocale } from "date-fns/locale";
@@ -34,7 +34,7 @@ type PublicListing = {
 };
 type PublicImage = { id: string; listing_id: string; url: string; position: number | null };
 type PublicAmenity = { listing_id: string; amenity_id: string; name: string; icon: string | null };
-/** end_date is exclusive for bookings and inclusive for blocks; see markBusy(). */
+/** end_date is EXCLUSIVE for every kind — the view normalises it. See markBusy(). */
 type Availability = { listing_id: string; start_date: string; end_date: string; kind: string };
 
 const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
@@ -42,16 +42,23 @@ const LANG_OPTIONS: { value: Lang; label: string; flag: string }[] = [
   { value: "vi", label: "Tiếng Việt", flag: "🇻🇳" },
 ];
 
-/** Expands one availability row into the individual dates it covers. */
+/**
+ * Expands one availability row into the individual dates it covers.
+ *
+ * end_date is EXCLUSIVE for every row: bookings free the checkout day for the
+ * next guest, listing_blocks use the same half-open convention (the internal
+ * calendar tests `ds >= start_date && ds < end_date`), and the view already
+ * adds a day to single-date listing_calendar rows so they fit the same rule.
+ * One convention, no per-kind branching — an earlier version treated blocks as
+ * inclusive and marked one spurious busy day per block.
+ */
 function markBusy(rows: Availability[], into: Set<string>) {
   for (const row of rows) {
     const from = parseISO(row.start_date);
-    const to = parseISO(row.end_date);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) continue;
-    for (const day of eachDayOfInterval({ start: from, end: to })) {
-      // A booking frees the checkout day for the next guest, so its end is
-      // exclusive; a manual block covers its end date.
-      if (row.kind === "booked" && format(day, "yyyy-MM-dd") === row.end_date) continue;
+    const end = parseISO(row.end_date);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(end.getTime())) continue;
+    if (end <= from) continue;
+    for (const day of eachDayOfInterval({ start: from, end: addDays(end, -1) })) {
       into.add(format(day, "yyyy-MM-dd"));
     }
   }
